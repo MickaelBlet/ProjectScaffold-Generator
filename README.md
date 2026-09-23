@@ -1,0 +1,2 @@
+# ProjectScaffold
+Sequelletor struct generator
