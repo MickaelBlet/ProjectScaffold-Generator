@@ -1,0 +1,206 @@
+schemaVersion: 1
+project:
+  name: Robot
+  description: Mobile robot control stack
+  metadata:
+    version: 0.1.0
+types:
+  - kind: struct
+    name: Vec3
+    fields:
+      - name: x
+        type:
+          kind: primitive
+          name: float32
+      - name: y
+        type:
+          kind: primitive
+          name: float32
+      - name: z
+        type:
+          kind: primitive
+          name: float32
+  - kind: enum
+    name: Mode
+    underlying: uint8
+    values:
+      - name: Idle
+        value: 0
+      - name: Run
+        value: 1
+      - name: Fault
+        value: 255
+  - kind: alias
+    name: Samples
+    type:
+      kind: vector
+      of:
+        kind: primitive
+        name: uint16
+  - kind: struct
+    name: Pose
+    description: Position and orientation
+    fields:
+      - name: position
+        type:
+          kind: ref
+          name: Vec3
+      - name: orientation
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float64
+          size: 4
+interfaces:
+  - name: Telemetry
+    messages:
+      - name: publish
+        params:
+          - name: pose
+            type:
+              kind: ref
+              name: Pose
+          - name: tags
+            type:
+              kind: map
+              key:
+                kind: primitive
+                name: string
+              value:
+                kind: list
+                of:
+                  kind: primitive
+                  name: uint8
+        returns: null
+  - name: Control
+    messages:
+      - name: setMode
+        params:
+          - name: mode
+            type:
+              kind: ref
+              name: Mode
+        returns:
+          kind: primitive
+          name: bool
+      - name: raw
+        params:
+          - name: samples
+            type:
+              kind: ref
+              name: Samples
+          - name: gain
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: float32
+        returns: null
+modules:
+  - name: Core
+    metadata:
+      owner: team-a
+    ports:
+      - name: control
+        role: in
+        interface: Control
+    modules:
+      - name: Sensor
+        ports:
+          - name: out
+            role: out
+            interface: Telemetry
+      - name: Controller
+        ports:
+          - name: telemetry
+            role: in
+            interface: Telemetry
+      - name: Logger
+        ports:
+          - name: in
+            role: in
+            interface: Telemetry
+  - name: Operator
+    description: Remote operator console
+    ports:
+      - name: cmd
+        role: out
+        interface: Control
+links:
+  - name: sensor_to_controller
+    from:
+      module: Core.Sensor
+      port: out
+    to:
+      module: Core.Controller
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 1
+        rateHz: 1000
+      remote:
+        enabled: false
+  - name: sensor_to_logger
+    from:
+      module: Core.Sensor
+      port: out
+    to:
+      module: Core.Logger
+      port: in
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+      remote:
+        enabled: false
+  - name: operator_to_core
+    from:
+      module: Operator
+      port: cmd
+    to:
+      module: Core
+      port: control
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+      performance:
+        class: normal
+        maxLatencyMs: 50
+      remote:
+        enabled: true
+        transport: tcp
+editor:
+  layout:
+    Core:
+      x: 209.58070984744194
+      y: -86.89194764219295
+      width: 666
+      height: 421
+    Core.Sensor:
+      x: 20
+      y: 92
+      width: 200
+      height: 72
+    Operator:
+      x: -98.51606054087654
+      y: -73.11482571736211
+      width: 196
+      height: 316
+    Core.Controller:
+      x: 425.1428571428572
+      y: 172.28571428571433
+      width: 200
+      height: 72
+    Core.Logger:
+      x: 316.86178349514944
+      y: 72
+      width: 200
+      height: 72

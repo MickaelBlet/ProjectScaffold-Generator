@@ -1,0 +1,608 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/ScaffoldProject",
+  "$defs": {
+    "ScaffoldProject": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "project": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "struct"
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                        },
+                        "type": {
+                          "$ref": "#/$defs/TypeRef"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "type"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "fields"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "enum"
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "underlying": {
+                    "type": "string",
+                    "enum": [
+                      "int8",
+                      "int16",
+                      "int32",
+                      "int64",
+                      "uint8",
+                      "uint16",
+                      "uint32",
+                      "uint64"
+                    ]
+                  },
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                        },
+                        "value": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "value"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "underlying",
+                  "values"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "alias"
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "type"
+                ]
+              }
+            ]
+          }
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "description": {
+                "type": "string"
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "type": {
+                            "$ref": "#/$defs/TypeRef"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ]
+                      }
+                    },
+                    "returns": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/TypeRef"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "params",
+                    "returns"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "messages"
+            ]
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Module"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "description": {
+                "type": "string"
+              },
+              "from": {
+                "type": "object",
+                "properties": {
+                  "module": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                  },
+                  "port": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                },
+                "required": [
+                  "module",
+                  "port"
+                ],
+                "description": "initiator side (an `out` port)"
+              },
+              "to": {
+                "type": "object",
+                "properties": {
+                  "module": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                  },
+                  "port": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                },
+                "required": [
+                  "module",
+                  "port"
+                ],
+                "description": "receiver side (an `in` port)"
+              },
+              "constraints": {
+                "type": "object",
+                "properties": {
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "unidirectional",
+                      "bidirectional"
+                    ]
+                  },
+                  "ack": {
+                    "type": "object",
+                    "properties": {
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "timeoutMs": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "required"
+                    ]
+                  },
+                  "performance": {
+                    "type": "object",
+                    "properties": {
+                      "class": {
+                        "type": "string",
+                        "enum": [
+                          "realtime",
+                          "low",
+                          "normal",
+                          "bulk"
+                        ]
+                      },
+                      "maxLatencyMs": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "rateHz": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "class"
+                    ]
+                  },
+                  "remote": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "transport": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  }
+                },
+                "required": [
+                  "direction",
+                  "ack",
+                  "performance",
+                  "remote"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "from",
+              "to",
+              "constraints"
+            ]
+          }
+        },
+        "editor": {
+          "description": "Editor-only data, ignored by generators",
+          "type": "object",
+          "properties": {
+            "layout": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ]
+              }
+            }
+          },
+          "required": [
+            "layout"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "project",
+        "types",
+        "interfaces",
+        "modules",
+        "links"
+      ],
+      "title": "ProjectScaffold architecture file"
+    },
+    "TypeRef": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "primitive"
+            },
+            "name": {
+              "type": "string",
+              "enum": [
+                "bool",
+                "char",
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64",
+                "float32",
+                "float64",
+                "string",
+                "bytes"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "array"
+            },
+            "of": {
+              "$ref": "#/$defs/TypeRef"
+            },
+            "size": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "kind",
+            "of",
+            "size"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "vector",
+                "list",
+                "set",
+                "optional"
+              ]
+            },
+            "of": {
+              "$ref": "#/$defs/TypeRef"
+            }
+          },
+          "required": [
+            "kind",
+            "of"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "map"
+            },
+            "key": {
+              "$ref": "#/$defs/TypeRef"
+            },
+            "value": {
+              "$ref": "#/$defs/TypeRef"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "ref"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
+        }
+      ]
+    },
+    "Module": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "out",
+                  "in"
+                ],
+                "description": "out: initiates / sends; in: receives / serves"
+              },
+              "interface": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "role",
+              "interface"
+            ]
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Module"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "ports"
+      ]
+    }
+  }
+}
