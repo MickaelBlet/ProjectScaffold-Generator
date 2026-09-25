@@ -1,6 +1,16 @@
 // Pure helpers over the in-memory project.
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
-import type { Id, LinkConstraints, Module, Port, Project, Rect, TypeRef } from './types'
+import {
+  GLOBAL_VIEW,
+  type Id,
+  type LinkConstraints,
+  type Module,
+  type Port,
+  type Project,
+  type Rect,
+  type TypeRef,
+  type View
+} from './types'
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
@@ -16,7 +26,9 @@ export function emptyProject(): Project {
     types: [],
     interfaces: [],
     modules: [],
-    links: []
+    links: [],
+    views: [],
+    notes: []
   }
 }
 
@@ -45,6 +57,23 @@ export function leafHeight(portCount: number): number {
 
 export function defaultLayout(x: number, y: number, portCount = 0): Rect {
   return { x, y, width: MODULE_WIDTH, height: leafHeight(portCount) }
+}
+
+export const LAYOUT_PAD = 20
+
+/** Keep `id` inside its parent's content area (below header and ports), growing ancestors as needed. */
+export function growAncestors(d: Project, id: Id): void {
+  let child = d.modules.find((m) => m.id === id)
+  while (child?.parentId) {
+    const parentId: Id = child.parentId
+    const parent = d.modules.find((m) => m.id === parentId)
+    if (!parent) return
+    child.layout.x = Math.max(child.layout.x, LAYOUT_PAD / 2)
+    child.layout.y = Math.max(child.layout.y, leafHeight(portRows(parent)))
+    parent.layout.width = Math.max(parent.layout.width, child.layout.x + child.layout.width + LAYOUT_PAD)
+    parent.layout.height = Math.max(parent.layout.height, child.layout.y + child.layout.height + LAYOUT_PAD)
+    child = parent
+  }
 }
 
 export function childModules(p: Project, parentId: Id | null): Module[] {
@@ -143,27 +172,96 @@ export function nameError(p: Project, target: NameTarget, name: string): string 
   }
 }
 
-/** Every type reference in the project, with a label of where it is used. */
-export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: string }> {
-  for (const t of p.types) {
-    if (t.kind === 'struct') for (const f of t.fields) yield { ref: f.type, where: `${t.name}.${f.name}` }
-    if (t.kind === 'alias') yield { ref: t.type, where: t.name }
-  }
-  for (const i of p.interfaces)
-    for (const m of i.messages) {
-      for (const prm of m.params) yield { ref: prm.type, where: `${i.name}.${m.name}(${prm.name})` }
-      if (m.returns) yield { ref: m.returns, where: `${i.name}.${m.name} returns` }
-    }
+export interface UsageOwner {
+  kind: 'type' | 'interface'
+  id: Id
 }
 
-export function typeUsages(p: Project, typeId: Id): string[] {
-  const out: string[] = []
-  for (const { ref, where } of allTypeRefs(p)) {
+/** Every type reference in the project, with a label of where it is used and the entity holding it. */
+export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: string; owner: UsageOwner }> {
+  for (const t of p.types) {
+    const owner = { kind: 'type', id: t.id } as const
+    if (t.kind === 'struct')
+      for (const f of t.fields) yield { ref: f.type, where: `${t.name}.${f.name}`, owner }
+    if (t.kind === 'alias') yield { ref: t.type, where: t.name, owner }
+  }
+  for (const i of p.interfaces) {
+    const owner = { kind: 'interface', id: i.id } as const
+    for (const m of i.messages) {
+      for (const prm of m.params) yield { ref: prm.type, where: `${i.name}.${m.name}(${prm.name})`, owner }
+      if (m.returns) yield { ref: m.returns, where: `${i.name}.${m.name} returns`, owner }
+    }
+  }
+}
+
+/** Places using a type, with the entity holding each reference. */
+export function typeUsageTargets(p: Project, typeId: Id): { where: string; owner: UsageOwner }[] {
+  const out: { where: string; owner: UsageOwner }[] = []
+  for (const { ref, where, owner } of allTypeRefs(p)) {
     let used = false
     walkTypeRef(ref, (n) => {
       if (n.kind === 'ref' && n.id === typeId) used = true
     })
-    if (used) out.push(where)
+    if (used) out.push({ where, owner })
   }
   return out
+}
+
+export function typeUsages(p: Project, typeId: Id): string[] {
+  return typeUsageTargets(p, typeId).map((u) => u.where)
+}
+
+// Views
+
+export function globalView(): View {
+  return { id: GLOBAL_VIEW, name: 'Global', rootModuleId: null, hidden: [] }
+}
+
+/** The view with this id; the global view for an unknown id. */
+export function findView(p: Project, viewId: Id): View {
+  return p.views.find((v) => v.id === viewId) ?? globalView()
+}
+
+/** Ids of the modules drawn in a view: the root's subtree (or everything) minus hidden subtrees. */
+export function visibleModuleIds(p: Project, view: View): Set<Id> {
+  const scope = view.rootModuleId ? subtreeIds(p, view.rootModuleId) : new Set(p.modules.map((m) => m.id))
+  for (const h of view.hidden)
+    if (h !== view.rootModuleId) for (const id of subtreeIds(p, h)) scope.delete(id)
+  return scope
+}
+
+/** Drop view references to deleted modules; views rooted in a deleted module go away. */
+export function pruneViews(p: Project): void {
+  const ids = new Set(p.modules.map((m) => m.id))
+  p.views = p.views.filter((v) => !v.rootModuleId || ids.has(v.rootModuleId))
+  for (const v of p.views) v.hidden = v.hidden.filter((h) => ids.has(h))
+}
+
+/** Bounding box of rects. */
+export function boundsOf(rects: Rect[]): Rect {
+  if (!rects.length) return { x: 0, y: 0, width: 0, height: 0 }
+  const x = Math.min(...rects.map((r) => r.x))
+  const y = Math.min(...rects.map((r) => r.y))
+  const right = Math.max(...rects.map((r) => r.x + r.width))
+  const bottom = Math.max(...rects.map((r) => r.y + r.height))
+  return { x, y, width: right - x, height: bottom - y }
+}
+
+/** Absolute rect of a module. */
+export function absoluteRect(p: Project, id: Id): Rect {
+  const m = p.modules.find((m) => m.id === id)
+  const { x, y } = absolutePosition(p, id)
+  return { x, y, width: m?.layout.width ?? 0, height: m?.layout.height ?? 0 }
+}
+
+/** Depth of a module in the tree (0 for top level). */
+export function moduleDepth(p: Project, id: Id): number {
+  let d = 0
+  let cur = p.modules.find((m) => m.id === id)
+  while (cur?.parentId) {
+    d++
+    const parentId: Id = cur.parentId
+    cur = p.modules.find((m) => m.id === parentId)
+  }
+  return d
 }

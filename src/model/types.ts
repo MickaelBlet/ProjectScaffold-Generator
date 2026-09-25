@@ -132,6 +132,8 @@ export interface Module {
   ports: Port[]
   /** Editor layout, position relative to parent. */
   layout: Rect
+  /** Editor-only accent color (CSS color). */
+  color?: string
 }
 
 export const PERFORMANCE_CLASSES = ['realtime', 'low', 'normal', 'bulk'] as const
@@ -170,6 +172,29 @@ export interface Link {
   constraints: LinkConstraints
 }
 
+/** Editor-only diagram view: the whole project or the inside of one module, minus hidden modules. */
+export interface View {
+  id: Id
+  name: string
+  /** Module shown with its content (drill-down); null for the whole project. */
+  rootModuleId: Id | null
+  /** Modules hidden in this view, with their content. */
+  hidden: Id[]
+}
+
+/** Id of the implicit view showing the whole project. */
+export const GLOBAL_VIEW = 'global'
+
+/** Editor-only canvas annotation: a sticky note or a titled frame drawn behind modules. */
+export interface Note {
+  id: Id
+  kind: 'note' | 'frame'
+  text: string
+  /** Absolute canvas position. */
+  layout: Rect
+  color?: string
+}
+
 export interface Project {
   name: string
   description: string
@@ -178,4 +203,6 @@ export interface Project {
   interfaces: Interface[]
   modules: Module[]
   links: Link[]
+  views: View[]
+  notes: Note[]
 }

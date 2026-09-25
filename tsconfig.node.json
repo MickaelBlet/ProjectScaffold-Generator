@@ -12,5 +12,5 @@
     "types": ["node"],
     "paths": { "@/*": ["./src/renderer/src/*"] }
   },
-  "include": ["electron.vite.config.ts", "vitest.config.ts", "vite.web.config.ts", "src/main/**/*", "src/preload/**/*", "scripts/**/*", "tests/**/*", "src/renderer/src/model/**/*"]
+  "include": ["vite.config.ts", "vitest.config.ts", "scripts/**/*", "tests/**/*", "src/renderer/src/model/**/*"]
 }

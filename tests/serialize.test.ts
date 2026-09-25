@@ -16,8 +16,8 @@ describe('serialize', () => {
     expect(validate(p)).toEqual([])
   })
 
-  it('round-trips the example (export format)', () => {
-    expect(toFile(fromFile(example), { editor: false })).toEqual(example)
+  it('round-trips the example', () => {
+    expect(toFile(fromFile(example), { editor: true })).toEqual(example)
   })
 
   it.each(['yaml', 'json'] as const)('round-trips through %s text with layout', (format) => {

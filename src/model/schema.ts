@@ -116,6 +116,31 @@ const Link = z.object({
 
 const Rect = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
 
+const EditorView = z.object({
+  name: z.string(),
+  root: QualifiedName.optional().describe('module shown with its content; the whole project when absent'),
+  hidden: z.array(QualifiedName).optional()
+})
+
+const EditorNote = z.object({
+  kind: z.enum(['note', 'frame']),
+  text: z.string(),
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  color: z.string().optional()
+})
+
+const Editor = z
+  .object({
+    layout: z.record(QualifiedName, Rect),
+    views: z.array(EditorView).optional(),
+    style: z.record(QualifiedName, z.object({ color: z.string().optional() })).optional(),
+    notes: z.array(EditorNote).optional()
+  })
+  .describe('Editor-only data, ignored by generators')
+
 export const FileProjectSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
@@ -124,13 +149,11 @@ export const FileProjectSchema = z
     interfaces: z.array(Interface),
     modules: z.array(Module),
     links: z.array(Link),
-    editor: z
-      .object({ layout: z.record(QualifiedName, Rect) })
-      .optional()
-      .describe('Editor-only data, ignored by generators')
+    editor: Editor.optional()
   })
   .meta({ id: 'ScaffoldProject', title: 'ProjectScaffold architecture file' })
 
 export type FileProject = z.infer<typeof FileProjectSchema>
 export type FileTypeDef = z.infer<typeof TypeDef>
 export type FileLink = z.infer<typeof Link>
+export type FileEditor = z.infer<typeof Editor>

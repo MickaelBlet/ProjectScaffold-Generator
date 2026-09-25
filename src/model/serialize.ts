@@ -3,13 +3,14 @@ import YAML from 'yaml'
 import {
   FileProjectSchema,
   SCHEMA_VERSION,
+  type FileEditor,
   type FileModule,
   type FileProject,
   type FileTypeDef
 } from './schema'
 import { mapTypeRef } from './typeExpr'
 import { childModules, leafHeight, MODULE_WIDTH, modulePath, newId, portRows } from './project'
-import type { Field, Id, Metadata, Module, Project, TypeDef, TypeRef } from './types'
+import type { Field, Id, Metadata, Module, Note, Project, TypeDef, TypeRef, View } from './types'
 import type { FileTypeRef } from './schema'
 
 export type Format = 'yaml' | 'json'
@@ -97,7 +98,21 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     }))
   }
   if (options.editor) {
-    file.editor = { layout: Object.fromEntries(p.modules.map((m) => [modulePath(p, m.id), { ...m.layout }])) }
+    const editor: FileEditor = {
+      layout: Object.fromEntries(p.modules.map((m) => [modulePath(p, m.id), { ...m.layout }]))
+    }
+    if (p.views.length)
+      editor.views = p.views.map((v) => ({
+        name: v.name,
+        root: v.rootModuleId ? modulePath(p, v.rootModuleId) : undefined,
+        hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined
+      }))
+    const colored = p.modules.filter((m) => m.color)
+    if (colored.length)
+      editor.style = Object.fromEntries(colored.map((m) => [modulePath(p, m.id), { color: m.color }]))
+    if (p.notes.length)
+      editor.notes = p.notes.map((n) => ({ kind: n.kind, text: n.text, ...n.layout, color: n.color }))
+    file.editor = editor
   }
   return clean(file)
 }
@@ -112,9 +127,10 @@ export function fromFile(data: unknown): Project {
 
   // Types and interfaces share one namespace.
   const typeIds = new Map<string, Id>()
-  const declare = (name: string, what: string): Id => {
+  // Ids derived from names are stable across loads, so that open editors survive a page reload.
+  const declare = (name: string, what: 'type' | 'interface'): Id => {
     if (typeIds.has(name)) problems.push(`Duplicate ${what} name '${name}'`)
-    const id = newId()
+    const id = `${what}:${name}`
     typeIds.set(name, id)
     return id
   }
@@ -193,7 +209,7 @@ export function fromFile(data: unknown): Project {
       seen.add(fm.name)
       const portNames = new Set<string>()
       const mod: Module = {
-        id: newId(),
+        id: `module:${path}`,
         name: fm.name,
         description: fm.description ?? '',
         parentId,
@@ -215,6 +231,8 @@ export function fromFile(data: unknown): Project {
       moduleByPath.set(path, mod)
 
       const inner = addModules(fm.modules ?? [], mod.id, path, leafHeight(portRows(fm)))
+      const color = f.editor?.style?.[path]?.color
+      if (color) mod.color = color
       const saved = layout[path]
       if (saved) {
         mod.layout = { ...saved }
@@ -255,6 +273,21 @@ export function fromFile(data: unknown): Project {
     constraints: clean(l.constraints)
   }))
 
+  // Editor data is best effort: dangling module paths are dropped, not reported.
+  const views: View[] = (f.editor?.views ?? []).flatMap((v, i) => {
+    const root = v.root ? moduleByPath.get(v.root) : undefined
+    if (v.root && !root) return []
+    const hidden = (v.hidden ?? []).flatMap((h) => moduleByPath.get(h)?.id ?? [])
+    return [{ id: `view:${i}`, name: v.name, rootModuleId: root?.id ?? null, hidden }]
+  })
+  const notes: Note[] = (f.editor?.notes ?? []).map((n) => ({
+    id: newId(),
+    kind: n.kind,
+    text: n.text,
+    layout: { x: n.x, y: n.y, width: n.width, height: n.height },
+    ...(n.color ? { color: n.color } : {})
+  }))
+
   if (problems.length) throw new LoadError(problems)
   return {
     name: f.project.name,
@@ -263,7 +296,9 @@ export function fromFile(data: unknown): Project {
     types,
     interfaces,
     modules,
-    links
+    links,
+    views,
+    notes
   }
 }
 

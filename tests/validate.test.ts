@@ -51,7 +51,13 @@ describe('validate', () => {
   it('accepts enum map keys through aliases, warns on float keys', () => {
     const p = load()
     const mode = type<EnumDef>(p, 'Mode')
-    p.types.push({ id: 'alias-mode', kind: 'alias', name: 'M', description: '', type: { kind: 'ref', id: mode.id } })
+    p.types.push({
+      id: 'alias-mode',
+      kind: 'alias',
+      name: 'M',
+      description: '',
+      type: { kind: 'ref', id: mode.id }
+    })
     type<StructDef>(p, 'Pose').fields[1]!.type = {
       kind: 'set',
       of: { kind: 'ref', id: 'alias-mode' }
@@ -65,7 +71,12 @@ describe('validate', () => {
     const p = load()
     const pose = type<StructDef>(p, 'Pose')
     const vec3 = type<StructDef>(p, 'Vec3')
-    vec3.fields.push({ id: 'f', name: 'p', description: '', type: { kind: 'optional', of: { kind: 'ref', id: pose.id } } })
+    vec3.fields.push({
+      id: 'f',
+      name: 'p',
+      description: '',
+      type: { kind: 'optional', of: { kind: 'ref', id: pose.id } }
+    })
     expect(messages(p)).toEqual([
       "Struct 'Vec3' contains itself by value (use vector, list, map or set to break the cycle)",
       "Struct 'Pose' contains itself by value (use vector, list, map or set to break the cycle)"

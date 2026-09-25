@@ -26,15 +26,24 @@ describe('type expressions', () => {
   })
 
   it('tolerates whitespace', () => {
-    expect(printTypeExpr(parseTypeExpr('  map < string ,vector<  uint8 > >  '))).toBe('map<string, vector<uint8>>')
+    expect(printTypeExpr(parseTypeExpr('  map < string ,vector<  uint8 > >  '))).toBe(
+      'map<string, vector<uint8>>'
+    )
   })
 
-  it.each(['', 'vector', 'vector<>', 'map<string>', 'array<uint8>', 'array<uint8, 0>', 'uint8 x', 'vector<uint8', 'a$b'])(
-    'rejects %j',
-    (src) => {
-      expect(() => parseTypeExpr(src)).toThrow(TypeExprError)
-    }
-  )
+  it.each([
+    '',
+    'vector',
+    'vector<>',
+    'map<string>',
+    'array<uint8>',
+    'array<uint8, 0>',
+    'uint8 x',
+    'vector<uint8',
+    'a$b'
+  ])('rejects %j', (src) => {
+    expect(() => parseTypeExpr(src)).toThrow(TypeExprError)
+  })
 
   it('resolves user types to ids', () => {
     const ids: Record<string, string> = { Vec3: 'id-vec3' }
