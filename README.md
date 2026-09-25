@@ -3,6 +3,8 @@
 Browser editor for software architecture: modules, ports, typed interfaces and constrained links.
 Exports a language-agnostic YAML/JSON file meant to feed code skeleton generators.
 
+![ProjectScaffold editor with the robot example](docs/demo.png)
+
 ## Commands
 
 ```sh
