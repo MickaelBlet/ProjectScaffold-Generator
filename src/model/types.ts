@@ -90,11 +90,19 @@ export interface AliasDef {
 
 export type TypeDef = StructDef | EnumDef | AliasDef
 
+export const PARAM_DIRECTIONS = ['in', 'out', 'inout'] as const
+/** `in`: caller → callee. `out`: callee → caller. `inout`: both ways. */
+export type ParamDirection = (typeof PARAM_DIRECTIONS)[number]
+
+export interface Param extends Field {
+  direction: ParamDirection
+}
+
 export interface Message {
   id: Id
   name: string
   description: string
-  params: Field[]
+  params: Param[]
   returns: TypeRef | null
 }
 
@@ -172,6 +180,13 @@ export interface Link {
   constraints: LinkConstraints
 }
 
+/**
+ * Editor-only port placement of a document: `horizontal` puts `in` ports on the left and `out`
+ * ports on the right (links flow right), `vertical` puts them on the top and bottom edges (links
+ * flow down).
+ */
+export type Orientation = 'horizontal' | 'vertical'
+
 /** Editor-only diagram view: the whole project or the inside of one module, minus hidden modules. */
 export interface View {
   id: Id
@@ -205,4 +220,5 @@ export interface Project {
   links: Link[]
   views: View[]
   notes: Note[]
+  orientation: Orientation
 }

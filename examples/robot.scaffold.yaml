@@ -90,6 +90,7 @@ interfaces:
             type:
               kind: ref
               name: Samples
+            direction: inout
           - name: gain
             type:
               kind: optional

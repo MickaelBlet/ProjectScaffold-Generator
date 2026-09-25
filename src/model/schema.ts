@@ -1,6 +1,6 @@
 // On-disk format (YAML/JSON). Source of truth for the published JSON Schema.
 import { z } from 'zod'
-import { INT_PRIMITIVES, PERFORMANCE_CLASSES, PRIMITIVES, type TypeRefOf } from './types'
+import { INT_PRIMITIVES, PARAM_DIRECTIONS, PERFORMANCE_CLASSES, PRIMITIVES, type TypeRefOf } from './types'
 
 export const SCHEMA_VERSION = 1
 
@@ -53,10 +53,17 @@ const TypeDef = z.discriminatedUnion('kind', [
   })
 ])
 
+const Param = Field.extend({
+  direction: z
+    .enum(PARAM_DIRECTIONS)
+    .optional()
+    .describe('in (default): caller → callee; out: callee → caller; inout: both ways')
+})
+
 const Message = z.object({
   name: Identifier,
   description: Description,
-  params: z.array(Field),
+  params: z.array(Param),
   returns: FileTypeRefSchema.nullable()
 })
 
@@ -137,7 +144,11 @@ const Editor = z
     layout: z.record(QualifiedName, Rect),
     views: z.array(EditorView).optional(),
     style: z.record(QualifiedName, z.object({ color: z.string().optional() })).optional(),
-    notes: z.array(EditorNote).optional()
+    notes: z.array(EditorNote).optional(),
+    orientation: z
+      .enum(['horizontal', 'vertical'])
+      .optional()
+      .describe('port placement: in left / out right (default), or in top / out bottom')
   })
   .describe('Editor-only data, ignored by generators')
 

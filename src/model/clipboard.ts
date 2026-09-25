@@ -102,7 +102,7 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
     return [...d.types, ...d.interfaces].find((e) => e.name === name)?.id ?? id
   }
   const ref = (t: TypeRef): TypeRef => mapTypeRef(t, (r) => ({ kind: 'ref', id: rebind(r.id) }))
-  const field = (f: Field): Field => ({ ...f, id: newId(), type: ref(f.type) })
+  const field = <F extends Field>(f: F): F => ({ ...f, id: newId(), type: ref(f.type) })
 
   for (const t of clip.types) {
     const base = {

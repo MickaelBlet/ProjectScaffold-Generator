@@ -200,6 +200,15 @@
                           },
                           "description": {
                             "type": "string"
+                          },
+                          "direction": {
+                            "description": "in (default): caller → callee; out: callee → caller; inout: both ways",
+                            "type": "string",
+                            "enum": [
+                              "in",
+                              "out",
+                              "inout"
+                            ]
                           }
                         },
                         "required": [
@@ -482,6 +491,14 @@
                   "height"
                 ]
               }
+            },
+            "orientation": {
+              "description": "port placement: in left / out right (default), or in top / out bottom",
+              "type": "string",
+              "enum": [
+                "horizontal",
+                "vertical"
+              ]
             }
           },
           "required": [

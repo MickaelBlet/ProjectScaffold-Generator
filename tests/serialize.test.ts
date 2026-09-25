@@ -72,10 +72,34 @@ describe('serialize', () => {
   })
 })
 
+describe('parameter direction', () => {
+  it('defaults to in and is omitted from the file when in', () => {
+    const p = fromFile(example)
+    const [publish, setMode, raw] = p.interfaces.flatMap((i) => i.messages)
+    expect(publish!.params.map((prm) => prm.direction)).toEqual(['in', 'in'])
+    expect(setMode!.params[0]!.direction).toBe('in')
+    expect(raw!.params.map((prm) => prm.direction)).toEqual(['inout', 'in'])
+    raw!.params[1]!.direction = 'out'
+    const params = toFile(p, { editor: false }).interfaces[1]!.messages[1]!.params
+    expect(params.map((prm) => prm.direction)).toEqual(['inout', 'out'])
+    expect(toFile(p, { editor: false }).interfaces[0]!.messages[0]!.params[0]!.direction).toBeUndefined()
+  })
+})
+
 describe('JSON Schema', () => {
   it('schema/scaffold.schema.json is up to date (run `npm run schema`)', async () => {
     const { z } = await import('zod')
     const { FileProjectSchema } = await import('@/model/schema')
     expect(z.toJSONSchema(FileProjectSchema, { target: 'draft-2020-12', io: 'input' })).toEqual(jsonSchema)
+  })
+})
+
+describe('editor orientation', () => {
+  it('round-trips the vertical orientation and defaults to horizontal', () => {
+    const p = { ...fromFile(example), orientation: 'vertical' as const }
+    expect(toFile(p, { editor: true }).editor?.orientation).toBe('vertical')
+    expect(loadText(saveText(p, 'yaml', { editor: true }), 'yaml').orientation).toBe('vertical')
+    expect(toFile(fromFile(example), { editor: true }).editor?.orientation).toBeUndefined()
+    expect(fromFile(example).orientation).toBe('horizontal')
   })
 })

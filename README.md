@@ -29,18 +29,18 @@ npm run lint
 
 ### Diagram
 
-- Double-click the canvas (or **+ Module**, Ctrl+M) to add a module. Drop a module onto another to nest it; drag it out to move it up.
-- Ports: `in` on the left, `out` on the right. Drag from an `out` port to an `in` port to create a link. Link ends attach to the module side facing the other end: top / bottom for modules one above the other, straight down when they are aligned (_View › Auto-orient link ends_).
+- Double-click or right click the canvas for its menu; **+ Module** (Ctrl+M) adds a module. Drop a module onto another to nest it; drag it out to move it up.
+- Ports: `in` on the left, `out` on the right — or `in` on top, `out` at the bottom in vertical orientation. Drag from an `out` port to an `in` port to create a link. Ports follow their links: on a module without submodules, each port (dot and name) moves to the edge facing the modules it is linked to — top / bottom for modules one above the other, left / right otherwise. Containers keep their ports on the default edges and their links leave from the facing side (_View › Auto-orient link ends_).
 - Selection: click, Ctrl+click to add, Shift+drag for a box. Arrows move the selection (Shift: further), F fits it, Shift+F fits everything.
 - **Copy / cut / paste / duplicate** (Ctrl+C / X / V / D) several items at once: modules with their content and the links between them, notes, types and interfaces — within a document, between document tabs, and between browser windows (system clipboard). Interfaces and types are matched by name when pasted into another project.
 - Right click anything for its actions. F2 or double-click a module name to rename it in place.
-- **Arrange**: _Auto-arrange_ (Ctrl+Alt+L) lays out the selected container's content, the view's module, or everything, with ELK (layered, port aware, nested modules). Align, distribute, same size and _Group into a module_ (Ctrl+G) act on the selection. Alignment guides and snap to grid while dragging.
+- **Arrange**: _Auto-arrange_ (Ctrl+Alt+L) lays out the selected container's content, the view's module, or everything, with ELK (layered, port aware, nested modules). _Arrange horizontally_ (Ctrl+Alt+H) and _vertically_ (Ctrl+Alt+V) also set the document's orientation: ports on the sides with links flowing right, or ports and their names on the top / bottom edges with links flowing down (saved in `editor.orientation`). Align, distribute, same size and _Group into a module_ (Ctrl+G) act on the selection. Alignment guides and snap to grid while dragging.
 - Module colors, sticky notes and titled frames (right click the canvas) help organize the diagram. They are editor data only.
 - **Export diagram** as PNG or SVG (_File_ menu).
 
 ### Model
 
-- Types (struct / enum / alias) and interfaces (messages with typed parameters and optional return) are listed in the Explorer. Type fields accept expressions with completion (`map<string, vector<uint16>>`), or the structured editor (⋮). Inspectors list where a type or interface is used.
+- Types (struct / enum / alias) and interfaces (messages with typed `in` / `out` / `inout` parameters and optional return) are listed in the Explorer. Type fields accept expressions with completion (`map<string, vector<uint16>>`), or the structured editor (⋮). Inspectors list where a type or interface is used.
 - The **Problems** panel validates live (filter by severity or text). Errors block export, warnings do not.
 - **Save** writes the project file (export format + `editor` section). **Export** writes the file without editor data.
 - **Recent ▾** (toolbar) lists the last 10 opened/saved projects (exports excluded). Stored in IndexedDB (file handle + last content; reopening asks for file access again when needed).
@@ -57,7 +57,7 @@ types: [...] # struct | enum | alias
 interfaces: [...] # named sets of messages
 modules: [...] # recursive (modules[].modules)
 links: [...]
-editor: { layout, views?, style?, notes? } # editor only, ignored by generators
+editor: { layout, views?, style?, notes?, orientation? } # editor only, ignored by generators
 ```
 
 ### Types

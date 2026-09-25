@@ -103,8 +103,20 @@ describe('validate', () => {
     link(p, 'operator_to_core').constraints.direction = 'unidirectional'
     expect(messages(p)).toEqual([
       "Link 'operator_to_core' is unidirectional but Control.setMode returns a value",
+      "Link 'operator_to_core' is unidirectional but Control.raw has out parameters",
       "Link 'operator_to_core' is unidirectional but requires an ack"
     ])
+  })
+
+  it('requires bidirectional links for messages with out parameters', () => {
+    const p = load()
+    const control = p.interfaces.find((i) => i.name === 'Control')!
+    control.messages[0]!.returns = null
+    link(p, 'operator_to_core').constraints.direction = 'unidirectional'
+    link(p, 'operator_to_core').constraints.ack.required = false
+    expect(messages(p)).toEqual(["Link 'operator_to_core' is unidirectional but Control.raw has out parameters"])
+    control.messages[1]!.params[0]!.direction = 'in'
+    expect(messages(p)).toEqual([])
   })
 
   it('checks port roles and interfaces on links', () => {

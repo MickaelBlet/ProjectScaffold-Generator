@@ -10,7 +10,7 @@ import {
 } from './schema'
 import { mapTypeRef } from './typeExpr'
 import { childModules, leafHeight, MODULE_WIDTH, modulePath, newId, portRows } from './project'
-import type { Field, Id, Metadata, Module, Note, Project, TypeDef, TypeRef, View } from './types'
+import type { Field, Id, Metadata, Module, Note, Param, Project, TypeDef, TypeRef, View } from './types'
 import type { FileTypeRef } from './schema'
 
 export type Format = 'yaml' | 'json'
@@ -34,6 +34,10 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
   const ref = (t: TypeRef): FileTypeRef =>
     mapTypeRef(t, (r) => ({ kind: 'ref', name: typeName.get(r.id) ?? '__deleted__' }))
   const field = (f: Field) => ({ name: f.name, type: ref(f.type), description: opt(f.description) })
+  const param = (prm: Param) => ({
+    ...field(prm),
+    direction: prm.direction === 'in' ? undefined : prm.direction
+  })
 
   const types: FileTypeDef[] = p.types.map((t) => {
     switch (t.kind) {
@@ -84,7 +88,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       messages: i.messages.map((m) => ({
         name: m.name,
         description: opt(m.description),
-        params: m.params.map(field),
+        params: m.params.map(param),
         returns: m.returns ? ref(m.returns) : null
       }))
     })),
@@ -110,6 +114,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     const colored = p.modules.filter((m) => m.color)
     if (colored.length)
       editor.style = Object.fromEntries(colored.map((m) => [modulePath(p, m.id), { color: m.color }]))
+    if (p.orientation !== 'horizontal') editor.orientation = p.orientation
     if (p.notes.length)
       editor.notes = p.notes.map((n) => ({ kind: n.kind, text: n.text, ...n.layout, color: n.color }))
     file.editor = editor
@@ -176,7 +181,10 @@ export function fromFile(data: unknown): Project {
       id: newId(),
       name: m.name,
       description: m.description ?? '',
-      params: m.params.map((prm) => field(prm, `${i.name}.${m.name}`)),
+      params: m.params.map((prm) => ({
+        ...field(prm, `${i.name}.${m.name}`),
+        direction: prm.direction ?? 'in'
+      })),
       returns: m.returns ? ref(m.returns, `${i.name}.${m.name} returns`) : null
     }))
   }))
@@ -298,7 +306,8 @@ export function fromFile(data: unknown): Project {
     modules,
     links,
     views,
-    notes
+    notes,
+    orientation: f.editor?.orientation ?? 'horizontal'
   }
 }
 

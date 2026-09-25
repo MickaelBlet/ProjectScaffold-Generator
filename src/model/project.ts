@@ -2,6 +2,7 @@
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
 import {
   GLOBAL_VIEW,
+  type Orientation,
   type Id,
   type LinkConstraints,
   type Module,
@@ -28,7 +29,8 @@ export function emptyProject(): Project {
     modules: [],
     links: [],
     views: [],
-    notes: []
+    notes: [],
+    orientation: 'horizontal'
   }
 }
 
@@ -61,6 +63,39 @@ export function defaultLayout(x: number, y: number, portCount = 0): Rect {
 
 export const LAYOUT_PAD = 20
 
+// Vertical orientation: a band of `in` ports above the header, a band of `out` ports at the bottom.
+export const PORT_BAND = 24
+/** Width taken by one port along a band. */
+export const PORT_COL = 90
+
+type WithPorts = { ports: { role: string }[] }
+
+/** Top of the area holding a module's content (submodules): below the header and ports. */
+export function contentTop(m: WithPorts, o: Orientation): number {
+  return o === 'vertical' ? PORT_BAND + MODULE_HEADER : leafHeight(portRows(m))
+}
+
+/** Space kept below a module's content. */
+export function contentBottom(o: Orientation): number {
+  return o === 'vertical' ? PORT_BAND + LAYOUT_PAD : LAYOUT_PAD
+}
+
+/** Smallest size showing a module's header and ports. */
+export function minSize(m: WithPorts, o: Orientation): { width: number; height: number } {
+  if (o === 'horizontal') return { width: 140, height: leafHeight(portRows(m)) }
+  const ins = m.ports.filter((p) => p.role === 'in').length
+  return {
+    width: Math.max(140, Math.max(ins, m.ports.length - ins) * PORT_COL + 20),
+    height: 2 * PORT_BAND + MODULE_HEADER + 8
+  }
+}
+
+/** Size of a new or reset module (no content). */
+export function defaultSize(m: WithPorts, o: Orientation): { width: number; height: number } {
+  const min = minSize(m, o)
+  return { width: Math.max(MODULE_WIDTH, min.width), height: min.height }
+}
+
 /** Keep `id` inside its parent's content area (below header and ports), growing ancestors as needed. */
 export function growAncestors(d: Project, id: Id): void {
   let child = d.modules.find((m) => m.id === id)
@@ -69,9 +104,12 @@ export function growAncestors(d: Project, id: Id): void {
     const parent = d.modules.find((m) => m.id === parentId)
     if (!parent) return
     child.layout.x = Math.max(child.layout.x, LAYOUT_PAD / 2)
-    child.layout.y = Math.max(child.layout.y, leafHeight(portRows(parent)))
+    child.layout.y = Math.max(child.layout.y, contentTop(parent, d.orientation))
     parent.layout.width = Math.max(parent.layout.width, child.layout.x + child.layout.width + LAYOUT_PAD)
-    parent.layout.height = Math.max(parent.layout.height, child.layout.y + child.layout.height + LAYOUT_PAD)
+    parent.layout.height = Math.max(
+      parent.layout.height,
+      child.layout.y + child.layout.height + contentBottom(d.orientation)
+    )
     child = parent
   }
 }

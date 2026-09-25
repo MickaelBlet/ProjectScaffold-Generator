@@ -206,6 +206,12 @@ export function validate(p: Project): Problem[] {
             target,
             `Link '${l.name}' is unidirectional but ${iface.name}.${m.name} returns a value`
           )
+        else if (m.params.some((prm) => prm.direction !== 'in'))
+          push(
+            'error',
+            target,
+            `Link '${l.name}' is unidirectional but ${iface.name}.${m.name} has out parameters`
+          )
     if (c.direction === 'unidirectional' && c.ack.required)
       push('error', target, `Link '${l.name}' is unidirectional but requires an ack`)
     if (!c.ack.required && c.ack.timeoutMs !== undefined)
