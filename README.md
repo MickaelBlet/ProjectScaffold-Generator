@@ -37,6 +37,8 @@ npm run lint
 - **Copy / cut / paste / duplicate** (Ctrl+C / X / V / D) several items at once: modules with their content and the links between them, notes, types and interfaces — within a document, between document tabs, and between browser windows (system clipboard). Interfaces and types are matched by name when pasted into another project.
 - Right click anything for its actions. F2 or double-click a module name to rename it in place.
 - **Arrange**: _Auto-arrange_ (Ctrl+Alt+L) lays out the selected container's content, the view's module, or everything, with ELK (layered, port aware, nested modules). _Arrange horizontally_ (Ctrl+Alt+H) and _vertically_ (Ctrl+Alt+V) also set the document's orientation: ports on the sides with links flowing right, or ports and their names on the top / bottom edges with links flowing down (saved in `editor.orientation`). Align, distribute, same size and _Group into a module_ (Ctrl+G) act on the selection. Alignment guides and snap to grid while dragging.
+- **Links to another project**: _Insert › Link to another project…_ (or the canvas menu) picks an open document or a project file, then one of its modules. The module is drawn in the global view (dashed, `↗ Project`) and its ports can be linked to like any other. Interfaces it uses that this project lacks are copied, with the types they need; imported ports use this project's interface of the same name. _Refresh linked projects_ reads their ports again from the documents open in other tabs (links to removed ports are dropped). Double-click the module to switch to its project's tab.
+- **Renames stay in sync** between open documents linked this way: renaming a module (or a parent), a port or an interface in one project renames it in the projects importing it, and an interface renamed in an importing project is renamed in the imported one. Each document gets the change as its own undoable edit (and becomes unsaved). Files that are not open catch up on _Refresh linked projects_: a module no longer found by path is matched to the only other module with the same name (moved) or the same ports (renamed), and an interface now named differently is renamed here too; the dialog lists what was renamed.
 - Module colors, sticky notes and titled frames (right click the canvas) help organize the diagram. They are editor data only.
 - **Export diagram** as PNG or SVG (_File_ menu).
 
@@ -46,7 +48,7 @@ npm run lint
 - The **Problems** panel validates live (filter by severity or text). Errors block export, warnings do not.
 - **Save** writes the project file (export format + `editor` section). **Export** writes the file without editor data.
 - **Recent ▾** (toolbar) lists the last 10 opened/saved projects (exports excluded). Stored in IndexedDB (file handle + last content; reopening asks for file access again when needed).
-- Settings (theme, link style and badges, grid, guides, minimap, arrange on open) are kept per browser.
+- Settings (theme, link style and badges, port style (dots, arrows, hollow, shapes) to tell `in` from `out`, grid, guides, minimap, arrange on open) are kept per browser.
 
 ## File format
 
@@ -58,8 +60,9 @@ project: { name, description?, metadata? }
 types: [...] # struct | enum | alias
 interfaces: [...] # named sets of messages
 modules: [...] # recursive (modules[].modules)
+imports: [...] # other projects that links reach (optional)
 links: [...]
-editor: { layout, views?, style?, notes?, orientation? } # editor only, ignored by generators
+editor: { layout, views?, style?, notes?, imports?, orientation? } # editor only, ignored by generators
 ```
 
 ### Types
@@ -89,5 +92,25 @@ constraints:
   performance: { class: realtime | low | normal | bulk, maxLatencyMs?, rateHz? }
   remote: { enabled: bool, transport? } # e.g. ipc, shm, tcp, udp, grpc, mqtt, can
 ```
+
+### Links to other projects
+
+A link end may be a module of another project file, declared in `imports` with the ports it had when last read (so the file stays self-contained for generators):
+
+```yaml
+imports:
+  - name: Robot # referenced by link ends
+    file: robot.scaffold.yaml # relative to this file
+    modules:
+      - module: Core.Sensor
+        ports: [{ name: out, role: out, interface: Telemetry }]
+links:
+  - name: sensor_to_monitor
+    from: { import: Robot, module: Core.Sensor, port: out }
+    to: { module: Monitor, port: telemetry }
+    constraints: { ... }
+```
+
+Interfaces are matched by name: the imported port's interface must exist in this project. One end of a link must be in this project.
 
 All names are identifiers (`[A-Za-z_][A-Za-z0-9_]*`). Types and interfaces share one namespace.

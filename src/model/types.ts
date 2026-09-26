@@ -142,6 +142,8 @@ export interface Module {
   layout: Rect
   /** Editor-only accent color (CSS color). */
   color?: string
+  /** Editor-only: position and size are fixed on the canvas. */
+  locked?: boolean
 }
 
 export const PERFORMANCE_CLASSES = ['realtime', 'low', 'normal', 'bulk'] as const
@@ -167,6 +169,7 @@ export interface LinkConstraints {
 }
 
 export interface Endpoint {
+  /** A module of this project, or an imported module (see `Import`). */
   moduleId: Id
   portId: Id
 }
@@ -208,6 +211,38 @@ export interface Note {
   /** Absolute canvas position. */
   layout: Rect
   color?: string
+  /** Position and size are fixed on the canvas. */
+  locked?: boolean
+}
+
+/** Port of a module of another project, as last read from it. */
+export interface ImportedPort {
+  id: Id
+  name: string
+  role: PortRole
+  /** Interface name in the other project; matched by name with this project's interfaces. */
+  interface: string | null
+  description: string
+}
+
+/** Module of another project placed on this one's canvas, so that links can reach its ports. */
+export interface ImportedModule {
+  id: Id
+  /** Qualified module path in the other project. */
+  path: string
+  ports: ImportedPort[]
+  /** Editor-only absolute canvas position. */
+  position: { x: number; y: number }
+}
+
+/** Another project whose modules this one links to. */
+export interface Import {
+  id: Id
+  /** Identifier used by link endpoints (`import`). */
+  name: string
+  /** File of the other project, relative to this one. */
+  file: string
+  modules: ImportedModule[]
 }
 
 export interface Project {
@@ -218,6 +253,7 @@ export interface Project {
   interfaces: Interface[]
   modules: Module[]
   links: Link[]
+  imports: Import[]
   views: View[]
   notes: Note[]
   orientation: Orientation

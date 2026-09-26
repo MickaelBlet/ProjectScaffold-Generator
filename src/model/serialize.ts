@@ -9,8 +9,29 @@ import {
   type FileTypeDef
 } from './schema'
 import { mapTypeRef } from './typeExpr'
-import { childModules, leafHeight, MODULE_WIDTH, modulePath, newId, portRows } from './project'
-import type { Field, Id, Metadata, Module, Note, Param, Project, TypeDef, TypeRef, View } from './types'
+import {
+  childModules,
+  findImported,
+  IMPORTED_PREFIX,
+  leafHeight,
+  MODULE_WIDTH,
+  modulePath,
+  newId,
+  portRows
+} from './project'
+import type {
+  Field,
+  Id,
+  Import,
+  Metadata,
+  Module,
+  Note,
+  Param,
+  Project,
+  TypeDef,
+  TypeRef,
+  View
+} from './types'
 import type { FileTypeRef } from './schema'
 
 export type Format = 'yaml' | 'json'
@@ -73,10 +94,19 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       }
     })
 
-  const endpoint = (e: { moduleId: Id; portId: Id }) => ({
-    module: modulePath(p, e.moduleId),
-    port: p.modules.find((m) => m.id === e.moduleId)?.ports.find((pt) => pt.id === e.portId)?.name ?? ''
-  })
+  const endpoint = (e: { moduleId: Id; portId: Id }) => {
+    const imported = findImported(p, e.moduleId)
+    if (imported)
+      return {
+        import: imported.imp.name,
+        module: imported.module.path,
+        port: imported.module.ports.find((pt) => pt.id === e.portId)?.name ?? ''
+      }
+    return {
+      module: modulePath(p, e.moduleId),
+      port: p.modules.find((m) => m.id === e.moduleId)?.ports.find((pt) => pt.id === e.portId)?.name ?? ''
+    }
+  }
 
   const file: FileProject = {
     schemaVersion: SCHEMA_VERSION,
@@ -93,6 +123,21 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       }))
     })),
     modules: moduleTree(null),
+    imports: p.imports.length
+      ? p.imports.map((i) => ({
+          name: i.name,
+          file: i.file,
+          modules: i.modules.map((m) => ({
+            module: m.path,
+            ports: m.ports.map((pt) => ({
+              name: pt.name,
+              role: pt.role,
+              interface: pt.interface,
+              description: opt(pt.description)
+            }))
+          }))
+        }))
+      : undefined,
     links: p.links.map((l) => ({
       name: l.name,
       description: opt(l.description),
@@ -111,12 +156,24 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         root: v.rootModuleId ? modulePath(p, v.rootModuleId) : undefined,
         hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined
       }))
-    const colored = p.modules.filter((m) => m.color)
-    if (colored.length)
-      editor.style = Object.fromEntries(colored.map((m) => [modulePath(p, m.id), { color: m.color }]))
+    const styled = p.modules.filter((m) => m.color || m.locked)
+    if (styled.length)
+      editor.style = Object.fromEntries(
+        styled.map((m) => [modulePath(p, m.id), { color: m.color, locked: m.locked || undefined }])
+      )
+    if (p.imports.some((i) => i.modules.length))
+      editor.imports = Object.fromEntries(
+        p.imports.map((i) => [i.name, Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position }]))])
+      )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
     if (p.notes.length)
-      editor.notes = p.notes.map((n) => ({ kind: n.kind, text: n.text, ...n.layout, color: n.color }))
+      editor.notes = p.notes.map((n) => ({
+        kind: n.kind,
+        text: n.text,
+        ...n.layout,
+        color: n.color,
+        locked: n.locked || undefined
+      }))
     file.editor = editor
   }
   return clean(file)
@@ -239,8 +296,9 @@ export function fromFile(data: unknown): Project {
       moduleByPath.set(path, mod)
 
       const inner = addModules(fm.modules ?? [], mod.id, path, leafHeight(portRows(fm)))
-      const color = f.editor?.style?.[path]?.color
-      if (color) mod.color = color
+      const style = f.editor?.style?.[path]
+      if (style?.color) mod.color = style.color
+      if (style?.locked) mod.locked = true
       const saved = layout[path]
       if (saved) {
         mod.layout = { ...saved }
@@ -265,7 +323,57 @@ export function fromFile(data: unknown): Project {
   }
   addModules(f.modules, null, '', 0)
 
-  const endpoint = (e: { module: string; port: string }, where: string) => {
+  // Imported modules: placed on the right of the project's modules when they have no position.
+  const importNames = new Set<string>()
+  let importY = PAD
+  const importX =
+    Math.max(0, ...modules.filter((m) => !m.parentId).map((m) => m.layout.x + m.layout.width)) + GAP_X * 2
+  const imports: Import[] = (f.imports ?? []).map((i) => {
+    if (importNames.has(i.name)) problems.push(`Duplicate import '${i.name}'`)
+    importNames.add(i.name)
+    const paths = new Set<string>()
+    return {
+      id: `import:${i.name}`,
+      name: i.name,
+      file: i.file,
+      modules: i.modules.map((m) => {
+        const where = `Import '${i.name}' module '${m.module}'`
+        if (paths.has(m.module)) problems.push(`${where}: listed more than once`)
+        paths.add(m.module)
+        const portNames = new Set<string>()
+        const saved = f.editor?.imports?.[i.name]?.[m.module]
+        const position = saved ? { x: saved.x, y: saved.y } : { x: importX, y: importY }
+        if (!saved) importY += leafHeight(portRows(m)) + GAP_Y
+        return {
+          id: `${IMPORTED_PREFIX}${i.name}/${m.module}`,
+          path: m.module,
+          position,
+          ports: m.ports.map((pt) => {
+            if (portNames.has(pt.name)) problems.push(`${where}: duplicate port '${pt.name}'`)
+            portNames.add(pt.name)
+            return {
+              id: newId(),
+              name: pt.name,
+              role: pt.role,
+              interface: pt.interface,
+              description: pt.description ?? ''
+            }
+          })
+        }
+      })
+    }
+  })
+
+  const endpoint = (e: { import?: string; module: string; port: string }, where: string) => {
+    if (e.import !== undefined) {
+      const imp = imports.find((i) => i.name === e.import)
+      const mod = imp?.modules.find((m) => m.path === e.module)
+      const port = mod?.ports.find((pt) => pt.name === e.port)
+      if (!imp) problems.push(`${where}: unknown import '${e.import}'`)
+      else if (!mod) problems.push(`${where}: module '${e.module}' is not listed in import '${e.import}'`)
+      else if (!port) problems.push(`${where}: unknown port '${e.import}/${e.module}:${e.port}'`)
+      return { moduleId: mod?.id ?? '', portId: port?.id ?? '' }
+    }
     const mod = moduleByPath.get(e.module)
     const port = mod?.ports.find((pt) => pt.name === e.port)
     if (!mod) problems.push(`${where}: unknown module '${e.module}'`)
@@ -293,7 +401,8 @@ export function fromFile(data: unknown): Project {
     kind: n.kind,
     text: n.text,
     layout: { x: n.x, y: n.y, width: n.width, height: n.height },
-    ...(n.color ? { color: n.color } : {})
+    ...(n.color ? { color: n.color } : {}),
+    ...(n.locked ? { locked: true } : {})
   }))
 
   if (problems.length) throw new LoadError(problems)
@@ -305,6 +414,7 @@ export function fromFile(data: unknown): Project {
     interfaces,
     modules,
     links,
+    imports,
     views,
     notes,
     orientation: f.editor?.orientation ?? 'horizontal'

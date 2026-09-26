@@ -166,6 +166,8 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
       ...structuredClone(m),
       id,
       parentId,
+      // Copies are placed by the user: they start unlocked.
+      locked: undefined,
       name: uniqueName(
         m.name,
         childModules(d, parentId).map((s) => s.name)
@@ -207,6 +209,7 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
     d.notes.push({
       ...structuredClone(n),
       id,
+      locked: undefined,
       layout: { ...n.layout, x: Math.round(n.layout.x + shift.x), y: Math.round(n.layout.y + shift.y) }
     })
     pasted.push(id)

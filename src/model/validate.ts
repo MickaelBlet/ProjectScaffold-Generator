@@ -1,5 +1,5 @@
 // Semantic checks. Errors block export; warnings do not.
-import { findPort, modulePath } from './project'
+import { findImported, findPort, isImportedId, modulePath } from './project'
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
 import { INT_RANGES, type Id, type Project, type TypeDef, type TypeRef } from './types'
 
@@ -175,6 +175,12 @@ export function validate(p: Project): Problem[] {
     }
   }
 
+  // Imports
+  for (const n of duplicates(p.imports.map((i) => i.name)))
+    push('error', { kind: 'project' }, `Duplicate import name '${n}'`)
+  for (const i of p.imports)
+    if (!i.file.trim()) push('warning', { kind: 'project' }, `Import '${i.name}' has no file`)
+
   // Links
   for (const n of duplicates(p.links.map((l) => l.name)))
     push('error', { kind: 'project' }, `Duplicate link name '${n}'`)
@@ -194,8 +200,20 @@ export function validate(p: Project): Problem[] {
       push('error', target, `Link '${l.name}': source port '${from.name}' must be an 'out' port`)
     if (to.role !== 'in')
       push('error', target, `Link '${l.name}': target port '${to.name}' must be an 'in' port`)
-    if (from.interfaceId !== to.interfaceId)
+    // Imported ports use this project's interface of the same name.
+    const foreign = [l.from, l.to].flatMap((e) => {
+      const name = findImported(p, e.moduleId)?.module.ports.find((pt) => pt.id === e.portId)?.interface
+      return name && !p.interfaces.some((i) => i.name === name)
+        ? [
+            `${modulePath(p, e.moduleId)}:${findPort(p, e.moduleId, e.portId)?.name} uses interface '${name}', not defined in this project`
+          ]
+        : []
+    })
+    for (const f of foreign) push('error', target, `Link '${l.name}': ${f}`)
+    if (!foreign.length && from.interfaceId !== to.interfaceId)
       push('error', target, `Link '${l.name}': ports use different interfaces`)
+    if (isImportedId(l.from.moduleId) && isImportedId(l.to.moduleId))
+      push('error', target, `Link '${l.name}' joins two imported modules: one end must be in this project`)
     const c = l.constraints
     const iface = from.interfaceId ? interfaces.get(from.interfaceId) : undefined
     if (iface && c.direction === 'unidirectional')

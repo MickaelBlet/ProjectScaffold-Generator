@@ -28,6 +28,21 @@ describe('serialize', () => {
     expect(again.modules.map((m) => m.layout)).toEqual(p.modules.map((m) => m.layout))
   })
 
+  it('round-trips locked modules and notes', () => {
+    const p = fromFile(example)
+    p.modules[1]!.locked = true
+    p.notes.push({
+      id: 'n',
+      kind: 'note',
+      text: 'x',
+      layout: { x: 0, y: 0, width: 80, height: 40 },
+      locked: true
+    })
+    const again = fromFile(toFile(p, { editor: true }))
+    expect(again.modules.map((m) => !!m.locked)).toEqual(p.modules.map((m) => !!m.locked))
+    expect(again.notes.at(-1)?.locked).toBe(true)
+  })
+
   it('output matches the published JSON Schema', () => {
     const ajv = new Ajv2020({ allErrors: true })
     const check = ajv.compile(jsonSchema)

@@ -100,7 +100,21 @@ const Module: z.ZodType<FileModule> = z
   )
   .meta({ id: 'Module' })
 
-const Endpoint = z.object({ module: QualifiedName, port: Identifier })
+const Endpoint = z.object({
+  import: Identifier.optional().describe('name of an import: the module belongs to that other project'),
+  module: QualifiedName,
+  port: Identifier
+})
+
+const Import = z
+  .object({
+    name: Identifier.describe('referenced by link endpoints (`import`)'),
+    file: z.string().describe('file of the other project, relative to this one'),
+    modules: z
+      .array(z.object({ module: QualifiedName, ports: z.array(Port) }))
+      .describe('modules of the other project that links reach, with their ports as last read from it')
+  })
+  .describe('Another project whose modules this one links to')
 
 const LinkConstraints = z.object({
   direction: z.enum(['unidirectional', 'bidirectional']),
@@ -136,15 +150,22 @@ const EditorNote = z.object({
   y: z.number(),
   width: z.number(),
   height: z.number(),
-  color: z.string().optional()
+  color: z.string().optional(),
+  locked: z.boolean().optional()
 })
 
 const Editor = z
   .object({
     layout: z.record(QualifiedName, Rect),
     views: z.array(EditorView).optional(),
-    style: z.record(QualifiedName, z.object({ color: z.string().optional() })).optional(),
+    style: z
+      .record(QualifiedName, z.object({ color: z.string().optional(), locked: z.boolean().optional() }))
+      .optional(),
     notes: z.array(EditorNote).optional(),
+    imports: z
+      .record(Identifier, z.record(QualifiedName, z.object({ x: z.number(), y: z.number() })))
+      .optional()
+      .describe('canvas position of imported modules, by import and module path'),
     orientation: z
       .enum(['horizontal', 'vertical'])
       .optional()
@@ -160,6 +181,7 @@ export const FileProjectSchema = z
     interfaces: z.array(Interface),
     modules: z.array(Module),
     links: z.array(Link),
+    imports: z.array(Import).optional(),
     editor: Editor.optional()
   })
   .meta({ id: 'ScaffoldProject', title: 'ProjectScaffold architecture file' })

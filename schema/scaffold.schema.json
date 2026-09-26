@@ -263,6 +263,11 @@
               "from": {
                 "type": "object",
                 "properties": {
+                  "import": {
+                    "description": "name of an import: the module belongs to that other project",
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
                   "module": {
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
@@ -281,6 +286,11 @@
               "to": {
                 "type": "object",
                 "properties": {
+                  "import": {
+                    "description": "name of an import: the module belongs to that other project",
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
                   "module": {
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
@@ -377,6 +387,85 @@
             ]
           }
         },
+        "imports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "description": "referenced by link endpoints (`import`)"
+              },
+              "file": {
+                "type": "string",
+                "description": "file of the other project, relative to this one"
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "module": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "ports": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "out",
+                              "in"
+                            ],
+                            "description": "out: initiates / sends; in: receives / serves"
+                          },
+                          "interface": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "role",
+                          "interface"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "module",
+                    "ports"
+                  ]
+                },
+                "description": "modules of the other project that links reach, with their ports as last read from it"
+              }
+            },
+            "required": [
+              "name",
+              "file",
+              "modules"
+            ],
+            "description": "Another project whose modules this one links to"
+          }
+        },
         "editor": {
           "type": "object",
           "properties": {
@@ -447,6 +536,9 @@
                 "properties": {
                   "color": {
                     "type": "string"
+                  },
+                  "locked": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -480,6 +572,9 @@
                   },
                   "color": {
                     "type": "string"
+                  },
+                  "locked": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -490,6 +585,36 @@
                   "width",
                   "height"
                 ]
+              }
+            },
+            "imports": {
+              "description": "canvas position of imported modules, by import and module path",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ]
+                }
               }
             },
             "orientation": {

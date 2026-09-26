@@ -4,6 +4,8 @@ import {
   GLOBAL_VIEW,
   type Orientation,
   type Id,
+  type Import,
+  type ImportedModule,
   type LinkConstraints,
   type Module,
   type Port,
@@ -28,6 +30,7 @@ export function emptyProject(): Project {
     interfaces: [],
     modules: [],
     links: [],
+    imports: [],
     views: [],
     notes: [],
     orientation: 'horizontal'
@@ -135,6 +138,8 @@ export function subtreeIds(p: Project, id: Id): Set<Id> {
 }
 
 export function modulePath(p: Project, id: Id): string {
+  const imported = findImported(p, id)
+  if (imported) return `${imported.imp.name}/${imported.module.path}`
   const parts: string[] = []
   let cur = p.modules.find((m) => m.id === id)
   while (cur) {
@@ -147,6 +152,8 @@ export function modulePath(p: Project, id: Id): string {
 
 /** Absolute canvas position of a module (layouts are parent-relative). */
 export function absolutePosition(p: Project, id: Id): { x: number; y: number } {
+  const imported = findImported(p, id)
+  if (imported) return { ...imported.module.position }
   let x = 0
   let y = 0
   let cur = p.modules.find((m) => m.id === id)
@@ -159,8 +166,39 @@ export function absolutePosition(p: Project, id: Id): { x: number; y: number } {
   return { x, y }
 }
 
+/**
+ * A port of a module or of an imported module. An imported port is a copy whose interface is this
+ * project's interface of the same name (null when there is none): changing it has no effect.
+ */
 export function findPort(p: Project, moduleId: Id, portId: Id): Port | undefined {
-  return p.modules.find((m) => m.id === moduleId)?.ports.find((pt) => pt.id === portId)
+  const port = p.modules.find((m) => m.id === moduleId)?.ports.find((pt) => pt.id === portId)
+  if (port) return port
+  const imported = findImported(p, moduleId)?.module.ports.find((pt) => pt.id === portId)
+  if (!imported) return undefined
+  const { interface: iface, ...rest } = imported
+  return { ...rest, interfaceId: p.interfaces.find((i) => i.name === iface)?.id ?? null }
+}
+
+// Imports: modules of other projects placed on the canvas.
+
+export const IMPORTED_PREFIX = 'imported:'
+
+export const isImportedId = (id: Id): boolean => id.startsWith(IMPORTED_PREFIX)
+
+export function findImported(p: Project, id: Id): { imp: Import; module: ImportedModule } | undefined {
+  if (!isImportedId(id)) return undefined
+  for (const imp of p.imports) {
+    const module = imp.modules.find((m) => m.id === id)
+    if (module) return { imp, module }
+  }
+  return undefined
+}
+
+export const allImported = (p: Project): ImportedModule[] => p.imports.flatMap((i) => i.modules)
+
+/** Size of an imported module on the canvas: fixed, from its ports. */
+export function importedSize(m: ImportedModule, o: Orientation): { width: number; height: number } {
+  return defaultSize(m, o)
 }
 
 export function uniqueName(base: string, taken: Iterable<string>): string {
@@ -262,7 +300,10 @@ export function findView(p: Project, viewId: Id): View {
 
 /** Ids of the modules drawn in a view: the root's subtree (or everything) minus hidden subtrees. */
 export function visibleModuleIds(p: Project, view: View): Set<Id> {
-  const scope = view.rootModuleId ? subtreeIds(p, view.rootModuleId) : new Set(p.modules.map((m) => m.id))
+  // Imported modules are drawn in the global view only.
+  const scope = view.rootModuleId
+    ? subtreeIds(p, view.rootModuleId)
+    : new Set([...p.modules, ...allImported(p)].map((m) => m.id))
   for (const h of view.hidden)
     if (h !== view.rootModuleId) for (const id of subtreeIds(p, h)) scope.delete(id)
   return scope
@@ -287,6 +328,8 @@ export function boundsOf(rects: Rect[]): Rect {
 
 /** Absolute rect of a module. */
 export function absoluteRect(p: Project, id: Id): Rect {
+  const imported = findImported(p, id)
+  if (imported) return { ...imported.module.position, ...importedSize(imported.module, p.orientation) }
   const m = p.modules.find((m) => m.id === id)
   const { x, y } = absolutePosition(p, id)
   return { x, y, width: m?.layout.width ?? 0, height: m?.layout.height ?? 0 }
