@@ -43,6 +43,30 @@ describe('serialize', () => {
     expect(again.notes.at(-1)?.locked).toBe(true)
   })
 
+  it('round-trips hand-set link shapes, left out of exports', () => {
+    const p = fromFile(example)
+    p.links[0]!.route = { points: [{ x: 10, y: 20 }], from: { side: 'bottom', at: 0.5 } }
+    p.links[1]!.route = { points: [], to: { side: 'top', at: 0.25 } }
+    const file = toFile(p, { editor: true })
+    expect(file.editor?.links).toEqual({
+      [p.links[0]!.name]: { points: [{ x: 10, y: 20 }], from: { side: 'bottom', at: 0.5 } },
+      [p.links[1]!.name]: { to: { side: 'top', at: 0.25 } }
+    })
+    expect(fromFile(file).links.map((l) => l.route)).toEqual(p.links.map((l) => l.route))
+    expect(toFile(p, { editor: false }).editor).toBeUndefined()
+  })
+
+  it('exports module colors without editor data, and reads the legacy editor style', () => {
+    const p = fromFile(example)
+    p.modules[1]!.color = '#ff0000'
+    const exported = toFile(p, { editor: false })
+    expect(exported.modules[0]!.modules![0]!.color).toBe('#ff0000')
+    expect(fromFile(exported).modules[1]!.color).toBe('#ff0000')
+    const legacy = structuredClone(example)
+    legacy.editor.style = { 'Core.Sensor': { color: '#00ff00' } }
+    expect(fromFile(legacy).modules[1]!.color).toBe('#00ff00')
+  })
+
   it('output matches the published JSON Schema', () => {
     const ajv = new Ajv2020({ allErrors: true })
     const check = ajv.compile(jsonSchema)

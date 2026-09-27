@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Link shapes set by hand, as in draw.io: bends added by dragging the selected link, moved and removed; link ends attached anywhere on their module's border. Saved in `editor.links`.
+- Snap to grid applies to every move and resize of modules, notes and imported modules (drag, multi-selection, resize from any edge, nudge by grid cell, paste, align, auto layout); parents grow on the grid and alignment guides no longer pull items off it.
+- Desktop app with Tauri: Docker build for Linux amd64 (deb, rpm, AppImage) and Windows amd64 (NSIS installer, portable exe).
+- Favicon for the browser tab and the single-file build.
+- Import another project: copy the content of a project file or open document into a module (types and interfaces matched by name).
 - Browser editor for software architecture: modules (nestable), `in`/`out` ports and links drawn on a canvas.
 - Types (struct / enum / alias) and interfaces (messages with typed parameters and optional return) edited from the Explorer, with type expression completion and a structured type editor.
 - Link constraints: direction, acknowledgement, performance class, remote transport.
@@ -29,10 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vertical orientation (Ctrl+Alt+V, back with Ctrl+Alt+H): `in` ports and their names on the top edge, `out` ports at the bottom, links flowing down; saved per document in `editor.orientation`.
 - Ports follow their links: on modules without submodules, each port and its name moves to the edge facing its linked modules (top / bottom for stacked modules, left / right otherwise), ordered so parallel links do not cross; container links leave from the facing side.
 - README screenshot of the editor (`docs/demo.png`).
-- Context menus (double-click or right click the canvas), inline rename (F2), keyboard nudging, alignment guides, snap to grid.
+- Context menus (right click), double-click the canvas to zoom, inline rename (F2), keyboard nudging, alignment guides, snap to grid.
 - Command palette (Ctrl+Shift+P), go to anything (Ctrl+P), keyboard shortcuts sheet (`?`), menu bar.
 - Outline panel (module tree: reveal, hide in view, drag to re-parent), full-text Search panel, filters in Problems, "used by" lists for types.
-- Module colors, sticky notes and frames (`editor.style`, `editor.notes`).
+- Module colors (module `color`), sticky notes and frames (`editor.notes`); modules locked in `editor.style`.
 - Diagram export as PNG / SVG.
 - Settings: light / dark / system theme, link style and badges, port style (dots, arrows, hollow, shapes), grid, guides, minimap.
 - Message parameter direction `in` (default) / `out` / `inout`, stored as `direction` in the file; `out` and `inout` parameters require a bidirectional link.
@@ -42,3 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lock position and size of modules and notes (Ctrl+L, module inspector), saved as `locked` in `editor.style` / `editor.notes`; pasted copies start unlocked.
 - Selected links get a halo and dashes flowing in their direction; _Force animations_ keeps them when the system asks for reduced motion.
 - Opening or closing a panel takes or gives space from the editor area instead of resizing the other panels; a reopened panel takes back its former size.
+
+### Changed
+
+- Module colors are saved on the module (`color`), no longer in `editor.style`, which still reads them.
+- Ports of linked modules from other projects follow their links like local ones; drill-down stand-ins sit on the top / bottom in vertical orientation and follow the ports they link to.
+- The structured type editor of a field opens on a full-width row below it.

@@ -84,6 +84,7 @@ export interface FileModule {
   name: string
   description?: string
   metadata?: Record<string, string>
+  color?: string
   ports: z.infer<typeof Port>[]
   modules?: FileModule[]
 }
@@ -94,6 +95,7 @@ const Module: z.ZodType<FileModule> = z
       name: Identifier,
       description: Description,
       metadata: Metadata,
+      color: z.string().optional().describe('accent color (CSS color)'),
       ports: z.array(Port),
       modules: z.array(Module).optional()
     })
@@ -154,12 +156,32 @@ const EditorNote = z.object({
   locked: z.boolean().optional()
 })
 
+const Anchor = z.object({
+  side: z.enum(['left', 'right', 'top', 'bottom']),
+  at: z.number().min(0).max(1).describe('position along the side: 0 left / top, 1 right / bottom')
+})
+
+const EditorLink = z.object({
+  points: z
+    .array(z.object({ x: z.number(), y: z.number() }))
+    .optional()
+    .describe('bend points, relative to the innermost module holding both ends (absolute at the top level)'),
+  from: Anchor.optional().describe('attachment of the source end on its module'),
+  to: Anchor.optional().describe('attachment of the target end on its module')
+})
+
 const Editor = z
   .object({
     layout: z.record(QualifiedName, Rect),
     views: z.array(EditorView).optional(),
     style: z
-      .record(QualifiedName, z.object({ color: z.string().optional(), locked: z.boolean().optional() }))
+      .record(
+        QualifiedName,
+        z.object({
+          color: z.string().optional().describe('deprecated: use the module `color`'),
+          locked: z.boolean().optional()
+        })
+      )
       .optional(),
     notes: z.array(EditorNote).optional(),
     imports: z
@@ -169,7 +191,8 @@ const Editor = z
     orientation: z
       .enum(['horizontal', 'vertical'])
       .optional()
-      .describe('port placement: in left / out right (default), or in top / out bottom')
+      .describe('port placement: in left / out right (default), or in top / out bottom'),
+    links: z.record(Identifier, EditorLink).optional().describe('hand-set link shapes, by link name')
   })
   .describe('Editor-only data, ignored by generators')
 

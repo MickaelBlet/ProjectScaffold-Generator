@@ -8,11 +8,16 @@ import {
   childModules,
   globalTypeNames,
   growAncestors,
+  linkOrigin,
   newId,
   subtreeIds,
   uniqueName
 } from './project'
 import type { Field, Id, Interface, Link, Module, Note, Project, TypeDef, TypeRef } from './types'
+
+const originOf = (p: Project, id: Id | null): { x: number; y: number } =>
+  id ? absolutePosition(p, id) : { x: 0, y: 0 }
+const add = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: a.x + b.x, y: a.y + b.y })
 
 export const CLIP_FORMAT = 'project-scaffold/clip'
 
@@ -22,6 +27,7 @@ export interface Clip {
   modules: Module[]
   /** Parent of each copied root in the source project. */
   rootParents: Record<Id, Id | null>
+  /** Links between copied modules; their bend points are absolute. */
   links: Link[]
   notes: Note[]
   types: TypeDef[]
@@ -57,7 +63,13 @@ export function copyItems(p: Project, ids: Id[]): Clip | null {
     format: CLIP_FORMAT,
     modules,
     rootParents: Object.fromEntries(roots.map((r) => [r.id, r.parentId])),
-    links: p.links.filter((l) => moduleIds.has(l.from.moduleId) && moduleIds.has(l.to.moduleId)),
+    links: p.links
+      .filter((l) => moduleIds.has(l.from.moduleId) && moduleIds.has(l.to.moduleId))
+      .map((l) => {
+        if (!l.route?.points.length) return l
+        const origin = originOf(p, linkOrigin(p, l))
+        return { ...l, route: { ...l.route, points: l.route.points.map((pt) => add(pt, origin)) } }
+      }),
     notes: p.notes.filter((n) => selected.has(n.id)),
     types: p.types.filter((t) => selected.has(t.id)),
     interfaces: p.interfaces.filter((i) => selected.has(i.id)),
@@ -65,6 +77,20 @@ export function copyItems(p: Project, ids: Id[]): Clip | null {
   }
   const empty = !clip.modules.length && !clip.notes.length && !clip.types.length && !clip.interfaces.length
   return empty ? null : structuredClone(clip)
+}
+
+/**
+ * The whole content of `source`, to paste into `target`: its modules with their links, its notes
+ * when asked, and the types and interfaces `target` lacks (the others are matched by name).
+ * Links to modules of other projects are left out.
+ */
+export function copyProject(source: Project, target: Project, withNotes: boolean): Clip | null {
+  const have = new Set(globalTypeNames(target))
+  return copyItems(source, [
+    ...childModules(source, null).map((m) => m.id),
+    ...(withNotes ? source.notes.map((n) => n.id) : []),
+    ...[...source.types, ...source.interfaces].filter((e) => !have.has(e.name)).map((e) => e.id)
+  ])
 }
 
 export function parseClip(text: string): Clip | null {
@@ -192,7 +218,7 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
       for (const pt of m.ports) if (pt.interfaceId && !ifaceIds.has(pt.interfaceId)) pt.interfaceId = null
 
   for (const l of clip.links) {
-    d.links.push({
+    const link: Link = {
       ...structuredClone(l),
       id: newId(),
       name: uniqueName(
@@ -201,7 +227,16 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
       ),
       from: { moduleId: moduleIds.get(l.from.moduleId)!, portId: portIds.get(l.from.portId)! },
       to: { moduleId: moduleIds.get(l.to.moduleId)!, portId: portIds.get(l.to.portId)! }
-    })
+    }
+    // Bend points move with the pasted modules.
+    if (link.route?.points.length) {
+      const origin = originOf(d, linkOrigin(d, link))
+      link.route.points = link.route.points.map((pt) => ({
+        x: Math.round(pt.x + shift.x - origin.x),
+        y: Math.round(pt.y + shift.y - origin.y)
+      }))
+    }
+    d.links.push(link)
   }
 
   for (const n of clip.notes) {

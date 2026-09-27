@@ -167,6 +167,25 @@ export function absolutePosition(p: Project, id: Id): { x: number; y: number } {
 }
 
 /**
+ * Innermost module holding both ends of a link (an end itself when the other is inside it), or
+ * null at the top level: bend points are relative to it so that they follow it.
+ */
+export function linkOrigin(p: Project, l: { from: { moduleId: Id }; to: { moduleId: Id } }): Id | null {
+  const chain = (id: Id): Id[] => {
+    const ids: Id[] = []
+    let m = p.modules.find((x) => x.id === id)
+    while (m) {
+      ids.push(m.id)
+      const parentId: Id | null = m.parentId
+      m = parentId ? p.modules.find((x) => x.id === parentId) : undefined
+    }
+    return ids
+  }
+  const theirs = new Set(chain(l.to.moduleId))
+  return chain(l.from.moduleId).find((id) => theirs.has(id)) ?? null
+}
+
+/**
  * A port of a module or of an imported module. An imported port is a copy whose interface is this
  * project's interface of the same name (null when there is none): changing it has no effect.
  */

@@ -23,6 +23,7 @@ import type {
   Field,
   Id,
   Import,
+  Link,
   Metadata,
   Module,
   Note,
@@ -84,6 +85,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         name: m.name,
         description: opt(m.description),
         metadata: optMeta(m.metadata),
+        color: m.color,
         ports: m.ports.map((pt) => ({
           name: pt.name,
           role: pt.role,
@@ -156,16 +158,25 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         root: v.rootModuleId ? modulePath(p, v.rootModuleId) : undefined,
         hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined
       }))
-    const styled = p.modules.filter((m) => m.color || m.locked)
-    if (styled.length)
-      editor.style = Object.fromEntries(
-        styled.map((m) => [modulePath(p, m.id), { color: m.color, locked: m.locked || undefined }])
-      )
+    const locked = p.modules.filter((m) => m.locked)
+    if (locked.length) editor.style = Object.fromEntries(locked.map((m) => [modulePath(p, m.id), { locked: true }]))
     if (p.imports.some((i) => i.modules.length))
       editor.imports = Object.fromEntries(
         p.imports.map((i) => [i.name, Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position }]))])
       )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
+    const routed = p.links.filter((l) => l.route)
+    if (routed.length)
+      editor.links = Object.fromEntries(
+        routed.map((l) => [
+          l.name,
+          {
+            points: l.route!.points.length ? l.route!.points.map((pt) => ({ ...pt })) : undefined,
+            from: l.route!.from && { ...l.route!.from },
+            to: l.route!.to && { ...l.route!.to }
+          }
+        ])
+      )
     if (p.notes.length)
       editor.notes = p.notes.map((n) => ({
         kind: n.kind,
@@ -297,7 +308,8 @@ export function fromFile(data: unknown): Project {
 
       const inner = addModules(fm.modules ?? [], mod.id, path, leafHeight(portRows(fm)))
       const style = f.editor?.style?.[path]
-      if (style?.color) mod.color = style.color
+      const color = fm.color ?? style?.color
+      if (color) mod.color = color
       if (style?.locked) mod.locked = true
       const saved = layout[path]
       if (saved) {
@@ -380,14 +392,18 @@ export function fromFile(data: unknown): Project {
     else if (!port) problems.push(`${where}: unknown port '${e.module}:${e.port}'`)
     return { moduleId: mod?.id ?? '', portId: port?.id ?? '' }
   }
-  const links = f.links.map((l) => ({
-    id: newId(),
-    name: l.name,
-    description: l.description ?? '',
-    from: endpoint(l.from, `Link '${l.name}' from`),
-    to: endpoint(l.to, `Link '${l.name}' to`),
-    constraints: clean(l.constraints)
-  }))
+  const links: Link[] = f.links.map((l) => {
+    const route = f.editor?.links?.[l.name]
+    return {
+      id: newId(),
+      name: l.name,
+      description: l.description ?? '',
+      from: endpoint(l.from, `Link '${l.name}' from`),
+      to: endpoint(l.to, `Link '${l.name}' to`),
+      constraints: clean(l.constraints),
+      ...(route ? { route: clean({ ...route, points: route.points ?? [] }) } : {})
+    }
+  })
 
   // Editor data is best effort: dangling module paths are dropped, not reported.
   const views: View[] = (f.editor?.views ?? []).flatMap((v, i) => {

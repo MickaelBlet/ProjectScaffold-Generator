@@ -535,6 +535,7 @@
                 "type": "object",
                 "properties": {
                   "color": {
+                    "description": "deprecated: use the module `color`",
                     "type": "string"
                   },
                   "locked": {
@@ -624,6 +625,88 @@
                 "horizontal",
                 "vertical"
               ]
+            },
+            "links": {
+              "description": "hand-set link shapes, by link name",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "points": {
+                    "description": "bend points, relative to the innermost module holding both ends (absolute at the top level)",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ]
+                    }
+                  },
+                  "from": {
+                    "description": "attachment of the source end on its module",
+                    "type": "object",
+                    "properties": {
+                      "side": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right",
+                          "top",
+                          "bottom"
+                        ]
+                      },
+                      "at": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "position along the side: 0 left / top, 1 right / bottom"
+                      }
+                    },
+                    "required": [
+                      "side",
+                      "at"
+                    ]
+                  },
+                  "to": {
+                    "description": "attachment of the target end on its module",
+                    "type": "object",
+                    "properties": {
+                      "side": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right",
+                          "top",
+                          "bottom"
+                        ]
+                      },
+                      "at": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "position along the side: 0 left / top, 1 right / bottom"
+                      }
+                    },
+                    "required": [
+                      "side",
+                      "at"
+                    ]
+                  }
+                }
+              }
             }
           },
           "required": [
@@ -776,6 +859,10 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "color": {
+          "description": "accent color (CSS color)",
+          "type": "string"
         },
         "ports": {
           "type": "array",

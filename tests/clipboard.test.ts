@@ -3,7 +3,7 @@ import YAML from 'yaml'
 import { produce } from 'immer'
 import { describe, expect, it } from 'vitest'
 import { fromFile } from '@/model/serialize'
-import { copyItems, parseClip, pasteClip } from '@/model/clipboard'
+import { copyItems, copyProject, parseClip, pasteClip } from '@/model/clipboard'
 import { absolutePosition, emptyProject, modulePath } from '@/model/project'
 import { validate } from '@/model/validate'
 
@@ -45,6 +45,23 @@ describe('clipboard', () => {
     expect(validate(p).filter((pr) => pr.severity === 'error')).toEqual([])
   })
 
+  it('moves the bend points of copied links with the pasted modules', () => {
+    const sensor = byPath('Core.Sensor')
+    const logger = byPath('Core.Logger')
+    const source = produce(example, (d) => {
+      const l = d.links.find((l) => l.from.moduleId === sensor.id && l.to.moduleId === logger.id)!
+      // Relative to Core, which holds both ends.
+      l.route = { points: [{ x: 5, y: 7 }] }
+    })
+    const core = absolutePosition(source, byPath('Core').id)
+    const clip = copyItems(source, [sensor.id, logger.id])!
+    const p = produce(source, (d) => void pasteClip(d, clip, { parent: null, offset: 30 }))
+    // Pasted at the top level: absolute points, shifted like the modules.
+    expect(p.links.at(-1)!.route!.points).toEqual([
+      { x: Math.round(core.x + 35), y: Math.round(core.y + 37) }
+    ])
+  })
+
   it('pastes into another project through JSON, rebinding or copying types', () => {
     const iface = example.interfaces.find((i) => i.name === 'Telemetry')!
     const pose = example.types.find((t) => t.name === 'Pose')!
@@ -69,6 +86,33 @@ describe('clipboard', () => {
       kind: 'ref',
       id: p.types.find((t) => t.name === 'Vec3')!.id
     })
+  })
+
+  it('imports a whole project into a module, sharing types and interfaces by name', () => {
+    const into = produce(
+      example,
+      (d) => void pasteClip(d, copyItems(example, [byPath('Operator').id])!, { parent: null, offset: 0 })
+    )
+    const target = into.modules.find((m) => m.name === 'Operator2')!
+    const clip = copyProject(example, into, false)!
+    expect(clip.types).toEqual([])
+    expect(clip.interfaces).toEqual([])
+    expect(clip.notes).toEqual([])
+    const p = produce(into, (d) => void pasteClip(d, clip, { parent: target.id, at: { x: 0, y: 0 } }))
+    expect(p.types).toHaveLength(example.types.length)
+    expect(p.interfaces).toHaveLength(example.interfaces.length)
+    expect(p.modules).toHaveLength(into.modules.length + example.modules.length)
+    expect(p.links).toHaveLength(into.links.length + example.links.length)
+    expect(p.modules.find((m) => modulePath(p, m.id) === 'Operator2.Core.Sensor')).toBeDefined()
+    expect(validate(p).filter((pr) => pr.severity === 'error')).toEqual([])
+  })
+
+  it('imports the types and interfaces a project lacks', () => {
+    const clip = copyProject(example, emptyProject(), true)!
+    expect(clip.types).toHaveLength(example.types.length)
+    expect(clip.interfaces).toHaveLength(example.interfaces.length)
+    const p = produce(emptyProject(), (d) => void pasteClip(d, clip, { parent: null, at: { x: 0, y: 0 } }))
+    expect(validate(p).filter((pr) => pr.severity === 'error')).toEqual([])
   })
 
   it('ignores foreign text', () => {

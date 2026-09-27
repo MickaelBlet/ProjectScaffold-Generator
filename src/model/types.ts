@@ -140,7 +140,7 @@ export interface Module {
   ports: Port[]
   /** Editor layout, position relative to parent. */
   layout: Rect
-  /** Editor-only accent color (CSS color). */
+  /** Accent color (CSS color). */
   color?: string
   /** Editor-only: position and size are fixed on the canvas. */
   locked?: boolean
@@ -174,6 +174,23 @@ export interface Endpoint {
   portId: Id
 }
 
+export type Side = 'left' | 'right' | 'top' | 'bottom'
+
+/** Editor-only: where a link end attaches on its module's border. */
+export interface LinkAnchor {
+  side: Side
+  /** Position along the side, 0 to 1 (left to right, top to bottom). */
+  at: number
+}
+
+/** Editor-only shape of a link, set by hand. */
+export interface LinkRoute {
+  /** Bend points, relative to the innermost module holding both ends (absolute at the top level). */
+  points: { x: number; y: number }[]
+  from?: LinkAnchor
+  to?: LinkAnchor
+}
+
 export interface Link {
   id: Id
   name: string
@@ -181,6 +198,7 @@ export interface Link {
   from: Endpoint
   to: Endpoint
   constraints: LinkConstraints
+  route?: LinkRoute
 }
 
 /**
