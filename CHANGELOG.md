@@ -62,3 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Module colors are saved on the module (`color`), no longer in `editor.style`, which still reads them.
 - Ports of linked modules from other projects follow their links like local ones; drill-down stand-ins sit on the top / bottom in vertical orientation and follow the ports they link to.
 - The structured type editor of a field opens on a full-width row below it.
+- Linting checks types (`typescript-eslint` type-checked rules) and React rules (`eslint-plugin-react-hooks` recommended); `npm run lint` passes, including the Electron files.
+- Canvas code split: graph building in `canvas/flowGraph.ts`, shared constants in `canvas/constants.ts`, port placement of module nodes in `usePortLayout`.
+- Text fields follow changes of their value while rendering (`useDraft`) instead of in an effect.
+- Problems are validated once per edit, shared by the status bar and the Problems panel.
+- The Electron window never navigates away from the app.
+
+### Fixed
+
+- _Swap ends_ in the link inspector also swaps the link's attachments and reverses its bends, like _Reverse direction_.
+- Hints no longer tell to double-click the canvas to add a module (right-click it).

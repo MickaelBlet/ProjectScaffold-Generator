@@ -122,6 +122,16 @@ export function childModules(p: Project, parentId: Id | null): Module[] {
   return p.modules.filter((m) => m.parentId === parentId)
 }
 
+/** Parent-relative top of the free space below a module's submodules (`exceptId` left out). */
+export function belowContent(p: Project, parentId: Id, exceptId?: Id): number {
+  return Math.max(
+    contentTop(p.orientation) + LAYOUT_PAD,
+    ...childModules(p, parentId)
+      .filter((c) => c.id !== exceptId)
+      .map((c) => c.layout.y + c.layout.height + LAYOUT_PAD)
+  )
+}
+
 /** Ids of `id` and all its descendants. */
 export function subtreeIds(p: Project, id: Id): Set<Id> {
   const ids = new Set<Id>([id])

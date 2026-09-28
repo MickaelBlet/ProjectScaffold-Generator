@@ -107,6 +107,7 @@ export interface PasteOptions {
    * Parent of the pasted top modules: `'original'` keeps the source parent when it exists
    * here (duplicate, paste in the same document), else they go to the top level.
    */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- documents the special value
   parent: 'original' | Id | null
   /** Absolute position of the pasted content's top-left corner; else shifted by `offset`. */
   at?: { x: number; y: number }

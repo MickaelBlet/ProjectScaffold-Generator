@@ -114,7 +114,9 @@ describe('validate', () => {
     control.messages[0]!.returns = null
     link(p, 'operator_to_core').constraints.direction = 'unidirectional'
     link(p, 'operator_to_core').constraints.ack.required = false
-    expect(messages(p)).toEqual(["Link 'operator_to_core' is unidirectional but Control.raw has out parameters"])
+    expect(messages(p)).toEqual([
+      "Link 'operator_to_core' is unidirectional but Control.raw has out parameters"
+    ])
     control.messages[1]!.params[0]!.direction = 'in'
     expect(messages(p)).toEqual([])
   })

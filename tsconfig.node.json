@@ -12,5 +12,11 @@
     "types": ["node"],
     "paths": { "@/*": ["./src/renderer/src/*"] }
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "scripts/**/*", "tests/**/*", "src/renderer/src/model/**/*"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "scripts/**/*",
+    "tests/**/*",
+    "src/renderer/src/model/**/*"
+  ]
 }

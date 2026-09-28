@@ -167,11 +167,17 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     const styled = p.modules.filter((m) => m.locked || portLabels(m.ports))
     if (styled.length)
       editor.style = Object.fromEntries(
-        styled.map((m) => [modulePath(p, m.id), { locked: m.locked || undefined, labels: portLabels(m.ports) }])
+        styled.map((m) => [
+          modulePath(p, m.id),
+          { locked: m.locked || undefined, labels: portLabels(m.ports) }
+        ])
       )
     if (p.imports.some((i) => i.modules.length))
       editor.imports = Object.fromEntries(
-        p.imports.map((i) => [i.name, Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position, labels: portLabels(m.ports) }]))])
+        p.imports.map((i) => [
+          i.name,
+          Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position, labels: portLabels(m.ports) }]))
+        ])
       )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
     const routed = p.links.filter((l) => l.route)

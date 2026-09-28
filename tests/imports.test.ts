@@ -114,7 +114,9 @@ describe('imports', () => {
       d.imports[0]!.modules[0]!.ports[0]!.label = 'bottom'
     })
     const file = toFile(p, { editor: true })
-    expect(file.editor?.imports).toEqual({ Robot: { 'Core.Sensor': { x: 500, y: 40, labels: { out: 'bottom' } } } })
+    expect(file.editor?.imports).toEqual({
+      Robot: { 'Core.Sensor': { x: 500, y: 40, labels: { out: 'bottom' } } }
+    })
     expect(fromFile(file).imports[0]!.modules[0]!.ports[0]!.label).toBe('bottom')
   })
 
