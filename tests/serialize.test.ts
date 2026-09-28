@@ -56,6 +56,17 @@ describe('serialize', () => {
     expect(toFile(p, { editor: false }).editor).toBeUndefined()
   })
 
+  it('round-trips moved port names, left out of exports', () => {
+    const p = fromFile(example)
+    p.modules[1]!.ports[0]!.label = 'top'
+    const file = toFile(p, { editor: true })
+    expect(file.editor?.style).toEqual({ 'Core.Sensor': { labels: { out: 'top' } } })
+    expect(fromFile(file).modules.map((m) => m.ports.map((pt) => pt.label))).toEqual(
+      p.modules.map((m) => m.ports.map((pt) => pt.label))
+    )
+    expect(toFile(p, { editor: false }).editor).toBeUndefined()
+  })
+
   it('exports module colors without editor data, and reads the legacy editor style', () => {
     const p = fromFile(example)
     p.modules[1]!.color = '#ff0000'

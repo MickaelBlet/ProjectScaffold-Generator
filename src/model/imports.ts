@@ -18,14 +18,18 @@ function modulesByPath(p: Project): Map<string, Module> {
 }
 
 function portsOf(source: Project, m: Module, previous: ImportedPort[] = []): ImportedPort[] {
-  return m.ports.map((pt) => ({
-    // Ports keep their id by name, so that links survive a refresh.
-    id: previous.find((x) => x.name === pt.name)?.id ?? newId(),
-    name: pt.name,
-    role: pt.role,
-    interface: source.interfaces.find((i) => i.id === pt.interfaceId)?.name ?? null,
-    description: pt.description
-  }))
+  return m.ports.map((pt) => {
+    // Ports keep their id and name placement by name, so that links survive a refresh.
+    const was = previous.find((x) => x.name === pt.name)
+    return {
+      id: was?.id ?? newId(),
+      name: pt.name,
+      role: pt.role,
+      interface: source.interfaces.find((i) => i.id === pt.interfaceId)?.name ?? null,
+      description: pt.description,
+      ...(was?.label && { label: was.label })
+    }
+  })
 }
 
 /**

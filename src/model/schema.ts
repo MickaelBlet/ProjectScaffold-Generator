@@ -132,8 +132,12 @@ const LinkConstraints = z.object({
 const Link = z.object({
   name: Identifier,
   description: Description,
-  from: Endpoint.describe('initiator side (an `out` port)'),
-  to: Endpoint.describe('receiver side (an `in` port)'),
+  from: Endpoint.describe(
+    "initiator side (an `out` port; a container's `in` port into its content, an inner `out` port out of it)"
+  ),
+  to: Endpoint.describe(
+    "receiver side (an `in` port; an inner `in` port from its container, the container's `out` port from its content)"
+  ),
   constraints: LinkConstraints
 })
 
@@ -156,10 +160,17 @@ const EditorNote = z.object({
   locked: z.boolean().optional()
 })
 
+const Side = z.enum(['left', 'right', 'top', 'bottom'])
+
 const Anchor = z.object({
-  side: z.enum(['left', 'right', 'top', 'bottom']),
+  side: Side,
   at: z.number().min(0).max(1).describe('position along the side: 0 left / top, 1 right / bottom')
 })
+
+const PortLabels = z
+  .record(Identifier, Side)
+  .optional()
+  .describe("direction from each port's handle where its name is drawn, by port name")
 
 const EditorLink = z.object({
   points: z
@@ -179,13 +190,17 @@ const Editor = z
         QualifiedName,
         z.object({
           color: z.string().optional().describe('deprecated: use the module `color`'),
-          locked: z.boolean().optional()
+          locked: z.boolean().optional(),
+          labels: PortLabels
         })
       )
       .optional(),
     notes: z.array(EditorNote).optional(),
     imports: z
-      .record(Identifier, z.record(QualifiedName, z.object({ x: z.number(), y: z.number() })))
+      .record(
+        Identifier,
+        z.record(QualifiedName, z.object({ x: z.number(), y: z.number(), labels: PortLabels }))
+      )
       .optional()
       .describe('canvas position of imported modules, by import and module path'),
     orientation: z

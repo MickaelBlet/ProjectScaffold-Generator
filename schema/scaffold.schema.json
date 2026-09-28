@@ -281,7 +281,7 @@
                   "module",
                   "port"
                 ],
-                "description": "initiator side (an `out` port)"
+                "description": "initiator side (an `out` port; a container's `in` port into its content, an inner `out` port out of it)"
               },
               "to": {
                 "type": "object",
@@ -304,7 +304,7 @@
                   "module",
                   "port"
                 ],
-                "description": "receiver side (an `in` port)"
+                "description": "receiver side (an `in` port; an inner `in` port from its container, the container's `out` port from its content)"
               },
               "constraints": {
                 "type": "object",
@@ -540,6 +540,23 @@
                   },
                   "locked": {
                     "type": "boolean"
+                  },
+                  "labels": {
+                    "description": "direction from each port's handle where its name is drawn, by port name",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "left",
+                        "right",
+                        "top",
+                        "bottom"
+                      ]
+                    }
                   }
                 }
               }
@@ -609,6 +626,23 @@
                     },
                     "y": {
                       "type": "number"
+                    },
+                    "labels": {
+                      "description": "direction from each port's handle where its name is drawn, by port name",
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right",
+                          "top",
+                          "bottom"
+                        ]
+                      }
                     }
                   },
                   "required": [

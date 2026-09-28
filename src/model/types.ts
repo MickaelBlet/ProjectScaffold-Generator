@@ -122,6 +122,8 @@ export interface Port {
   role: PortRole
   interfaceId: Id | null
   description: string
+  /** Editor-only: direction from the port's handle where its name is drawn (default: see PortPoint). */
+  label?: Side
 }
 
 export interface Rect {
@@ -241,6 +243,8 @@ export interface ImportedPort {
   /** Interface name in the other project; matched by name with this project's interfaces. */
   interface: string | null
   description: string
+  /** Editor-only: direction from the port's handle where its name is drawn (default: see PortPoint). */
+  label?: Side
 }
 
 /** Module of another project placed on this one's canvas, so that links can reach its ports. */

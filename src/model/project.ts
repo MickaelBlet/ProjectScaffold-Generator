@@ -9,6 +9,7 @@ import {
   type LinkConstraints,
   type Module,
   type Port,
+  type PortRole,
   type Project,
   type Rect,
   type TypeRef,
@@ -73,9 +74,9 @@ export const PORT_COL = 90
 
 type WithPorts = { ports: { role: string }[] }
 
-/** Top of the area holding a module's content (submodules): below the header and ports. */
-export function contentTop(m: WithPorts, o: Orientation): number {
-  return o === 'vertical' ? PORT_BAND + MODULE_HEADER : leafHeight(portRows(m))
+/** Top of the area holding a module's content (submodules): below the header and the top band. */
+export function contentTop(o: Orientation): number {
+  return o === 'vertical' ? PORT_BAND + MODULE_HEADER : MODULE_HEADER
 }
 
 /** Space kept below a module's content. */
@@ -107,7 +108,7 @@ export function growAncestors(d: Project, id: Id): void {
     const parent = d.modules.find((m) => m.id === parentId)
     if (!parent) return
     child.layout.x = Math.max(child.layout.x, LAYOUT_PAD / 2)
-    child.layout.y = Math.max(child.layout.y, contentTop(parent, d.orientation))
+    child.layout.y = Math.max(child.layout.y, contentTop(d.orientation))
     parent.layout.width = Math.max(parent.layout.width, child.layout.x + child.layout.width + LAYOUT_PAD)
     parent.layout.height = Math.max(
       parent.layout.height,
@@ -167,6 +168,36 @@ export function absolutePosition(p: Project, id: Id): { x: number; y: number } {
 }
 
 /**
+ * Roles of the ports at both ends of a link from module `from` to module `to`: `out` → `in`
+ * between modules side by side; through a container's port to its content, `in` → `in` into it
+ * and `out` → `out` out of it (delegation).
+ */
+export function linkRoles(p: Project, from: Id, to: Id): [PortRole, PortRole] {
+  if (subtreeIds(p, from).has(to)) return ['in', 'in']
+  if (subtreeIds(p, to).has(from)) return ['out', 'out']
+  return ['out', 'in']
+}
+
+/**
+ * Two link ends in link order (from, to), matching the roles of their ports (null: a new port,
+ * any role), or null when neither order fits.
+ */
+export function orderLinkEnds<T extends { moduleId: Id; role: PortRole | null }>(
+  p: Project,
+  a: T,
+  b: T
+): [T, T] | null {
+  for (const [x, y] of [
+    [a, b],
+    [b, a]
+  ] as const) {
+    const [rx, ry] = linkRoles(p, x.moduleId, y.moduleId)
+    if ((x.role ?? rx) === rx && (y.role ?? ry) === ry) return [x, y]
+  }
+  return null
+}
+
+/**
  * Innermost module holding both ends of a link (an end itself when the other is inside it), or
  * null at the top level: bend points are relative to it so that they follow it.
  */
@@ -215,9 +246,52 @@ export function findImported(p: Project, id: Id): { imp: Import; module: Importe
 
 export const allImported = (p: Project): ImportedModule[] => p.imports.flatMap((i) => i.modules)
 
+/** Top-level modules, notes and imported modules lying fully inside a frame, at their saved size. */
+export function frameContents(
+  p: Project,
+  frameId: Id
+): { id: Id; kind: 'module' | 'note' | 'imported'; name: string }[] {
+  const f = p.notes.find((n) => n.id === frameId)?.layout
+  if (!f) return []
+  const within = (r: Rect): boolean =>
+    r.x >= f.x && r.y >= f.y && r.x + r.width <= f.x + f.width && r.y + r.height <= f.y + f.height
+  return [
+    ...p.modules
+      .filter((m) => !m.parentId && within(m.layout))
+      .map((m) => ({ id: m.id, kind: 'module' as const, name: m.name })),
+    ...p.notes
+      .filter((n) => n.id !== frameId && within(n.layout))
+      .map((n) => ({ id: n.id, kind: 'note' as const, name: n.text.split('\n')[0] || `(${n.kind})` })),
+    ...allImported(p)
+      .filter((m) => within({ ...m.position, ...importedSize(m, p.orientation) }))
+      .map((m) => ({ id: m.id, kind: 'imported' as const, name: m.path }))
+  ]
+}
+
 /** Size of an imported module on the canvas: fixed, from its ports. */
 export function importedSize(m: ImportedModule, o: Orientation): { width: number; height: number } {
   return defaultSize(m, o)
+}
+
+export const PALETTE = [
+  '#e0513b',
+  '#d98b00',
+  '#d6c21f',
+  '#2e9e5b',
+  '#2e9e8f',
+  '#3b8fd1',
+  '#3b6fe0',
+  '#8a4fd1',
+  '#d14f9e',
+  '#7a8496'
+]
+
+/** The least used palette hue (grey excluded), so each new module stands out from the others. */
+export function nextModuleColor(p: Project): string {
+  const hues = PALETTE.slice(0, -1)
+  const count = new Map(hues.map((c) => [c, 0]))
+  for (const m of p.modules) if (m.color && count.has(m.color)) count.set(m.color, count.get(m.color)! + 1)
+  return hues.reduce((best, c) => (count.get(c)! < count.get(best)! ? c : best))
 }
 
 export function uniqueName(base: string, taken: Iterable<string>): string {

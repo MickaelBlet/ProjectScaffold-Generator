@@ -24,6 +24,13 @@ scripts/build_tauri.sh   # -> dist-tauri/linux/, dist-tauri/windows/
 npm run tauri dev        # local dev window (needs Rust + webkit2gtk-4.1)
 ```
 
+Portable desktop app (Electron, bundles Chromium: no WebView2 needed), built in Docker for Linux x64 (`.AppImage`, `.tar.gz`) and Windows x64 (portable `.exe`, `.zip`):
+
+```sh
+scripts/build_electron.sh   # -> dist-electron/linux/, dist-electron/windows/
+npm run electron            # local window from the web build
+```
+
 `dist-web/index.html` works from `file://` or any static host. Files are read and written through the File System Access API when available (Chrome, Edge), otherwise through a file input and a download.
 
 ## Editor
@@ -39,7 +46,7 @@ npm run tauri dev        # local dev window (needs Rust + webkit2gtk-4.1)
 ### Diagram
 
 - Right click the canvas for its menu, double-click it to zoom in (Shift+double-click to zoom out); **+ Module** (Ctrl+M) adds a module. Drop a module onto another to nest it; drag it out to move it up.
-- Ports: `in` on the left, `out` on the right — or `in` on top, `out` at the bottom in vertical orientation. Drag from an `out` port to an `in` port to create a link. Ports follow their links: on a module without submodules, each port (dot and name) moves to the edge facing the modules it is linked to — top / bottom for modules one above the other, left / right otherwise. Containers keep their ports on the default edges and their links leave from the facing side (_View › Auto-orient link ends_).
+- Ports: `in` on the left, `out` on the right — or `in` on top, `out` at the bottom in vertical orientation. Drag between an `out` port and an `in` port to create a link; a container's `in` port links to an `in` port inside it, an `out` port inside to the container's `out` port. Or link modules directly: drag the → in a module's header onto another module (or one of its `in` ports), or drag a port onto a module; the missing `out` / `in` ports are added, typed with the other end's interface. Ports follow their links: on a module without submodules, each port (dot and name) moves to the edge facing the modules it is linked to — top / bottom for modules one above the other, left / right otherwise. Containers keep their ports on the default edges and their links leave from the facing side (_View › Auto-orient link ends_).
 - **Link shape** (like draw.io): select a link, then drag its line to add a bend, drag a bend to move it (snaps to the grid and in line with its neighbours; Alt: free), double-click a bend to remove it. Drag an end square along its module's border to attach the link there; double-click it to attach at the port again. _Reset shape_ in the link's menu. Bends move with the module holding both ends, and with both ends when they are moved together; _Arrange_ clears them. Saved in `editor.links`.
 - Selection: click, Ctrl+click to add, Shift+drag for a box. Arrows move the selection (Shift: further), F fits it, Shift+F fits everything.
 - **Copy / cut / paste / duplicate** (Ctrl+C / X / V / D) several items at once: modules with their content and the links between them, notes, types and interfaces — within a document, between document tabs, and between browser windows (system clipboard). Interfaces and types are matched by name when pasted into another project.
@@ -48,7 +55,7 @@ npm run tauri dev        # local dev window (needs Rust + webkit2gtk-4.1)
 - **Links to another project**: _Insert › Link to another project…_ (or the canvas menu) picks an open document or a project file, then one of its modules. The module is drawn in the global view (dashed, `↗ Project`) and its ports can be linked to like any other. Interfaces it uses that this project lacks are copied, with the types they need; imported ports use this project's interface of the same name. _Refresh linked projects_ reads their ports again from the documents open in other tabs (links to removed ports are dropped). Double-click the module to switch to its project's tab.
 - **Import another project** (_Insert_ menu, or right click the canvas / a module): copies the whole content of an open document or a project file into the selected module (or here): its modules with their links, its notes at the top level, and the types and interfaces this project lacks — the others are matched by name. The copy is not linked to that project.
 - **Renames stay in sync** between open documents linked this way: renaming a module (or a parent), a port or an interface in one project renames it in the projects importing it, and an interface renamed in an importing project is renamed in the imported one. Each document gets the change as its own undoable edit (and becomes unsaved). Files that are not open catch up on _Refresh linked projects_: a module no longer found by path is matched to the only other module with the same name (moved) or the same ports (renamed), and an interface now named differently is renamed here too; the dialog lists what was renamed.
-- Module colors, sticky notes and titled frames (right click the canvas) help organize the diagram. They are editor data only.
+- Module colors, sticky notes and titled frames (right click the canvas) help organize the diagram; dragging a frame moves what lies fully inside it. They are editor data only.
 - **Export diagram** as PNG or SVG (_File_ menu).
 
 ### Model
@@ -92,7 +99,7 @@ User types: `struct` (`fields`), `enum` (`underlying` integer primitive, `values
 
 - Module path = dot-separated names (`Core.Sensor`); names unique among siblings.
 - Port: `role` `out` (initiates / sends) or `in` (receives / serves), `interface` name.
-- Link: `from` (an `out` port) → `to` (an `in` port), same interface, with `constraints`:
+- Link: `from` (an `out` port) → `to` (an `in` port), same interface — or, between a module and its content, `in` → `in` into it and `out` → `out` out of it — with `constraints`:
 
 ```yaml
 constraints:

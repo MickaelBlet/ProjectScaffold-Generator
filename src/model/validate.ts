@@ -1,5 +1,5 @@
 // Semantic checks. Errors block export; warnings do not.
-import { findImported, findPort, isImportedId, modulePath } from './project'
+import { findImported, findPort, isImportedId, linkRoles, modulePath } from './project'
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
 import { INT_RANGES, type Id, type Project, type TypeDef, type TypeRef } from './types'
 
@@ -196,10 +196,11 @@ export function validate(p: Project): Problem[] {
     const key = `${l.from.portId}->${l.to.portId}`
     if (endpoints.has(key)) push('warning', target, `Link '${l.name}' duplicates another link`)
     endpoints.add(key)
-    if (from.role !== 'out')
-      push('error', target, `Link '${l.name}': source port '${from.name}' must be an 'out' port`)
-    if (to.role !== 'in')
-      push('error', target, `Link '${l.name}': target port '${to.name}' must be an 'in' port`)
+    const [fromRole, toRole] = linkRoles(p, l.from.moduleId, l.to.moduleId)
+    if (from.role !== fromRole)
+      push('error', target, `Link '${l.name}': source port '${from.name}' must be an '${fromRole}' port`)
+    if (to.role !== toRole)
+      push('error', target, `Link '${l.name}': target port '${to.name}' must be an '${toRole}' port`)
     // Imported ports use this project's interface of the same name.
     const foreign = [l.from, l.to].flatMap((e) => {
       const name = findImported(p, e.moduleId)?.module.ports.find((pt) => pt.id === e.portId)?.interface

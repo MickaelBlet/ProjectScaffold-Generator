@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Selection history: Alt+Left / Alt+Right go back to the previous selection and forward again, bringing it into view.
+- Links drawn straight between modules: drag the → in a module's header onto another module (or an `in` port), or a port onto a module; the missing `out` / `in` ports are added, with the interface of the other end.
+- Links between a module and its content (delegation): a container's `in` port to an `in` port inside it, an `out` port inside to the container's `out` port. Ports are linked by dragging either way.
 - Link shapes set by hand, as in draw.io: bends added by dragging the selected link, moved and removed; link ends attached anywhere on their module's border. Saved in `editor.links`.
+- Port names dragged to any side of their port (double-click resets them). Saved in `editor.style` (and `editor.imports` for imported modules).
+- Dragging a frame moves the modules, notes and imported modules lying fully inside it (locked items stay); the inspector of a frame lists them.
 - Snap to grid applies to every move and resize of modules, notes and imported modules (drag, multi-selection, resize from any edge, nudge by grid cell, paste, align, auto layout); parents grow on the grid and alignment guides no longer pull items off it.
 - Desktop app with Tauri: Docker build for Linux amd64 (deb, rpm, AppImage) and Windows amd64 (NSIS installer, portable exe).
+- Portable desktop app with Electron: Docker build for Linux x64 (AppImage, tar.gz) and Windows x64 (portable exe, zip). Frameless window: the toolbar moves it, with its own resize edges and minimize, maximize and close buttons.
 - Favicon for the browser tab and the single-file build.
+- MIT license (`LICENSE`) and third-party license notices (`THIRD.md`).
 - Import another project: copy the content of a project file or open document into a module (types and interfaces matched by name).
 - Browser editor for software architecture: modules (nestable), `in`/`out` ports and links drawn on a canvas.
 - Types (struct / enum / alias) and interfaces (messages with typed parameters and optional return) edited from the Explorer, with type expression completion and a structured type editor.
@@ -50,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Recent projects moved from a separate button into _File › Open Recent_.
+- Buttons, menus and panels use a shared set of SVG icons.
 - Module colors are saved on the module (`color`), no longer in `editor.style`, which still reads them.
 - Ports of linked modules from other projects follow their links like local ones; drill-down stand-ins sit on the top / bottom in vertical orientation and follow the ports they link to.
 - The structured type editor of a field opens on a full-width row below it.

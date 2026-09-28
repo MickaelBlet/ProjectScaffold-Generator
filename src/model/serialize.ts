@@ -29,6 +29,7 @@ import type {
   Note,
   Param,
   Project,
+  Side,
   TypeDef,
   TypeRef,
   View
@@ -45,6 +46,11 @@ export class LoadError extends Error {
 
 const opt = (s: string): string | undefined => (s ? s : undefined)
 const optMeta = (m: Metadata): Metadata | undefined => (Object.keys(m).length ? { ...m } : undefined)
+/** Name placements of the ports that have one, by port name. */
+const portLabels = (ports: { name: string; label?: Side }[]): Record<string, Side> | undefined => {
+  const set = ports.filter((pt) => pt.label)
+  return set.length ? Object.fromEntries(set.map((pt) => [pt.name, pt.label!])) : undefined
+}
 
 /** Drop keys whose value is undefined so the output stays clean. */
 function clean<T>(v: T): T {
@@ -158,11 +164,14 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         root: v.rootModuleId ? modulePath(p, v.rootModuleId) : undefined,
         hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined
       }))
-    const locked = p.modules.filter((m) => m.locked)
-    if (locked.length) editor.style = Object.fromEntries(locked.map((m) => [modulePath(p, m.id), { locked: true }]))
+    const styled = p.modules.filter((m) => m.locked || portLabels(m.ports))
+    if (styled.length)
+      editor.style = Object.fromEntries(
+        styled.map((m) => [modulePath(p, m.id), { locked: m.locked || undefined, labels: portLabels(m.ports) }])
+      )
     if (p.imports.some((i) => i.modules.length))
       editor.imports = Object.fromEntries(
-        p.imports.map((i) => [i.name, Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position }]))])
+        p.imports.map((i) => [i.name, Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position, labels: portLabels(m.ports) }]))])
       )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
     const routed = p.links.filter((l) => l.route)
@@ -311,6 +320,10 @@ export function fromFile(data: unknown): Project {
       const color = fm.color ?? style?.color
       if (color) mod.color = color
       if (style?.locked) mod.locked = true
+      for (const pt of mod.ports) {
+        const label = style?.labels?.[pt.name]
+        if (label) pt.label = label
+      }
       const saved = layout[path]
       if (saved) {
         mod.layout = { ...saved }
@@ -368,7 +381,8 @@ export function fromFile(data: unknown): Project {
               name: pt.name,
               role: pt.role,
               interface: pt.interface,
-              description: pt.description ?? ''
+              description: pt.description ?? '',
+              ...(saved?.labels?.[pt.name] ? { label: saved.labels[pt.name] } : {})
             }
           })
         }

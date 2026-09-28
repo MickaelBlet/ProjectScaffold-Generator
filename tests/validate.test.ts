@@ -150,4 +150,32 @@ describe('validate', () => {
     mod(p, 'Operator').ports.push({ id: 'x', name: 'spare', role: 'out', interfaceId: null, description: '' })
     expect(messages(p, 'warning')).toEqual(['Operator:spare has no interface'])
   })
+
+  it('checks port roles of links between a container and its content', () => {
+    const p = load()
+    const parent = mod(p, 'Operator')
+    const child = { ...structuredClone(parent), id: 'child', name: 'child', parentId: parent.id }
+    child.ports = [
+      { id: 'ci', name: 'ci', role: 'in', interfaceId: null, description: '' },
+      { id: 'co', name: 'co', role: 'out', interfaceId: null, description: '' }
+    ]
+    parent.ports.push(
+      { id: 'pi', name: 'pi', role: 'in', interfaceId: null, description: '' },
+      { id: 'po', name: 'po', role: 'out', interfaceId: null, description: '' }
+    )
+    p.modules.push(child)
+    const add = (name: string, from: [string, string], to: [string, string]) =>
+      p.links.push({
+        ...structuredClone(p.links[0]!),
+        id: name,
+        name,
+        from: { moduleId: from[0], portId: from[1] },
+        to: { moduleId: to[0], portId: to[1] }
+      })
+    add('down', [parent.id, 'pi'], ['child', 'ci'])
+    add('up', ['child', 'co'], [parent.id, 'po'])
+    expect(messages(p)).toEqual([])
+    add('wrong', [parent.id, 'po'], ['child', 'ci'])
+    expect(messages(p)).toEqual(["Link 'wrong': source port 'po' must be an 'in' port"])
+  })
 })

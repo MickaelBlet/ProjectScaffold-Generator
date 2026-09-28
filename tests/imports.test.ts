@@ -109,6 +109,15 @@ describe('imports', () => {
     expect(exported.editor).toBeUndefined()
   })
 
+  it('round-trips moved names of imported ports', () => {
+    const p = produce(monitor().p, (d) => {
+      d.imports[0]!.modules[0]!.ports[0]!.label = 'bottom'
+    })
+    const file = toFile(p, { editor: true })
+    expect(file.editor?.imports).toEqual({ Robot: { 'Core.Sensor': { x: 500, y: 40, labels: { out: 'bottom' } } } })
+    expect(fromFile(file).imports[0]!.modules[0]!.ports[0]!.label).toBe('bottom')
+  })
+
   it('reports unknown imports and imported modules on load', () => {
     const file = toFile(monitor().p, { editor: false })
     file.links[0]!.from = { import: 'Nav', module: 'Core.Sensor', port: 'out' }
