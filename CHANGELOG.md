@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Custom primitive types (`kind: primitive` in `types`): opaque types that generators map to a native type, added from the Explorer (+P).
+- Custom transports (`transports` in the project file), managed in the project inspector or added from a remote link (Transport > New transport…); an undeclared transport is a warning, declared from the link.
+- Module inspector: a port's interface opens from its row.
+- Help > About ProjectScaffold: version, license and repository link.
+- Edit as text (_View › Edit as text (YAML)_, Alt+U): the project file edited in a tab, with syntax coloring, completion from the file schema and the project's names (Ctrl+Space), visible whitespace, the editor data shown or hidden, and errors located at their line. Valid edits apply as one undo step each; the element under the caret is selected and zoomed to.
+- Files changed by another program are reloaded (checked every 2 s and on focus), asking first when the document has unsaved changes.
+- Reloading a project from its text keeps the ids and editor data of its entities, renamed ones included, so the selection, open editors and views survive.
+- Keyboard navigation of the Explorer, Outline, Links, Search and Problems lists (arrows, Home / End, Enter / Space; Left / Right collapse and expand in the Outline) and of the document tabs.
+- Dialogs, the command palette and the document tabs carry ARIA roles and labels.
 - Selection history: Alt+Left / Alt+Right go back to the previous selection and forward again, bringing it into view.
 - Links drawn straight between modules: drag the → in a module's header onto another module (or an `in` port), or a port onto a module; the missing `out` / `in` ports are added, with the interface of the other end.
 - Links between a module and its content (delegation): a container's `in` port to an `in` port inside it, an `out` port inside to the container's `out` port. Ports are linked by dragging either way.
@@ -67,6 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Text fields follow changes of their value while rendering (`useDraft`) instead of in an effect.
 - Problems are validated once per edit, shared by the status bar and the Problems panel.
 - The Electron window never navigates away from the app.
+- Default port style is _hollow_ instead of _arrows_.
+- Edits render again only the canvas nodes and links that changed; lists, the status bar and the Problems counts no longer render on every edit, and module paths are computed once per project.
+- Example project: module colors and a custom primitive type.
 
 ### Fixed
 

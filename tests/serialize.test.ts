@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
-import { fromFile, LoadError, loadText, saveText, toFile } from '@/model/serialize'
+import { fromFile, LoadError, loadText, reloadText, sameContent, saveText, toFile } from '@/model/serialize'
 import { validate } from '@/model/validate'
 
 const exampleText = readFileSync('examples/robot.scaffold.yaml', 'utf8')
@@ -26,6 +26,19 @@ describe('serialize', () => {
     const again = loadText(text, format)
     expect(toFile(again, { editor: true })).toEqual(toFile(p, { editor: true }))
     expect(again.modules.map((m) => m.layout)).toEqual(p.modules.map((m) => m.layout))
+  })
+
+  it('round-trips custom primitives and transports', () => {
+    const p = fromFile(example)
+    p.types.push({ id: 'uuid', kind: 'primitive', name: 'Uuid', description: 'RFC 4122' })
+    p.transports.push('zenoh')
+    const file = toFile(p, { editor: false })
+    expect(file.types.at(-1)).toEqual({ kind: 'primitive', name: 'Uuid', description: 'RFC 4122' })
+    expect(file.transports).toEqual(['zenoh'])
+    const again = fromFile(file)
+    expect(again.types.at(-1)).toMatchObject({ kind: 'primitive', name: 'Uuid' })
+    expect(again.transports).toEqual(['zenoh'])
+    expect(toFile(fromFile(example), { editor: false }).transports).toBeUndefined()
   })
 
   it('round-trips locked modules and notes', () => {
@@ -151,5 +164,79 @@ describe('editor orientation', () => {
     expect(loadText(saveText(p, 'yaml', { editor: true }), 'yaml').orientation).toBe('vertical')
     expect(toFile(fromFile(example), { editor: true }).editor?.orientation).toBeUndefined()
     expect(fromFile(example).orientation).toBe('horizontal')
+  })
+})
+
+describe('reload from edited text', () => {
+  const ids = (p: ReturnType<typeof fromFile>) => ({
+    modules: p.modules.map((m) => m.id),
+    ports: p.modules.flatMap((m) => m.ports.map((pt) => pt.id)),
+    links: p.links.map((l) => l.id),
+    types: p.types.map((t) => t.id)
+  })
+
+  it('keeps ids and changes nothing when the text is unchanged', () => {
+    const prev = fromFile(example)
+    const next = reloadText(saveText(prev, 'yaml', { editor: true }), 'yaml', prev)
+    expect(ids(next)).toEqual(ids(prev))
+    expect(sameContent(next, prev)).toBe(true)
+  })
+
+  it('keeps the ids and the layout of renamed entities', () => {
+    const prev = fromFile(example)
+    prev.modules[1]!.locked = true
+    const file = toFile(prev, { editor: true })
+    file.modules[0]!.modules![0]!.name = 'Lidar'
+    for (const l of file.links)
+      for (const e of [l.from, l.to]) if (e.module === 'Core.Sensor') e.module = 'Core.Lidar'
+    file.links[0]!.name = 'renamed_link'
+    const next = fromFile(file, prev)
+    expect(ids(next)).toEqual(ids(prev))
+    expect(next.modules[1]!.name).toBe('Lidar')
+    expect(next.modules[1]!.layout).toEqual(prev.modules[1]!.layout)
+    expect(next.modules[1]!.locked).toBe(true)
+  })
+
+  it('gives fresh ids to added entities', () => {
+    const prev = fromFile(example)
+    const file = toFile(prev, { editor: false })
+    file.modules.push({ name: 'Extra', ports: [] })
+    const next = fromFile(file, prev)
+    const extra = next.modules.find((m) => m.name === 'Extra')!
+    expect(prev.modules.some((m) => m.id === extra.id)).toBe(false)
+    expect(next.modules.filter((m) => m.name !== 'Extra').map((m) => m.id)).toEqual(ids(prev).modules)
+  })
+
+  it('keeps the editor data of the project when the text has none', () => {
+    const prev = { ...fromFile(example), orientation: 'vertical' as const }
+    prev.modules[0]!.layout = { x: 500, y: 600, width: 700, height: 800 }
+    const next = reloadText(saveText(prev, 'yaml', { editor: false }), 'yaml', prev)
+    expect(next.orientation).toBe('vertical')
+    expect(next.modules[0]!.layout).toEqual(prev.modules[0]!.layout)
+    expect(sameContent(next, prev)).toBe(true)
+  })
+})
+
+describe('problem lines', () => {
+  const linesOf = (text: string, format: 'yaml' | 'json' = 'yaml') => {
+    try {
+      loadText(text, format)
+    } catch (e) {
+      return (e as LoadError).issues.map((i) => i.line)
+    }
+    return null
+  }
+
+  it('locates syntax errors', () => {
+    expect(linesOf('project:\n  name: [a\nmodules: []\n')).toEqual([expect.any(Number)])
+    expect(linesOf('{\n  "a": 1,\n  oops\n}', 'json')).toEqual([3])
+  })
+
+  it('locates schema and reference errors at their key', () => {
+    const text = exampleText.replace('module: Core.Controller', 'module: Core.Nope')
+    const line = text.split('\n').findIndex((l) => l.includes('Core.Nope')) + 1
+    expect(linesOf(text)).toEqual([line])
+    const bad = exampleText.replace('underlying: uint8', 'underlying: nope')
+    expect(linesOf(bad)).toEqual([bad.split('\n').findIndex((l) => l.includes('underlying: nope')) + 1])
   })
 })

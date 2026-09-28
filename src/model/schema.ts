@@ -50,7 +50,14 @@ const TypeDef = z.discriminatedUnion('kind', [
     name: Identifier,
     description: Description,
     type: FileTypeRefSchema
-  })
+  }),
+  z
+    .object({
+      kind: z.literal('primitive'),
+      name: Identifier,
+      description: Description
+    })
+    .describe('custom primitive: an opaque type that generators map to a native type')
 ])
 
 const Param = Field.extend({
@@ -215,6 +222,10 @@ export const FileProjectSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
     project: z.object({ name: z.string(), description: Description, metadata: Metadata }),
+    transports: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('custom transports offered for remote links, besides the built-in ones'),
     types: z.array(TypeDef),
     interfaces: z.array(Interface),
     modules: z.array(Module),

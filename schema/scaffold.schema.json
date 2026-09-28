@@ -32,6 +32,14 @@
             "name"
           ]
         },
+        "transports": {
+          "description": "custom transports offered for remote links, besides the built-in ones",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "types": {
           "type": "array",
           "items": {
@@ -158,6 +166,27 @@
                   "name",
                   "type"
                 ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "primitive"
+                  },
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "description": "custom primitive: an opaque type that generators map to a native type"
               }
             ]
           }

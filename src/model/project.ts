@@ -13,7 +13,8 @@ import {
   type Project,
   type Rect,
   type TypeRef,
-  type View
+  type View,
+  TRANSPORTS
 } from './types'
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -27,6 +28,7 @@ export function emptyProject(): Project {
     name: 'Untitled',
     description: '',
     metadata: {},
+    transports: [],
     types: [],
     interfaces: [],
     modules: [],
@@ -161,6 +163,37 @@ export function modulePath(p: Project, id: Id): string {
   return parts.join('.')
 }
 
+const findImportedIn = (p: Pick<Project, 'imports'>, id: Id): ImportedModule | undefined =>
+  findImported(p, id)?.module
+
+/** `modulePath` of every module and imported module, computed at once. */
+export function modulePaths(p: Pick<Project, 'modules' | 'imports'>): Map<Id, string> {
+  const byId = new Map(p.modules.map((m) => [m.id, m]))
+  const paths = new Map<Id, string>()
+  const path = (m: Module): string => {
+    let known = paths.get(m.id)
+    if (known === undefined) {
+      const parent = m.parentId ? byId.get(m.parentId) : undefined
+      known = parent ? `${path(parent)}.${m.name}` : m.name
+      paths.set(m.id, known)
+    }
+    return known
+  }
+  for (const m of p.modules) path(m)
+  for (const imp of p.imports) for (const m of imp.modules) paths.set(m.id, `${imp.name}/${m.path}`)
+  return paths
+}
+
+/** Text of a link end, `Module.Path:port`, from `modulePaths`. */
+export function endpointLabel(
+  p: Pick<Project, 'modules' | 'imports'>,
+  paths: Map<Id, string>,
+  e: { moduleId: Id; portId: Id }
+): string {
+  const ports = p.modules.find((m) => m.id === e.moduleId)?.ports ?? findImportedIn(p, e.moduleId)?.ports
+  return `${paths.get(e.moduleId) ?? ''}:${ports?.find((pt) => pt.id === e.portId)?.name ?? '?'}`
+}
+
 /** Absolute canvas position of a module (layouts are parent-relative). */
 export function absolutePosition(p: Project, id: Id): { x: number; y: number } {
   const imported = findImported(p, id)
@@ -230,7 +263,11 @@ export function linkOrigin(p: Project, l: { from: { moduleId: Id }; to: { module
  * A port of a module or of an imported module. An imported port is a copy whose interface is this
  * project's interface of the same name (null when there is none): changing it has no effect.
  */
-export function findPort(p: Project, moduleId: Id, portId: Id): Port | undefined {
+export function findPort(
+  p: Pick<Project, 'modules' | 'imports' | 'interfaces'>,
+  moduleId: Id,
+  portId: Id
+): Port | undefined {
   const port = p.modules.find((m) => m.id === moduleId)?.ports.find((pt) => pt.id === portId)
   if (port) return port
   const imported = findImported(p, moduleId)?.module.ports.find((pt) => pt.id === portId)
@@ -245,7 +282,10 @@ export const IMPORTED_PREFIX = 'imported:'
 
 export const isImportedId = (id: Id): boolean => id.startsWith(IMPORTED_PREFIX)
 
-export function findImported(p: Project, id: Id): { imp: Import; module: ImportedModule } | undefined {
+export function findImported(
+  p: Pick<Project, 'imports'>,
+  id: Id
+): { imp: Import; module: ImportedModule } | undefined {
   if (!isImportedId(id)) return undefined
   for (const imp of p.imports) {
     const module = imp.modules.find((m) => m.id === id)
@@ -351,6 +391,14 @@ export function nameError(p: Project, target: NameTarget, name: string): string 
   }
 }
 
+/** Check the name of a custom transport (`except`: its index when renamed). */
+export function transportError(p: Project, name: string, except?: number): string | null {
+  if (!name.trim()) return 'Must not be empty'
+  if ((TRANSPORTS as readonly string[]).includes(name)) return 'Built-in transport'
+  if (p.transports.some((t, i) => i !== except && t === name)) return 'Name already used'
+  return null
+}
+
 export interface UsageOwner {
   kind: 'type' | 'interface'
   id: Id
@@ -397,7 +445,7 @@ export function globalView(): View {
 }
 
 /** The view with this id; the global view for an unknown id. */
-export function findView(p: Project, viewId: Id): View {
+export function findView(p: Pick<Project, 'views'>, viewId: Id): View {
   return p.views.find((v) => v.id === viewId) ?? globalView()
 }
 

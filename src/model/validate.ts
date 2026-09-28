@@ -1,7 +1,7 @@
 // Semantic checks. Errors block export; warnings do not.
 import { findImported, findPort, isImportedId, linkRoles, modulePath } from './project'
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
-import { INT_RANGES, type Id, type Project, type TypeDef, type TypeRef } from './types'
+import { INT_RANGES, TRANSPORTS, type Id, type Project, type TypeDef, type TypeRef } from './types'
 
 export type Severity = 'error' | 'warning'
 export type ProblemTarget =
@@ -49,7 +49,7 @@ export function validate(p: Project): Problem[] {
       if (!keyOf) return
       const k = resolve(keyOf)
       if (!k) return
-      const ok = ('kind' in k && k.kind === 'primitive') || ('kind' in k && k.kind === 'enum')
+      const ok = k.kind === 'primitive' || k.kind === 'enum'
       if (!ok) push('error', target, `${where}: ${n.kind} key must be a primitive or an enum`)
       else if (k.kind === 'primitive' && (k.name === 'float32' || k.name === 'float64'))
         push('warning', target, `${where}: floating-point ${n.kind} key`)
@@ -237,6 +237,12 @@ export function validate(p: Project): Problem[] {
       push('warning', target, `Link '${l.name}': ack timeout set but ack not required`)
     if (c.remote.enabled && !c.remote.transport)
       push('warning', target, `Link '${l.name}' is remote but has no transport`)
+    if (
+      c.remote.transport &&
+      !(TRANSPORTS as readonly string[]).includes(c.remote.transport) &&
+      !p.transports.includes(c.remote.transport)
+    )
+      push('warning', target, `Link '${l.name}': unknown transport '${c.remote.transport}'`)
     if (!c.remote.enabled && c.remote.transport)
       push('warning', target, `Link '${l.name}': transport set but link is not remote`)
     if (l.from.moduleId === l.to.moduleId)

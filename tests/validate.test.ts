@@ -147,6 +147,25 @@ describe('validate', () => {
     ])
   })
 
+  it('warns on undeclared transports', () => {
+    const p = load()
+    link(p, 'operator_to_core').constraints.remote.transport = 'zenoh'
+    expect(messages(p, 'warning')).toEqual(["Link 'operator_to_core': unknown transport 'zenoh'"])
+    p.transports.push('zenoh')
+    expect(messages(p, 'warning')).toEqual([])
+  })
+
+  it('accepts custom primitives as map keys', () => {
+    const p = load()
+    p.types.push({ id: 'uuid', kind: 'primitive', name: 'Uuid', description: '' })
+    type<StructDef>(p, 'Pose').fields[1]!.type = {
+      kind: 'map',
+      key: { kind: 'ref', id: 'uuid' },
+      value: { kind: 'primitive', name: 'bool' }
+    }
+    expect(messages(p)).toEqual([])
+  })
+
   it('warns on ports without interface', () => {
     const p = load()
     mod(p, 'Operator').ports.push({ id: 'x', name: 'spare', role: 'out', interfaceId: null, description: '' })

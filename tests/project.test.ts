@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { belowContent, contentTop, emptyProject, LAYOUT_PAD } from '@/model/project'
+import { belowContent, contentTop, emptyProject, LAYOUT_PAD, modulePath, modulePaths } from '@/model/project'
 import type { Module, Project } from '@/model/types'
 
 const mod = (id: string, parentId: string | null, y: number, height: number): Module => ({
@@ -28,5 +28,17 @@ describe('belowContent', () => {
 
   it('starts below the header of an empty module', () => {
     expect(belowContent(p, 'a')).toBe(contentTop(p.orientation) + LAYOUT_PAD)
+  })
+})
+
+describe('modulePaths', () => {
+  it('matches modulePath for every module', () => {
+    const p: Project = {
+      ...emptyProject(),
+      modules: [mod('root', null, 0, 400), mod('a', 'root', 60, 50), mod('b', 'a', 60, 50)]
+    }
+    const paths = modulePaths(p)
+    for (const m of p.modules) expect(paths.get(m.id)).toBe(modulePath(p, m.id))
+    expect(paths.get('b')).toBe('root.a.b')
   })
 })

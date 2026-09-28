@@ -88,7 +88,15 @@ export interface AliasDef {
   type: TypeRef
 }
 
-export type TypeDef = StructDef | EnumDef | AliasDef
+/** Custom primitive: an opaque type that generators map to a native type. */
+export interface PrimitiveDef {
+  id: Id
+  kind: 'primitive'
+  name: string
+  description: string
+}
+
+export type TypeDef = StructDef | EnumDef | AliasDef | PrimitiveDef
 
 export const PARAM_DIRECTIONS = ['in', 'out', 'inout'] as const
 /** `in`: caller → callee. `out`: callee → caller. `inout`: both ways. */
@@ -271,6 +279,8 @@ export interface Project {
   name: string
   description: string
   metadata: Metadata
+  /** Transports offered for remote links, besides `TRANSPORTS`. */
+  transports: string[]
   types: TypeDef[]
   interfaces: Interface[]
   modules: Module[]

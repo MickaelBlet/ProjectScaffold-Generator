@@ -52,6 +52,8 @@ types:
             kind: primitive
             name: float64
           size: 4
+  - kind: primitive
+    name: Primitive
 interfaces:
   - name: Telemetry
     messages:
@@ -102,28 +104,33 @@ modules:
   - name: Core
     metadata:
       owner: team-a
+    color: "#2e9e8f"
     ports:
       - name: control
         role: in
         interface: Control
     modules:
       - name: Sensor
+        color: "#8a4fd1"
         ports:
           - name: out
             role: out
             interface: Telemetry
       - name: Controller
+        color: "#d14f9e"
         ports:
           - name: telemetry
             role: in
             interface: Telemetry
       - name: Logger
+        color: "#3b8fd1"
         ports:
           - name: in
             role: in
             interface: Telemetry
   - name: Operator
     description: Remote operator console
+    color: "#d6c21f"
     ports:
       - name: cmd
         role: out
@@ -190,11 +197,6 @@ editor:
       y: 92
       width: 200
       height: 72
-    Operator:
-      x: -98.51606054087654
-      y: -73.11482571736211
-      width: 196
-      height: 316
     Core.Controller:
       x: 425.1428571428572
       y: 172.28571428571433
@@ -205,3 +207,8 @@ editor:
       y: 72
       width: 200
       height: 72
+    Operator:
+      x: -143
+      y: -77
+      width: 196
+      height: 316

@@ -145,7 +145,8 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
         underlying: t.underlying,
         values: t.values.map((v) => ({ ...v, id: newId() }))
       })
-    else d.types.push({ ...base, kind: 'alias', type: ref(t.type) })
+    else if (t.kind === 'alias') d.types.push({ ...base, kind: 'alias', type: ref(t.type) })
+    else d.types.push({ ...base, kind: 'primitive' })
     pasted.push(base.id)
   }
   for (const i of clip.interfaces) {
