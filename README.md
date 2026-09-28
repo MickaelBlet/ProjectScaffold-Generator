@@ -31,6 +31,8 @@ scripts/build_electron.sh   # -> dist-electron/linux/, dist-electron/windows/
 npm run electron            # local window from the web build
 ```
 
+Both desktop apps at once (parallel, shared web build): `scripts/build_desktop.sh` (`docker buildx bake`).
+
 `dist-web/index.html` works from `file://` or any static host. Files are read and written through the File System Access API when available (Chrome, Edge), otherwise through a file input and a download.
 
 ## Editor

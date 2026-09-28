@@ -79,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default port style is _hollow_ instead of _arrows_.
 - Edits render again only the canvas nodes and links that changed; lists, the status bar and the Problems counts no longer render on every edit, and module paths are computed once per project.
 - Example project: module colors and a custom primitive type.
+- Desktop builds merged into one `Dockerfile` with a shared web build and one stage per app and OS, run in parallel by `docker buildx bake` (`docker-bake.hcl`, `scripts/build_desktop.sh`); `Dockerfile.electron` removed, `build_tauri.sh` / `build_electron.sh` call `build_desktop.sh`.
 
 ### Fixed
 
