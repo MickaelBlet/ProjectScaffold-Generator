@@ -1,0 +1,70 @@
+{% include '_banner.liquid' %}
+{% assign m = item %}
+{% assign class = m | cpp_name %}
+#include <{{ m | cpp_header }}>
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ m | cpp_namespace }} {
+
+{{ class }}::{{ class }}()
+{
+{% for c in m.instances %}
+{% if c.abstract %}
+    {% user 'create.' | append: c.name %}
+    // {{ c.name | cpp_accessor }}_ = std::make_unique<ConcreteClass>();
+    {% enduser %}
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+    {% include '_connection.liquid', connection: c %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+    {{ d | cpp_endpoint }}.forward({{ p.name | cpp_member }});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {% user 'constructor' %}
+    {% enduser %}
+}
+
+{{ class }}::~{{ class }}()
+{
+    {% user 'destructor' %}
+    {% enduser %}
+}
+{% for x in m.methods %}
+{% unless x.pure %}
+
+{{ x.returns | cpp_type }} {{ class }}::{{ x.name | cpp_id }}({{ x.params | cpp_params }}){% if x.const %} const{% endif %}
+{
+    {% user 'method.' | append: x.name %}
+{% if x.returns %}
+    return {};
+{% endif %}
+    {% enduser %}
+}
+{% endunless %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{% for msg in p.interface.messages %}
+
+{{ msg.returns | cpp_type }} {{ class }}::on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({{ msg.params | cpp_params }})
+{
+    {% user 'on.' | append: p.name | append: '.' | append: msg.name %}
+{% if msg.returns %}
+    return {};
+{% endif %}
+    {% enduser %}
+}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% user 'end' %}
+{% enduser %}
+
+} // namespace {{ m | cpp_namespace }}

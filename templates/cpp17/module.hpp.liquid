@@ -1,0 +1,127 @@
+{% include '_banner.liquid' %}
+#pragma once
+{% assign m = item %}
+{% assign ns = project.ident | snake %}
+{% assign class = m | cpp_name %}
+{% assign virtuals = m.methods | where: 'virtual', true | size %}
+{% comment %}Names given by the model: attribute accessors do not take them.{% endcomment %}
+{% assign methodNames = m.methods | map: 'name' %}
+{% assign portNames = m.ports | map: 'name' %}
+{% assign names = methodNames | concat: portNames %}
+{% assign polymorphic = false %}
+{% if m.abstract or m.isBase or virtuals > 0 or m.bases.size > 0 %}
+{% assign polymorphic = true %}
+{% endif %}
+
+{% assign includes = m | cpp_includes %}
+{% for inc in includes %}
+#include {{ inc }}
+{% endfor %}
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ m | cpp_namespace }} {
+
+{{ m.description | doc_comment }}
+class {{ class }}{% if m.bases.size > 0 %} : {% for b in m.bases %}public {{ b | cpp_qualified }}{% unless forloop.last %}, {% endunless %}{% endfor %}{% endif %} {
+public:
+{% if m.kind == 'interface' %}
+    {{ class }}() = default;
+    virtual ~{{ class }}() = default;
+{% else %}
+    {{ class }}();
+    {% if m.bases.size > 0 %}~{{ class }}() override;{% elsif polymorphic %}virtual ~{{ class }}();{% else %}~{{ class }}();{% endif %}
+{% endif %}
+    {{ class }}(const {{ class }}&) = delete;
+    {{ class }}& operator=(const {{ class }}&) = delete;
+{% for p in m.ports %}
+{% if p.interface %}
+
+    /// {{ p.role }} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates.size > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %}
+{{ p.description | doc_comment: '    /// ' }}
+{% if p.role == 'out' %}
+    ::{{ ns }}::OutPort<{{ p.interface | cpp_qualified }}>& {{ p.name | cpp_id }}() { return {{ p.name | cpp_member }}; }
+{% elsif p.delegates.size > 0 %}
+    {{ p.interface | cpp_qualified }}& {{ p.name | cpp_id }}() { return {{ p.delegates[0] | cpp_endpoint }}; }
+{% else %}
+    {{ p.interface | cpp_qualified }}& {{ p.name | cpp_id }}() { return {{ p.name }}In_; }
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if m.instances.size > 0 %}
+
+{% for c in m.instances %}
+    {{ c | cpp_qualified }}& {{ c.name | cpp_accessor }}() { return {% if c.abstract %}*{% endif %}{{ c.name | cpp_accessor }}_; }
+{% endfor %}
+{% endif %}
+{% if m.attributes.size > 0 %}
+
+{% for a in m.attributes %}
+{% assign setter = a.name | ucfirst | prepend: 'set' %}
+{{ a.description | doc_comment: '    /// ' }}
+{% unless names contains a.name %}
+    {% if a.static %}static {% endif %}{{ a.type | cpp_input }} {{ a.name | cpp_id }}(){% unless a.static %} const{% endunless %} { return {{ a.name | cpp_member }}; }
+{% endunless %}
+{% unless a.const or names contains setter %}
+    {% if a.static %}static {% endif %}void {{ setter }}({{ a.type | cpp_input }} value) { {{ a.name | cpp_member }} = value; }
+{% endunless %}
+{% endfor %}
+{% endif %}
+{% for x in m.methods %}
+
+{{ x.description | doc_comment: '    /// ' }}
+    {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{{ x.returns | cpp_type }} {{ x.name | cpp_id }}({{ x.params | cpp_params }}){% if x.const %} const{% endif %}{% if x.override %} override{% endif %}{% if x.pure %} = 0{% endif %};
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+protected:
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+    // Calls received by in port {{ p.name }}.
+{% for msg in p.interface.messages %}
+    {{ msg.returns | cpp_type }} on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({{ msg.params | cpp_params }});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {% user 'protected' %}
+    {% enduser %}
+
+private:
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{% assign adapter = p.name | ucfirst | append: 'In' %}
+    class {{ adapter }} final : public {{ p.interface | cpp_qualified }} {
+    public:
+        explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
+{% for msg in p.interface.messages %}
+        {{ msg.returns | cpp_type }} {{ msg.name | cpp_id }}({{ msg.params | cpp_params }}) override
+        {
+            return owner_.on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({{ msg.params | cpp_args }});
+        }
+{% endfor %}
+
+    private:
+        {{ class }}& owner_;
+    };
+    {{ adapter }} {{ p.name }}In_{*this};
+{% elsif p.role == 'out' and p.interface %}
+    ::{{ ns }}::OutPort<{{ p.interface | cpp_qualified }}> {{ p.name | cpp_member }};
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    std::unique_ptr<{{ c | cpp_qualified }}> {{ c.name | cpp_accessor }}_; // abstract: created in the constructor
+{% else %}
+    {{ c | cpp_qualified }} {{ c.name | cpp_accessor }}_;
+{% endif %}
+{% endfor %}
+{% for a in m.attributes %}
+    {% if a.static %}inline static {% endif %}{% if a.const %}const {% endif %}{{ a.type | cpp_type }} {{ a.name | cpp_member }}{% if a.hasDefault %} = {{ a.default | cpp_value: a.type }}{% else %}{}{% endif %};
+{% endfor %}
+    {% user 'private' %}
+    {% enduser %}
+};
+
+} // namespace {{ m | cpp_namespace }}

@@ -1,0 +1,137 @@
+# Code generation fixture: inheritance, delegation through containers, default values.
+schemaVersion: 1
+project:
+  name: Plant Demo
+types:
+  - kind: enum
+    name: State
+    underlying: int8
+    values:
+      - { name: Off, value: -1 }
+      - { name: On, value: 1 }
+  - kind: struct
+    name: Reading
+    description: One sample
+    fields:
+      - { name: value, type: { kind: primitive, name: float64 }, default: 1.5 }
+      - { name: state, type: { kind: ref, name: State }, default: On }
+      - name: tags
+        type: { kind: map, key: { kind: primitive, name: string }, value: { kind: primitive, name: int32 } }
+        default: { a: 1 }
+      - { name: note, type: { kind: optional, of: { kind: primitive, name: string } }, default: null }
+      - { name: label, type: { kind: primitive, name: string }, default: 'say "hi"' }
+      - { name: count, type: { kind: primitive, name: uint64 }, default: 7 }
+  - kind: alias
+    name: Readings
+    type: { kind: vector, of: { kind: ref, name: Reading } }
+  - kind: primitive
+    name: Handle
+interfaces:
+  - name: Sink
+    messages:
+      - name: push
+        params: [{ name: reading, type: { kind: ref, name: Reading } }]
+        returns: null
+  - name: Query
+    messages:
+      - name: get
+        params:
+          - { name: key, type: { kind: primitive, name: string } }
+          - { name: value, type: { kind: primitive, name: float64 }, direction: out }
+        returns: { kind: primitive, name: bool }
+modules:
+  - name: Base
+    kind: interface
+    methods:
+      - { name: run, params: [], returns: null, virtual: true, pure: true }
+    ports: []
+  - name: Device
+    kind: abstract
+    bases: [Base]
+    attributes:
+      - { name: instances, type: { kind: primitive, name: uint32 }, static: true, default: 0 }
+      - { name: limit, type: { kind: primitive, name: float32 }, const: true, default: 2 }
+    methods:
+      - name: describe
+        params: [{ name: prefix, type: { kind: primitive, name: string } }]
+        returns: { kind: primitive, name: string }
+        virtual: true
+        const: true
+    ports: []
+  - name: Plant
+    ports:
+      - { name: feed, role: in, interface: Sink }
+      - { name: out, role: out, interface: Sink }
+      - { name: query, role: in, interface: Query }
+    modules:
+      - name: Sensor
+        bases: [Device]
+        attributes:
+          - { name: last, type: { kind: ref, name: Reading } }
+          - { name: history, type: { kind: ref, name: Readings }, default: [{ value: 2 }] }
+        methods:
+          - { name: run, params: [], returns: null, virtual: true, override: true }
+          - name: calibrate
+            params: [{ name: gain, type: { kind: primitive, name: float32 }, const: true }]
+            returns: null
+            static: true
+        ports:
+          - { name: out, role: out, interface: Sink }
+      - name: Store
+        ports:
+          - { name: in, role: in, interface: Sink }
+          - { name: query, role: in, interface: Query }
+      - name: Group
+        ports:
+          - { name: feed, role: in, interface: Sink }
+          - { name: out, role: out, interface: Sink }
+        modules:
+          - name: Filter
+            ports:
+              - { name: in, role: in, interface: Sink }
+              - { name: out, role: out, interface: Sink }
+  - name: Client
+    ports:
+      - { name: ask, role: out, interface: Query }
+      - { name: sink, role: in, interface: Sink }
+links:
+  - name: sensor_to_store
+    from: { module: Plant.Sensor, port: out }
+    to: { module: Plant.Store, port: in }
+    constraints: &c
+      direction: unidirectional
+      ack: { required: false }
+      performance: { class: normal }
+      remote: { enabled: false }
+  - name: feed_in
+    from: { module: Plant, port: feed }
+    to: { module: Plant.Group.Filter, port: in }
+    constraints: *c
+  - name: filter_out
+    from: { module: Plant.Group.Filter, port: out }
+    to: { module: Plant.Group, port: out }
+    constraints: *c
+  - name: group_out
+    from: { module: Plant.Group, port: out }
+    to: { module: Plant, port: out }
+    constraints: *c
+  - name: plant_query
+    from: { module: Plant, port: query }
+    to: { module: Plant.Store, port: query }
+    constraints: &b
+      direction: bidirectional
+      ack: { required: false }
+      performance: { class: normal }
+      remote: { enabled: false }
+  - name: ask_store
+    from: { module: Client, port: ask }
+    to: { module: Plant.Store, port: query }
+    constraints:
+      direction: bidirectional
+      ack: { required: true, timeoutMs: 20 }
+      performance: { class: low, maxLatencyMs: 5 }
+      remote: { enabled: true, transport: tcp }
+  - name: plant_to_client
+    from: { module: Plant, port: out }
+    to: { module: Client, port: sink }
+    constraints: *c

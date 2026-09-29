@@ -1,0 +1,6 @@
+{% include '_banner.liquid' %}
+#pragma once
+
+{% for t in types %}
+#include <{{ t | cpp_header }}>
+{% endfor %}

@@ -21,7 +21,8 @@
     "electron:build": "npm run build && electron-builder --linux --win",
     "vscode:compile": "tsc -p vscode && esbuild vscode/src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=vscode/out/extension.js && mkdir -p vscode/media && cp dist-web/index.html electron/icon.png vscode/media/ && cp LICENSE vscode/",
     "vscode:package": "npm run vscode:compile && mkdir -p dist-vscode && cd vscode && vsce package $npm_package_version --no-git-tag-version --no-update-package-json --no-dependencies --out ../dist-vscode/",
-    "vscode:build": "npm run build && npm run vscode:package"
+    "vscode:build": "npm run build && npm run vscode:package",
+    "generate": "tsx scripts/generate.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
@@ -29,6 +30,7 @@
     "elkjs": "^0.12.0",
     "html-to-image": "^1.11.13",
     "immer": "^11.1.18",
+    "liquidjs": "^10.29.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },

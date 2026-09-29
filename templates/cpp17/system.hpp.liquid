@@ -1,0 +1,41 @@
+{% include '_banner.liquid' %}
+#pragma once
+
+{% assign includes = system | cpp_includes %}
+{% for inc in includes %}
+#include {{ inc }}
+{% endfor %}
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ system | cpp_namespace }} {
+
+{{ project.description | doc_comment }}
+/// The top-level modules of {{ project.name }}, wired together.
+class {{ system.name }} {
+public:
+    {{ system.name }}();
+    ~{{ system.name }}();
+    {{ system.name }}(const {{ system.name }}&) = delete;
+    {{ system.name }}& operator=(const {{ system.name }}&) = delete;
+
+{% for c in system.instances %}
+    {{ c | cpp_qualified }}& {{ c.name | cpp_accessor }}() { return {% if c.abstract %}*{% endif %}{{ c.name | cpp_accessor }}_; }
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+private:
+{% for c in system.instances %}
+{% if c.abstract %}
+    std::unique_ptr<{{ c | cpp_qualified }}> {{ c.name | cpp_accessor }}_; // abstract: created in the constructor
+{% else %}
+    {{ c | cpp_qualified }} {{ c.name | cpp_accessor }}_;
+{% endif %}
+{% endfor %}
+    {% user 'private' %}
+    {% enduser %}
+};
+
+} // namespace {{ system | cpp_namespace }}

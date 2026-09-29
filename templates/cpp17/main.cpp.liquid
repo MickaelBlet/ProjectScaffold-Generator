@@ -1,0 +1,15 @@
+{% include '_banner.liquid' %}
+#include <{{ system | cpp_header }}>
+{% user 'includes' %}
+{% enduser %}
+
+int main(int argc, char** argv)
+{
+    {{ system | cpp_qualified }} system;
+    {% user 'main' %}
+    (void)argc;
+    (void)argv;
+    (void)system;
+    {% enduser %}
+    return 0;
+}

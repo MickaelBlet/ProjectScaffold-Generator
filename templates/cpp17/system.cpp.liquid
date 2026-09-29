@@ -1,0 +1,39 @@
+{% include '_banner.liquid' %}
+#include <{{ system | cpp_header }}>
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ system | cpp_namespace }} {
+
+{{ system.name }}::{{ system.name }}()
+{
+{% for c in system.instances %}
+{% if c.abstract %}
+    {% user 'create.' | append: c.name %}
+    // {{ c.name | cpp_accessor }}_ = std::make_unique<ConcreteClass>();
+    {% enduser %}
+{% endif %}
+{% endfor %}
+{% for c in system.connections %}
+    {% include '_connection.liquid', connection: c %}
+{% endfor %}
+{% for e in system.external %}
+    // {{ e.link.name }}: {{ e.link.from.project | default: project.ident }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project | default: project.ident }}.{{ e.link.to.module }}:{{ e.link.to.port }}
+    {% user 'external.' | append: e.link.name %}
+    // Other project: connect {{ e.local | cpp_endpoint }} through a transport{% if e.link.constraints.remote.transport %} ({{ e.link.constraints.remote.transport }}){% endif %}.
+    {% enduser %}
+{% endfor %}
+    {% user 'constructor' %}
+    {% enduser %}
+}
+
+{{ system.name }}::~{{ system.name }}()
+{
+    {% user 'destructor' %}
+    {% enduser %}
+}
+
+{% user 'end' %}
+{% enduser %}
+
+} // namespace {{ system | cpp_namespace }}

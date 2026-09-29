@@ -1,0 +1,41 @@
+# C++17 template set of ProjectScaffold: `npm run generate -- <project file> -o <dir>`.
+# Paths, `each` and `when` are Liquid; templates see the generation context (see README).
+name: cpp17
+description: C++17 skeleton - types, interfaces, modules wired through their ports, CMake project
+language: cpp
+comment: '//'
+partials:
+  - _banner.liquid
+  - _connection.liquid
+outputs:
+  - template: ports.hpp.liquid
+    path: include/{{ project.ident | snake }}/ports.hpp
+    when: modules.size > 0
+  - template: type.hpp.liquid
+    each: types
+    path: include/{{ item | cpp_header }}
+  - template: types.hpp.liquid
+    path: include/{{ project.ident | snake }}/types.hpp
+    when: types.size > 0
+  - template: interface.hpp.liquid
+    each: interfaces
+    path: include/{{ item | cpp_header }}
+  - template: module.hpp.liquid
+    each: modules
+    path: include/{{ item | cpp_header }}
+  - template: module.cpp.liquid
+    each: modules
+    when: item.kind != 'interface'
+    path: src/{{ item | cpp_source }}
+  - template: system.hpp.liquid
+    path: include/{{ system | cpp_header }}
+    when: modules.size > 0
+  - template: system.cpp.liquid
+    path: src/{{ system | cpp_source }}
+    when: modules.size > 0
+  - template: CMakeLists.txt.liquid
+    path: CMakeLists.txt
+    comment: '#'
+  - template: main.cpp.liquid
+    path: src/main.cpp
+    when: modules.size > 0

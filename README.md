@@ -15,6 +15,7 @@ npm run preview      # serve the production build
 npm test             # unit tests (model, serialization, validation)
 npm run schema       # regenerate schema/scaffold.schema.json
 npm run lint
+npm run generate -- examples/robot.scaffold.yaml -d   # C++17 code, see Code generation
 ```
 
 Desktop app (Tauri), built in Docker for Linux amd64 (`.deb`, `.rpm`, `.AppImage`) and Windows amd64 (NSIS installer + portable `.exe`, needs WebView2):
@@ -159,3 +160,67 @@ links:
 Generators read the project's `types` and `interfaces` plus those of every dependency. A dependency's types and interfaces only reference their own dependency's and those of the dependencies it `uses`. A placed port's interface is matched by name with those of this project and its dependencies. One end of a link must be in this project.
 
 All names are identifiers (`[A-Za-z_][A-Za-z0-9_]*`). Types and interfaces share one namespace.
+
+## Code generation
+
+The code of a project is generated from [LiquidJS](https://liquidjs.com) templates. The built-in set, [`templates/cpp17`](templates/cpp17), writes a C++17 CMake project. Hand-written code goes into **user sections**, kept when the code is generated again:
+
+```cpp
+bool Controller::setMode(const ::common::Mode mode)
+{
+    // <user:method.setMode>
+    return mode != ::common::Mode::Fault; // kept across generations
+    // </user:method.setMode>
+}
+```
+
+- Command line: `npm run generate -- <project file> [-o <dir>] [-t <template dir>] [--deps] [--force] [--prune] [--dry-run]`. The default output directory is `generated/<project>` next to the project file; `--deps` also generates the dependencies, each in a sibling directory (where the generated `CMakeLists.txt` looks for them). The exit code is not 0 on errors or conflicts.
+- Editor: _File › Generate code_ (Ctrl+Alt+G) writes into the directory last used for the document, _Generate code into…_ picks another one (Chrome, Edge, the desktop apps; not Firefox / Safari). VS Code: _ProjectScaffold: Generate Code_ writes into `generated/<project>` next to the file (setting `projectScaffold.generate.outputDir`), _Generate Code Into…_ picks another directory, remembered for the file.
+- The project must have no errors (like export). Generating again rewrites only what changed:
+  - the content of each user section is carried over by id; sections still holding what was generated in them take the new template's content;
+  - sections with no place left (a renamed method, module or port) are appended to `<file>.orphans`, never lost;
+  - a file changed **outside** its user sections is left as it is and reported as a conflict (`--force` overwrites it);
+  - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files).
+  - `.scaffold-gen.json` in the output directory records what was generated (keep it with the code).
+- A template set in `<output directory>/.scaffold/templates/` is used instead of the built-in one (or `-t <dir>`).
+
+### C++17 mapping
+
+| Model                                    | C++                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| project `Robot`                          | namespace `robot`, CMake library `robot` (+ executable `robot_app` when there are modules)                                                                                                                                                                                           |
+| struct / enum / alias / custom primitive | `struct` with default member initializers / `enum class X : std::uint8_t` / `using` / `using X = …` in a user section, one header each in `include/<ns>/types/`                                                                                                                      |
+| primitives, containers                   | `std::int32_t`, `float`, `double`, `std::string`, `std::vector<std::uint8_t>` (bytes), `std::array`, `std::vector`, `std::list`, `std::set`, `std::optional`, `std::map`                                                                                                             |
+| interface `Telemetry`                    | abstract class `ITelemetry` (pure virtual messages) in `include/<ns>/interfaces/`                                                                                                                                                                                                    |
+| parameters                               | `in`: by value for scalars and enums, else `const T&`; `out` / `inout`: `T&`                                                                                                                                                                                                         |
+| module `Core.Sensor`                     | class `robot::core::Sensor` (`include/robot/core/Sensor.hpp`, `src/core/Sensor.cpp`); `kind`, `bases`, `static` / `const` / `virtual` / `= 0` / `override` as written; attributes are private members `name_` with a getter and a setter (unless `const`, or a method has that name) |
+| `out` port `out: Telemetry`              | `OutPort<ITelemetry>& out()` (`include/<ns>/ports.hpp`): `out()->publish(…)` for its single peer, `out().each(…)` for all                                                                                                                                                            |
+| `in` port `telemetry: Telemetry`         | `ITelemetry& telemetry()`, whose calls land in `onTelemetryPublish(…)`, written in the `.cpp`                                                                                                                                                                                        |
+| nested modules                           | members of their container, with accessors (`core().sensor()`); abstract ones with ports are `std::unique_ptr`, created in a user section; abstract ones without ports are only base classes                                                                                         |
+| links                                    | `from.connect(to)` in the constructor of the innermost module holding both ends, or of `robot::System` (the top-level modules, created by `src/main.cpp`); remote links in a user section, to replace by a transport; links to other projects: a user section in `System`            |
+| container port linked inside             | `in`: the accessor returns the inner port; `out`: the inner port forwards to it                                                                                                                                                                                                      |
+
+Names that are C++ keywords get a trailing `_` (a warning tells). The types and interfaces of dependencies are included from their own generated code (`<common/types/Pose.hpp>`, namespace `common`).
+
+### Writing templates
+
+A template set is a directory with a `manifest.yaml`:
+
+```yaml
+name: cpp17
+language: cpp # warns about names that are C++ keywords
+comment: '//' # starts the user section markers
+partials: [_banner.liquid] # used by {% include %} only
+outputs:
+  - template: module.hpp.liquid
+    each: modules # one file per item, bound to `item` (`as:` renames it)
+    when: item.kind != 'interface' # optional condition
+    path: include/{{ item | cpp_header }}
+  - template: CMakeLists.txt.liquid
+    path: CMakeLists.txt
+    comment: '#'
+```
+
+- `{% user 'id' %}default{% enduser %}` writes a user section (`id`: any Liquid expression, unique in the file); its markers take the indentation of the tag's line. A line holding only a tag (`{% if %}`, `{% for %}`…) leaves no line (`trimTagLines: false` keeps them); runs of blank lines are collapsed (`squeezeBlankLines: false`).
+- Variables (every value is present: templates run with strict variables): `project` (`name`, `ident`, `description`, `metadata`), `types` and `interfaces` (the project's own), `allTypes`, `allInterfaces` (with the dependencies'), `modules` (all, depth first: `name`, `path`, `namespace`, `parent`, `kind`, `abstract`, `bases`, `isBase`, `attributes`, `methods`, `ports` with their `interface` and `delegates`, `children`, `instances`, `connections`, `metadata`), `system` (`instances`, `connections`, `external` links to other projects), `links`, `dependencies`, `files` (paths generated so far) and `generator`. Type references carry `typeKind` and `dependency`. See [`codegen/context.ts`](src/renderer/src/codegen/context.ts).
+- Filters: `snake`, `camel`, `pascal`, `kebab`, `constant`, `ucfirst`, `lcfirst`, `doc_comment: '/// '` (no line for an empty text), and for C++ `cpp_type`, `cpp_value: type` (literal of a default value), `cpp_param(s)`, `cpp_args`, `cpp_input`, `cpp_name`, `cpp_id`, `cpp_namespace`, `cpp_qualified`, `cpp_header`, `cpp_source`, `cpp_includes`, `cpp_endpoint`, `cpp_accessor`, `cpp_member`, `cpp_primitive` ([`codegen/cpp.ts`](src/renderer/src/codegen/cpp.ts)).
