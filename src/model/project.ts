@@ -339,9 +339,11 @@ export function frameContents(
   ]
 }
 
-/** Size of an imported module on the canvas: fixed, from its ports. */
+/** Size of an imported module on the canvas: set by hand (at least its minimum), else from its ports. */
 export function importedSize(m: ImportedModule, o: Orientation): { width: number; height: number } {
-  return defaultSize(m, o)
+  if (!m.size) return defaultSize(m, o)
+  const min = minSize(m, o)
+  return { width: Math.max(min.width, m.size.width), height: Math.max(min.height, m.size.height) }
 }
 
 export const PALETTE = [

@@ -330,6 +330,8 @@ export interface ImportedModule {
   ports: ImportedPort[]
   /** Editor-only absolute canvas position. */
   position: { x: number; y: number }
+  /** Editor-only size set by hand; else from its ports. */
+  size?: { width: number; height: number }
 }
 
 /**

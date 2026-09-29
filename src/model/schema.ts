@@ -277,10 +277,21 @@ const Editor = z
     dependencies: z
       .record(
         Identifier,
-        z.record(QualifiedName, z.object({ x: z.number(), y: z.number(), labels: PortLabels }))
+        z.record(
+          QualifiedName,
+          z.object({
+            x: z.number(),
+            y: z.number(),
+            width: z.number().optional(),
+            height: z.number().optional(),
+            labels: PortLabels
+          })
+        )
       )
       .optional()
-      .describe('canvas position of the placed modules of dependencies, by dependency and module path'),
+      .describe(
+        'canvas position and size of the placed modules of dependencies, by dependency and module path'
+      ),
     orientation: z
       .enum(['horizontal', 'vertical'])
       .optional()

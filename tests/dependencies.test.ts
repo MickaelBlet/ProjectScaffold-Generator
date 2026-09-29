@@ -17,7 +17,7 @@ import {
   type DependencyResult
 } from '@/model/dependencies'
 import { diffRenames, resolveRelative } from '@/model/sync'
-import { defaultConstraints, modulePath } from '@/model/project'
+import { defaultConstraints, importedSize, modulePath } from '@/model/project'
 import { validate } from '@/model/validate'
 import type { Project } from '@/model/types'
 
@@ -372,6 +372,21 @@ describe('placed modules', () => {
       Robot: { 'Core.Sensor': { x: 500, y: 40, labels: { out: 'bottom' } } }
     })
     expect(fromFile(file).dependencies[0]!.modules[0]!.ports[0]!.label).toBe('bottom')
+  })
+
+  it('round-trips the size of resized placed modules, kept at least their minimum', () => {
+    const p = produce(monitor().p, (d) => {
+      d.dependencies[0]!.modules[0]!.size = { width: 300, height: 10 }
+    })
+    const file = toFile(p, { editor: true })
+    expect(file.editor?.dependencies).toEqual({
+      Robot: { 'Core.Sensor': { x: 500, y: 40, width: 300, height: 10 } }
+    })
+    const q = fromFile(file)
+    expect(q.dependencies[0]!.modules[0]!.size).toEqual({ width: 300, height: 10 })
+    const size = importedSize(q.dependencies[0]!.modules[0]!, q.orientation)
+    expect(size.width).toBe(300)
+    expect(size.height).toBeGreaterThan(10)
   })
 
   it('reports unknown dependencies and modules not placed on load', () => {

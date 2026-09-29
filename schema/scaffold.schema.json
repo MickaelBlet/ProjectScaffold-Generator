@@ -451,7 +451,7 @@
               }
             },
             "dependencies": {
-              "description": "canvas position of the placed modules of dependencies, by dependency and module path",
+              "description": "canvas position and size of the placed modules of dependencies, by dependency and module path",
               "type": "object",
               "propertyNames": {
                 "type": "string",
@@ -470,6 +470,12 @@
                       "type": "number"
                     },
                     "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
                       "type": "number"
                     },
                     "labels": {

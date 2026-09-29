@@ -248,7 +248,9 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           .filter((x) => x.modules.length)
           .map((x) => [
             x.name,
-            Object.fromEntries(x.modules.map((m) => [m.path, { ...m.position, labels: portLabels(m.ports) }]))
+            Object.fromEntries(
+              x.modules.map((m) => [m.path, { ...m.position, ...m.size, labels: portLabels(m.ports) }])
+            )
           ])
       )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
@@ -622,10 +624,16 @@ export function fromFile(data: unknown, prev?: Project): Project {
         const at = saved ?? was?.position
         const position = at ? { x: at.x, y: at.y } : { x: importX, y: importY }
         if (!at) importY += leafHeight(portRows(m)) + GAP_Y
+        const size = saved
+          ? saved.width !== undefined && saved.height !== undefined
+            ? { width: saved.width, height: saved.height }
+            : undefined
+          : was?.size
         return {
           id: idOf(was, () => `${IMPORTED_PREFIX}${i.name}/${m.module}`),
           path: m.module,
           position,
+          ...(size && { size }),
           ports: m.ports.map((pt, k) => {
             if (portNames.has(pt.name))
               report(`${where}: duplicate port '${pt.name}'`, [
