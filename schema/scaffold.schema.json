@@ -43,232 +43,13 @@
         "types": {
           "type": "array",
           "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "struct"
-                  },
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "fields": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                        },
-                        "type": {
-                          "$ref": "#/$defs/TypeRef"
-                        },
-                        "description": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "name",
-                        "type"
-                      ]
-                    }
-                  }
-                },
-                "required": [
-                  "kind",
-                  "name",
-                  "fields"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "enum"
-                  },
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "underlying": {
-                    "type": "string",
-                    "enum": [
-                      "int8",
-                      "int16",
-                      "int32",
-                      "int64",
-                      "uint8",
-                      "uint16",
-                      "uint32",
-                      "uint64"
-                    ]
-                  },
-                  "values": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                        },
-                        "value": {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        }
-                      },
-                      "required": [
-                        "name",
-                        "value"
-                      ]
-                    }
-                  }
-                },
-                "required": [
-                  "kind",
-                  "name",
-                  "underlying",
-                  "values"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "alias"
-                  },
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "$ref": "#/$defs/TypeRef"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "name",
-                  "type"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "primitive"
-                  },
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "name"
-                ],
-                "description": "custom primitive: an opaque type that generators map to a native type"
-              }
-            ]
+            "$ref": "#/$defs/TypeDef"
           }
         },
         "interfaces": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-              },
-              "description": {
-                "type": "string"
-              },
-              "messages": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "params": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string",
-                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                          },
-                          "type": {
-                            "$ref": "#/$defs/TypeRef"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "direction": {
-                            "description": "in (default): caller → callee; out: callee → caller; inout: both ways",
-                            "type": "string",
-                            "enum": [
-                              "in",
-                              "out",
-                              "inout"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "type"
-                        ]
-                      }
-                    },
-                    "returns": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/$defs/TypeRef"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "name",
-                    "params",
-                    "returns"
-                  ]
-                }
-              }
-            },
-            "required": [
-              "name",
-              "messages"
-            ]
+            "$ref": "#/$defs/Interface"
           }
         },
         "modules": {
@@ -292,8 +73,8 @@
               "from": {
                 "type": "object",
                 "properties": {
-                  "import": {
-                    "description": "name of an import: the module belongs to that other project",
+                  "project": {
+                    "description": "name of a dependency: the module belongs to that other project",
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   },
@@ -315,8 +96,8 @@
               "to": {
                 "type": "object",
                 "properties": {
-                  "import": {
-                    "description": "name of an import: the module belongs to that other project",
+                  "project": {
+                    "description": "name of a dependency: the module belongs to that other project",
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   },
@@ -416,7 +197,7 @@
             ]
           }
         },
-        "imports": {
+        "dependencies": {
           "type": "array",
           "items": {
             "type": "object",
@@ -424,13 +205,48 @@
               "name": {
                 "type": "string",
                 "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-                "description": "referenced by link endpoints (`import`)"
+                "description": "referenced by `uses` of other dependencies and by link endpoints (`project`)"
               },
               "file": {
                 "type": "string",
                 "description": "file of the other project, relative to this one"
               },
+              "uses": {
+                "description": "dependencies of this list whose types and interfaces this one uses",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
+              "indirect": {
+                "description": "only listed because another dependency uses it",
+                "type": "boolean"
+              },
+              "shared": {
+                "description": "types and interfaces it defines like another dependency of this list, listed there",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
+              "types": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/TypeDef"
+                },
+                "description": "its own types, as last read from it"
+              },
+              "interfaces": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Interface"
+                },
+                "description": "its own interfaces, as last read from it"
+              },
               "modules": {
+                "description": "its modules placed on this canvas so that links reach them, with their ports as last read",
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -483,16 +299,16 @@
                     "module",
                     "ports"
                   ]
-                },
-                "description": "modules of the other project that links reach, with their ports as last read from it"
+                }
               }
             },
             "required": [
               "name",
               "file",
-              "modules"
+              "types",
+              "interfaces"
             ],
-            "description": "Another project whose modules this one links to"
+            "description": "Another project this one uses: its types and interfaces share the namespace of the project's own ones, which reference them by name, and links may reach its modules"
           }
         },
         "editor": {
@@ -634,8 +450,8 @@
                 ]
               }
             },
-            "imports": {
-              "description": "canvas position of imported modules, by import and module path",
+            "dependencies": {
+              "description": "canvas position of the placed modules of dependencies, by dependency and module path",
               "type": "object",
               "propertyNames": {
                 "type": "string",
@@ -788,6 +604,158 @@
       ],
       "title": "ProjectScaffold architecture file"
     },
+    "TypeDef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "struct"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "default": {
+                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name; any value for a custom primitive",
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "fields"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "enum"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "underlying": {
+              "type": "string",
+              "enum": [
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64"
+              ]
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "underlying",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "alias"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/TypeRef"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "primitive"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "description": "custom primitive: an opaque type that generators map to a native type"
+        }
+      ]
+    },
     "TypeRef": {
       "anyOf": [
         {
@@ -904,6 +872,114 @@
         }
       ]
     },
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    },
+    "Interface": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "description": {
+                "type": "string"
+              },
+              "params": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "type": {
+                      "$ref": "#/$defs/TypeRef"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "description": "in (default): caller → callee; out: callee → caller; inout: both ways",
+                      "type": "string",
+                      "enum": [
+                        "in",
+                        "out",
+                        "inout"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "type"
+                  ]
+                }
+              },
+              "returns": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "params",
+              "returns"
+            ]
+          }
+        }
+      },
+      "required": [
+        "name",
+        "messages"
+      ]
+    },
     "Module": {
       "type": "object",
       "properties": {
@@ -913,6 +989,23 @@
         },
         "description": {
           "type": "string"
+        },
+        "kind": {
+          "description": "class (default): concrete; abstract: may have pure methods; interface: only pure methods, no attributes",
+          "type": "string",
+          "enum": [
+            "class",
+            "abstract",
+            "interface"
+          ]
+        },
+        "bases": {
+          "description": "paths of the modules of this project it derives from, in order",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+          }
         },
         "metadata": {
           "type": "object",
@@ -926,6 +1019,127 @@
         "color": {
           "description": "accent color (CSS color)",
           "type": "string"
+        },
+        "attributes": {
+          "description": "typed properties of the module",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "type": {
+                "$ref": "#/$defs/TypeRef"
+              },
+              "description": {
+                "type": "string"
+              },
+              "default": {
+                "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name; any value for a custom primitive",
+                "$ref": "#/$defs/__schema0"
+              },
+              "static": {
+                "description": "shared by all instances of the module",
+                "type": "boolean"
+              },
+              "const": {
+                "description": "not changed after initialization",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ]
+          }
+        },
+        "methods": {
+          "description": "method prototypes of the module",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "description": {
+                "type": "string"
+              },
+              "params": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "type": {
+                      "$ref": "#/$defs/TypeRef"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "description": "in (default): caller → callee; out: callee → caller; inout: both ways",
+                      "type": "string",
+                      "enum": [
+                        "in",
+                        "out",
+                        "inout"
+                      ]
+                    },
+                    "const": {
+                      "description": "not changed by the method (in parameters only)",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "type"
+                  ]
+                }
+              },
+              "returns": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "static": {
+                "description": "called without a module instance",
+                "type": "boolean"
+              },
+              "const": {
+                "description": "leaves the module's state unchanged",
+                "type": "boolean"
+              },
+              "virtual": {
+                "description": "can be overridden by derived modules",
+                "type": "boolean"
+              },
+              "pure": {
+                "description": "pure virtual (`= 0`): not implemented by this module (virtual only)",
+                "type": "boolean"
+              },
+              "override": {
+                "description": "overrides a virtual method of a base module (virtual only)",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "params",
+              "returns"
+            ]
+          }
         },
         "ports": {
           "type": "array",

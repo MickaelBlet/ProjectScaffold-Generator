@@ -1,0 +1,169 @@
+schemaVersion: 1
+project:
+  name: Station
+  description: Ground station monitoring the robot
+types: []
+interfaces: []
+modules:
+  - name: Monitor
+    ports:
+      - name: telemetry
+        role: in
+        interface: Telemetry
+      - name: control
+        role: out
+        interface: Control
+  - name: Operator
+    ports:
+      - name: control
+        role: in
+        interface: Control
+links:
+  - name: monitor_to_operator
+    from:
+      module: Monitor
+      port: control
+    to:
+      module: Operator
+      port: control
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: sensor_to_monitor
+    from:
+      project: Robot
+      module: Core.Sensor
+      port: out
+    to:
+      module: Monitor
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: tcp
+dependencies:
+  - name: Common
+    file: common.scaffold.yaml
+    types:
+      - kind: struct
+        name: Vec3
+        fields:
+          - name: x
+            type:
+              kind: primitive
+              name: float32
+          - name: y
+            type:
+              kind: primitive
+              name: float32
+          - name: z
+            type:
+              kind: primitive
+              name: float32
+      - kind: enum
+        name: Mode
+        underlying: uint8
+        values:
+          - name: Idle
+            value: 0
+          - name: Run
+            value: 1
+          - name: Fault
+            value: 255
+      - kind: alias
+        name: Samples
+        type:
+          kind: vector
+          of:
+            kind: primitive
+            name: uint16
+      - kind: struct
+        name: Pose
+        description: Position and orientation
+        fields:
+          - name: position
+            type:
+              kind: ref
+              name: Vec3
+          - name: orientation
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float64
+              size: 4
+            default:
+              - 0
+              - 0
+              - 0
+              - 1
+    interfaces:
+      - name: Telemetry
+        messages:
+          - name: publish
+            params:
+              - name: pose
+                type:
+                  kind: ref
+                  name: Pose
+              - name: tags
+                type:
+                  kind: map
+                  key:
+                    kind: primitive
+                    name: string
+                  value:
+                    kind: list
+                    of:
+                      kind: primitive
+                      name: uint8
+            returns: null
+      - name: Control
+        messages:
+          - name: setMode
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: Mode
+            returns:
+              kind: primitive
+              name: bool
+          - name: raw
+            params:
+              - name: samples
+                type:
+                  kind: ref
+                  name: Samples
+                direction: inout
+              - name: gain
+                type:
+                  kind: optional
+                  of:
+                    kind: primitive
+                    name: float32
+            returns: null
+  - name: Robot
+    file: robot.scaffold.yaml
+    uses:
+      - Common
+    types:
+      - kind: primitive
+        name: Primitive
+    interfaces: []
+    modules:
+      - module: Core.Sensor
+        ports:
+          - name: out
+            role: out
+            interface: Telemetry

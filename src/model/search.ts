@@ -34,6 +34,15 @@ export function searchProject(p: Project, query: string): SearchHit[] {
     check(target, path, 'module', m.name)
     check(target, path, 'description', m.description)
     meta(target, path, m.metadata)
+    for (const a of m.attributes) {
+      check(target, `${path}.${a.name}`, 'attribute', a.name)
+      check(target, `${path}.${a.name}`, 'attribute description', a.description)
+    }
+    for (const x of m.methods) {
+      check(target, `${path}.${x.name}`, 'method', x.name)
+      check(target, `${path}.${x.name}`, 'method description', x.description)
+      for (const prm of x.params) check(target, `${path}.${x.name}(${prm.name})`, 'parameter', prm.name)
+    }
     for (const pt of m.ports) {
       check(target, `${path}:${pt.name}`, `${pt.role} port`, pt.name)
       check(target, `${path}:${pt.name}`, 'port description', pt.description)

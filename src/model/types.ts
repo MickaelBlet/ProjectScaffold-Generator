@@ -49,6 +49,8 @@ export type TypeRef = TypeRefOf<{ id: string }>
 
 export type Id = string
 export type Metadata = Record<string, string>
+/** Plain data value, as in YAML / JSON. */
+export type Value = null | boolean | number | string | Value[] | { [key: string]: Value }
 
 export interface Field {
   id: Id
@@ -57,12 +59,27 @@ export interface Field {
   description: string
 }
 
-export interface StructDef {
+/** Field with a default value: struct field or module attribute. */
+export interface ValueField extends Field {
+  /**
+   * Default value, checked against the type (see defaults.ts): a mapping for a struct or map, a
+   * list for an array, vector, list or set, null for an empty optional. Opaque for custom primitives.
+   */
+  default?: Value
+}
+
+/** Owner of a type or interface: absent for the project's own ones. */
+export interface Owned {
+  /** Dependency the entity comes from (read-only here, refreshed from that file). */
+  dependency?: Id
+}
+
+export interface StructDef extends Owned {
   id: Id
   kind: 'struct'
   name: string
   description: string
-  fields: Field[]
+  fields: ValueField[]
 }
 
 export interface EnumValue {
@@ -71,7 +88,7 @@ export interface EnumValue {
   value: number
 }
 
-export interface EnumDef {
+export interface EnumDef extends Owned {
   id: Id
   kind: 'enum'
   name: string
@@ -80,7 +97,7 @@ export interface EnumDef {
   values: EnumValue[]
 }
 
-export interface AliasDef {
+export interface AliasDef extends Owned {
   id: Id
   kind: 'alias'
   name: string
@@ -89,7 +106,7 @@ export interface AliasDef {
 }
 
 /** Custom primitive: an opaque type that generators map to a native type. */
-export interface PrimitiveDef {
+export interface PrimitiveDef extends Owned {
   id: Id
   kind: 'primitive'
   name: string
@@ -114,7 +131,49 @@ export interface Message {
   returns: TypeRef | null
 }
 
-export interface Interface {
+/** C++-like qualifiers of module attributes and method parameters. */
+export const QUALIFIERS = ['static', 'const'] as const
+/** C++-like qualifiers of module methods: `pure` is `= 0`. */
+export const METHOD_QUALIFIERS = ['static', 'const', 'virtual', 'pure', 'override'] as const
+export type Qualifier = (typeof METHOD_QUALIFIERS)[number]
+
+/** Module attribute: a value field with C++-like qualifiers. */
+export interface Attribute extends ValueField {
+  /** Shared by all instances of the module. */
+  static?: boolean
+  /** Not changed after initialization. */
+  const?: boolean
+}
+
+/** Parameter of a module method. */
+export interface MethodParam extends Param {
+  /** Not changed by the method (`in` parameters only). */
+  const?: boolean
+}
+
+/** Method prototype of a module: a message with C++-like qualifiers. */
+export interface Method extends Message {
+  params: MethodParam[]
+  /** Called without a module instance. */
+  static?: boolean
+  /** Leaves the module's state unchanged. */
+  const?: boolean
+  /** Can be overridden by derived modules. */
+  virtual?: boolean
+  /** Pure virtual (`= 0`): no implementation here (virtual only). */
+  pure?: boolean
+  /** Overrides a virtual method of a base module (virtual only). */
+  override?: boolean
+}
+
+/**
+ * C++-like kind of a module: `class` (default) is concrete, `abstract` may have pure methods,
+ * `interface` has only pure methods and no attributes.
+ */
+export const MODULE_KINDS = ['class', 'abstract', 'interface'] as const
+export type ModuleKind = (typeof MODULE_KINDS)[number]
+
+export interface Interface extends Owned {
   id: Id
   name: string
   description: string
@@ -146,7 +205,15 @@ export interface Module {
   name: string
   description: string
   parentId: Id | null
+  /** Absent for a concrete class. */
+  kind?: Exclude<ModuleKind, 'class'>
+  /** Modules this one derives from, in order. */
+  bases?: Id[]
   metadata: Metadata
+  /** Typed properties of the module, shown on the canvas apart from its ports. */
+  attributes: Attribute[]
+  /** Method prototypes of the module, shown on the canvas below its attributes. */
+  methods: Method[]
   ports: Port[]
   /** Editor layout, position relative to parent. */
   layout: Rect
@@ -265,13 +332,24 @@ export interface ImportedModule {
   position: { x: number; y: number }
 }
 
-/** Another project whose modules this one links to. */
-export interface Import {
+/**
+ * Another project file this one uses: its types and interfaces are kept in the project's `types`
+ * and `interfaces` with `dependency` set, as last read from the file (read-only here, one
+ * namespace), and some of its modules may be placed on the canvas so that links reach them.
+ */
+export interface Dependency {
   id: Id
-  /** Identifier used by link endpoints (`import`). */
+  /** Identifier naming the dependency in `uses` and link ends. */
   name: string
   /** File of the other project, relative to this one. */
   file: string
+  /** Names of the dependencies (of this project's list) whose types and interfaces this one uses. */
+  uses: string[]
+  /** Only here because another dependency uses it. */
+  indirect: boolean
+  /** Names of the types and interfaces it defines like another dependency, which holds them here. */
+  shared: string[]
+  /** Its modules placed on this project's canvas. */
   modules: ImportedModule[]
 }
 
@@ -285,7 +363,7 @@ export interface Project {
   interfaces: Interface[]
   modules: Module[]
   links: Link[]
-  imports: Import[]
+  dependencies: Dependency[]
   views: View[]
   notes: Note[]
   orientation: Orientation

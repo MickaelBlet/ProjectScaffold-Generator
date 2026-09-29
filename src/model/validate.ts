@@ -1,7 +1,28 @@
 // Semantic checks. Errors block export; warnings do not.
-import { findImported, findPort, isImportedId, linkRoles, modulePath } from './project'
+import {
+  allTypeRefs,
+  ancestorModules,
+  findImported,
+  findPort,
+  isImportedId,
+  linkRoles,
+  methodSignature,
+  modulePath,
+  unimplementedMethods
+} from './project'
+import { normalizeFile } from './sync'
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
-import { INT_RANGES, TRANSPORTS, type Id, type Project, type TypeDef, type TypeRef } from './types'
+import { valueErrors } from './defaults'
+import {
+  INT_RANGES,
+  TRANSPORTS,
+  type Id,
+  type Message,
+  type Project,
+  type TypeDef,
+  type TypeRef,
+  type ValueField
+} from './types'
 
 export type Severity = 'error' | 'warning'
 export type ProblemTarget =
@@ -26,11 +47,15 @@ function duplicates(names: string[]): string[] {
 
 export function validate(p: Project): Problem[] {
   const problems: Problem[] = []
+  // Entities of dependencies are checked in their own file: here only errors matter.
+  const fromLibrary = new Set([...p.types, ...p.interfaces].filter((e) => e.dependency).map((e) => e.id))
   const push = (severity: Severity, target: ProblemTarget, message: string): void => {
+    if (severity === 'warning' && 'id' in target && fromLibrary.has(target.id)) return
     problems.push({ severity, target, message })
   }
   const types = new Map(p.types.map((t) => [t.id, t]))
   const interfaces = new Map(p.interfaces.map((i) => [i.id, i]))
+  const modules = new Set(p.modules.map((m) => m.id))
 
   /** Follow aliases to the underlying type; null for dangling or cyclic aliases. */
   const resolve = (t: TypeRef, seen = new Set<Id>()): TypeRef | TypeDef | null => {
@@ -56,6 +81,11 @@ export function validate(p: Project): Problem[] {
     })
   }
 
+  const checkDefault = (f: ValueField, target: ProblemTarget, where: string): void => {
+    if (f.default === undefined) return
+    for (const e of valueErrors(f.default, f.type, p.types)) push('error', target, `${where} default: ${e}`)
+  }
+
   // Project
   if (!p.name.trim()) push('warning', { kind: 'project' }, 'Project has no name')
 
@@ -71,7 +101,10 @@ export function validate(p: Project): Problem[] {
         if (!t.fields.length) push('warning', target, `Struct '${t.name}' has no fields`)
         for (const n of duplicates(t.fields.map((f) => f.name)))
           push('error', target, `Struct '${t.name}': duplicate field '${n}'`)
-        for (const f of t.fields) checkTypeRef(f.type, target, `${t.name}.${f.name}`)
+        for (const f of t.fields) {
+          checkTypeRef(f.type, target, `${t.name}.${f.name}`)
+          checkDefault(f, target, `${t.name}.${f.name}`)
+        }
         break
       case 'enum': {
         if (!t.values.length) push('warning', target, `Enum '${t.name}' has no values`)
@@ -138,6 +171,14 @@ export function validate(p: Project): Problem[] {
       `Struct '${types.get(id)!.name}' contains itself by value (use vector, list, map or set to break the cycle)`
     )
 
+  /** Parameters and return type of an interface message or a module method. */
+  const checkMessage = (m: Message, target: ProblemTarget, where: string): void => {
+    for (const n of duplicates(m.params.map((prm) => prm.name)))
+      push('error', target, `${where}: duplicate parameter '${n}'`)
+    for (const prm of m.params) checkTypeRef(prm.type, target, `${where}(${prm.name})`)
+    if (m.returns) checkTypeRef(m.returns, target, `${where} returns`)
+  }
+
   // Interfaces
   for (const i of p.interfaces) {
     const target = { kind: 'interface', id: i.id } as const
@@ -145,12 +186,7 @@ export function validate(p: Project): Problem[] {
     if (!i.messages.length) push('warning', target, `Interface '${i.name}' has no messages`)
     for (const n of duplicates(i.messages.map((m) => m.name)))
       push('error', target, `Interface '${i.name}': duplicate message '${n}'`)
-    for (const m of i.messages) {
-      for (const n of duplicates(m.params.map((prm) => prm.name)))
-        push('error', target, `${i.name}.${m.name}: duplicate parameter '${n}'`)
-      for (const prm of m.params) checkTypeRef(prm.type, target, `${i.name}.${m.name}(${prm.name})`)
-      if (m.returns) checkTypeRef(m.returns, target, `${i.name}.${m.name} returns`)
-    }
+    for (const m of i.messages) checkMessage(m, target, `${i.name}.${m.name}`)
   }
 
   // Modules
@@ -168,6 +204,70 @@ export function validate(p: Project): Problem[] {
     const path = modulePath(p, m.id)
     for (const n of duplicates(m.ports.map((pt) => pt.name)))
       push('error', target, `${path}: duplicate port '${n}'`)
+    for (const n of duplicates(m.attributes.map((a) => a.name)))
+      push('error', target, `${path}: duplicate attribute '${n}'`)
+    for (const a of m.attributes) {
+      checkTypeRef(a.type, target, `${path}.${a.name}`)
+      checkDefault(a, target, `${path}.${a.name}`)
+    }
+    for (const n of duplicates(m.methods.map((x) => x.name)))
+      push('error', target, `${path}: duplicate method '${n}'`)
+    const attributes = new Set(m.attributes.map((a) => a.name))
+    const ancestors = ancestorModules(p, m.id)
+    for (const x of m.methods) {
+      const where = `${path}.${x.name}`
+      if (x.static && x.const) push('error', target, `${where}: a static method cannot be const`)
+      if (x.static && x.virtual) push('error', target, `${where}: a static method cannot be virtual`)
+      if ((x.pure || x.override) && !x.virtual)
+        push('error', target, `${where}: a ${x.pure ? 'pure' : 'override'} method must be virtual`)
+      if (x.pure && !m.kind)
+        push('error', target, `${where}: pure method in a concrete module (make it abstract or an interface)`)
+      if (m.kind === 'interface' && !x.pure)
+        push('error', target, `${where}: methods of an interface module must be pure`)
+      const inherited = ancestors
+        .map((a) => ({ base: a, method: a.methods.find((y) => y.name === x.name && y.virtual) }))
+        .find((e) => e.method)
+      if (x.override) {
+        if (!inherited) push('error', target, `${where}: overrides no virtual method of a base`)
+        else if (methodSignature(x) !== methodSignature(inherited.method!))
+          push(
+            'error',
+            target,
+            `${where}: signature differs from ${modulePath(p, inherited.base.id)}.${x.name} it overrides`
+          )
+      } else if (inherited)
+        push(
+          'warning',
+          target,
+          `${where}: hides virtual ${modulePath(p, inherited.base.id)}.${x.name} (mark it override)`
+        )
+      if (attributes.has(x.name))
+        push('error', target, `${path}: '${x.name}' is both an attribute and a method`)
+      checkMessage(x, target, `${path}.${x.name}`)
+      for (const prm of x.params)
+        if (prm.const && prm.direction !== 'in')
+          push(
+            'error',
+            target,
+            `${path}.${x.name}(${prm.name}): an ${prm.direction} parameter cannot be const`
+          )
+    }
+    if (m.kind === 'interface' && m.attributes.length)
+      push('error', target, `${path}: an interface module cannot have attributes`)
+    const bases = m.bases ?? []
+    for (const b of bases) if (!modules.has(b)) push('error', target, `${path} derives from a deleted module`)
+    if (bases.includes(m.id)) push('error', target, `${path} derives from itself`)
+    else if (bases.some((b) => ancestorModules(p, b).some((a) => a.id === m.id)))
+      push('error', target, `${path} derives from itself through its bases`)
+    for (const id of duplicates(bases))
+      push('error', target, `${path} derives from ${modulePath(p, id)} more than once`)
+    if (!m.kind)
+      for (const { base, method } of unimplementedMethods(p, m.id))
+        push(
+          'error',
+          target,
+          `${path} does not implement pure method ${modulePath(p, base.id)}.${method.name} (implement it or make the module abstract)`
+        )
     for (const pt of m.ports) {
       if (!pt.interfaceId) push('warning', target, `${path}:${pt.name} has no interface`)
       else if (!interfaces.has(pt.interfaceId))
@@ -175,11 +275,54 @@ export function validate(p: Project): Problem[] {
     }
   }
 
-  // Imports
-  for (const n of duplicates(p.imports.map((i) => i.name)))
-    push('error', { kind: 'project' }, `Duplicate import name '${n}'`)
-  for (const i of p.imports)
-    if (!i.file.trim()) push('warning', { kind: 'project' }, `Import '${i.name}' has no file`)
+  // Dependencies
+  const project = { kind: 'project' } as const
+  for (const n of duplicates(p.dependencies.map((x) => x.name)))
+    push('error', project, `Duplicate dependency name '${n}'`)
+  for (const n of duplicates(p.dependencies.map((x) => normalizeFile(x.file))))
+    push('error', project, `Dependency file '${n}' listed more than once`)
+  const dependencyByName = new Map(p.dependencies.map((x) => [x.name, x]))
+  /** Dependencies whose entities those of `id` may use: itself and the ones it uses, directly or not. */
+  const reach = (id: Id, seen = new Set<Id>()): Set<Id> => {
+    if (seen.has(id)) return seen
+    seen.add(id)
+    const dep = p.dependencies.find((x) => x.id === id)
+    for (const u of dep?.uses ?? []) {
+      const used = dependencyByName.get(u)
+      if (used) reach(used.id, seen)
+    }
+    return seen
+  }
+  for (const x of p.dependencies) {
+    if (!x.file.trim()) push('warning', project, `Dependency '${x.name}' has no file`)
+    for (const u of x.uses)
+      if (!dependencyByName.has(u))
+        push('error', project, `Dependency '${x.name}' uses unknown dependency '${u}'`)
+    if (
+      x.uses.some((u) => {
+        const used = dependencyByName.get(u)
+        return !!used && reach(used.id).has(x.id)
+      })
+    )
+      push('error', project, `Dependency '${x.name}' uses itself through other dependencies`)
+  }
+  const owners = new Map([...p.types, ...p.interfaces].map((e) => [e.id, e.dependency]))
+  for (const { ref, where, owner } of allTypeRefs(p)) {
+    const dependency = owner.kind === 'module' ? undefined : owners.get(owner.id)
+    if (!dependency) continue
+    const allowed = reach(dependency)
+    // Entities held by another dependency count as those of the ones sharing them.
+    const shared = new Set(p.dependencies.filter((x) => allowed.has(x.id)).flatMap((x) => x.shared))
+    walkTypeRef(ref, (n) => {
+      const used = n.kind === 'ref' && types.get(n.id)
+      if (used && (!used.dependency || !allowed.has(used.dependency)) && !shared.has(used.name))
+        push(
+          'error',
+          { kind: owner.kind, id: owner.id },
+          `${where}: '${used.name}' is not in its dependency or the dependencies it uses`
+        )
+    })
+  }
 
   // Links
   for (const n of duplicates(p.links.map((l) => l.name)))

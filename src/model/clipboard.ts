@@ -13,7 +13,7 @@ import {
   subtreeIds,
   uniqueName
 } from './project'
-import type { Field, Id, Interface, Link, Module, Note, Project, TypeDef, TypeRef } from './types'
+import type { Field, Id, Interface, Link, Message, Module, Note, Project, TypeDef, TypeRef } from './types'
 
 const originOf = (p: Project, id: Id | null): { x: number; y: number } =>
   id ? absolutePosition(p, id) : { x: 0, y: 0 }
@@ -130,6 +130,12 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
   }
   const ref = (t: TypeRef): TypeRef => mapTypeRef(t, (r) => ({ kind: 'ref', id: rebind(r.id) }))
   const field = <F extends Field>(f: F): F => ({ ...f, id: newId(), type: ref(f.type) })
+  const message = <M extends Message>(m: M): M => ({
+    ...m,
+    id: newId(),
+    params: m.params.map(field),
+    returns: m.returns ? ref(m.returns) : null
+  })
 
   for (const t of clip.types) {
     const base = {
@@ -155,12 +161,7 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
       id,
       name: uniqueName(i.name, globalTypeNames(d)),
       description: i.description,
-      messages: i.messages.map((m) => ({
-        ...m,
-        id: newId(),
-        params: m.params.map(field),
-        returns: m.returns ? ref(m.returns) : null
-      }))
+      messages: i.messages.map(message)
     })
     pasted.push(id)
   }
@@ -201,6 +202,8 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
         childModules(d, parentId).map((s) => s.name)
       ),
       layout,
+      attributes: m.attributes.map(field),
+      methods: m.methods.map(message),
       ports: m.ports.map((pt) => {
         const pid = newId()
         portIds.set(pt.id, pid)
@@ -215,9 +218,19 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
   // Ports whose interface does not exist here become untyped.
   const ifaceIds = new Set(d.interfaces.map((i) => i.id))
   const newModules = new Set(moduleIds.values())
+  // Bases follow copied modules, else stay when they exist here.
+  const existing = new Set(d.modules.map((m) => m.id))
   for (const m of d.modules)
-    if (newModules.has(m.id))
+    if (newModules.has(m.id)) {
       for (const pt of m.ports) if (pt.interfaceId && !ifaceIds.has(pt.interfaceId)) pt.interfaceId = null
+      if (m.bases) {
+        m.bases = m.bases.flatMap((b) => {
+          const id = moduleIds.get(b) ?? b
+          return existing.has(id) ? [id] : []
+        })
+        if (!m.bases.length) delete m.bases
+      }
+    }
 
   for (const l of clip.links) {
     const link: Link = {

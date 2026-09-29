@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- C++-like classes for modules: `kind` (`class`, `abstract`, `interface`), `bases` (modules derived from) and `virtual`, `pure` (`= 0`) and `override` method qualifiers, edited in the module inspector (_Implement_ adds missing overrides of inherited pure methods), shown on the canvas as `«interface» Name : Base`, with UML inheritance arrows to the bases (dashed to interfaces; _View › Inheritance arrows_), and `virtual f(): R override = 0`, and checked: pure methods only in abstract modules and interfaces, all of them in interfaces, overrides matching a virtual base method, inherited pure methods implemented by concrete modules, no inheritance cycles.
+- Dependencies (`dependencies` in the project file; _Insert › Add dependency…_): another project file whose types and interfaces a project uses by reference, read-only, in the same namespace as its own, and whose modules it can place on the canvas to link to (_Insert › Link to another project…_). A snapshot is kept in the file for generators; the dependencies of a dependency come with it (`indirect`). Same definitions are merged: an own one becomes the dependency's, two dependencies share it (`shared`); a different one is left out with a warning. Refreshed from the files (_Refresh dependencies_) and live from an open tab; renames of modules, ports, types and interfaces follow; entities removed from a dependency but still used are kept as own ones. Listed in the Explorer and the _Dependencies_ panel (open, refresh, place a module, detach, remove). Importing a project also brings its dependencies. See `examples/common.scaffold.yaml`, `robot.scaffold.yaml` and `station.scaffold.yaml`.
+- Module methods (`methods` in modules): prototypes like interface messages — parameters with their direction, optional return type, `static` and `const` qualifiers, `const` parameters — edited in the module inspector and listed as `name(a: T): R` in a compartment below the attributes; in the outline, search and type usages.
+- Module attributes (`attributes` in modules), optionally `static` and `const`: typed properties edited in the module inspector, listed as `name: type` in a compartment below the module's header, apart from the ports where links attach; containers keep their content below them.
+- Default values (`default`) of module attributes and struct fields: YAML values (one-line flow literals in the inspector, a choice for `bool` and enums) checked against the type — struct fields missing or unknown, list sizes, set duplicates, map keys, integer ranges — opaque for custom primitives, and shown as `= value`.
+- VS Code extension (`scripts/build_vscode.sh` or `docker buildx bake vscode` → `.vsix`): project files open as text with an editable diagram preview beside them (Ctrl+K V), or in a full diagram editor; text cursor and diagram selection follow each other; Explorer, Outline, Links and Settings in a ProjectScaffold side bar following the active project file; problems in the Problems panel, outline in the Outline view / breadcrumbs; theme and colors follow the VS Code color theme (theme setting _VS Code_); exports and dependency refresh go through the files next to the document.
+- Example fleet of projects (`examples/fleet/`): shared units, weather, drone and ground station projects built on dependencies.
 - Custom primitive types (`kind: primitive` in `types`): opaque types that generators map to a native type, added from the Explorer (+P).
 - Custom transports (`transports` in the project file), managed in the project inspector or added from a remote link (Transport > New transport…); an undeclared transport is a warning, declared from the link.
 - Module inspector: a port's interface opens from its row.
@@ -22,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Links drawn straight between modules: drag the → in a module's header onto another module (or an `in` port), or a port onto a module; the missing `out` / `in` ports are added, with the interface of the other end.
 - Links between a module and its content (delegation): a container's `in` port to an `in` port inside it, an `out` port inside to the container's `out` port. Ports are linked by dragging either way.
 - Link shapes set by hand, as in draw.io: bends added by dragging the selected link, moved and removed; link ends attached anywhere on their module's border. Saved in `editor.links`.
-- Port names dragged to any side of their port (double-click resets them). Saved in `editor.style` (and `editor.imports` for imported modules).
+- Port names dragged to any side of their port (double-click resets them). Saved in `editor.style` (and `editor.dependencies` for placed modules of dependencies).
 - Dragging a frame moves the modules, notes and imported modules lying fully inside it (locked items stay); the inspector of a frame lists them.
 - Snap to grid applies to every move and resize of modules, notes and imported modules (drag, multi-selection, resize from any edge, nudge by grid cell, paste, align, auto layout); parents grow on the grid and alignment guides no longer pull items off it.
 - Desktop app with Tauri: Docker build for Linux amd64 (deb, rpm, AppImage) and Windows amd64 (NSIS installer, portable exe).
@@ -57,8 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diagram export as PNG / SVG.
 - Settings: light / dark / system theme, link style and badges, port style (dots, arrows, hollow, shapes), grid, guides, minimap.
 - Message parameter direction `in` (default) / `out` / `inout`, stored as `direction` in the file; `out` and `inout` parameters require a bidirectional link.
-- Links to another project: place a module of another open document or project file on the canvas and link to its ports (_Insert › Link to another project…_). Stored in `imports` with the ports last read, link ends with `import`; missing interfaces and their types are copied; _Refresh linked projects_ re-reads them from open tabs.
-- Linked projects stay in sync: module, port and interface renames are carried to the open documents linked to the renamed one (each as an undoable edit); _Refresh linked projects_ detects renames made while a file was closed.
 - Link inspector: pick the link's interface (set on both ports), also when the link was created without one.
 - Lock position and size of modules and notes (Ctrl+L, module inspector), saved as `locked` in `editor.style` / `editor.notes`; pasted copies start unlocked.
 - Selected links get a halo and dashes flowing in their direction; _Force animations_ keeps them when the system asks for reduced motion.
@@ -66,6 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Tauri window is frameless like the Electron one: minimize, maximize and close buttons in the toolbar, which moves the window (`src-tauri/capabilities/default.json`).
+- _File › Open…_ accepts several files at once, each opened in its own tab (one at a time in VS Code).
 - Recent projects moved from a separate button into _File › Open Recent_.
 - Buttons, menus and panels use a shared set of SVG icons.
 - Module colors are saved on the module (`color`), no longer in `editor.style`, which still reads them.
@@ -80,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edits render again only the canvas nodes and links that changed; lists, the status bar and the Problems counts no longer render on every edit, and module paths are computed once per project.
 - Example project: module colors and a custom primitive type.
 - Desktop builds merged into one `Dockerfile` with a shared web build and one stage per app and OS, run in parallel by `docker buildx bake` (`docker-bake.hcl`, `scripts/build_desktop.sh`); `Dockerfile.electron` removed, `build_tauri.sh` / `build_electron.sh` call `build_desktop.sh`.
+
+### Removed
+
+- `imports` in the project file and `import` link ends, replaced by `dependencies` and `project` link ends; _Refresh linked projects_ became _Refresh dependencies_.
 
 ### Fixed
 

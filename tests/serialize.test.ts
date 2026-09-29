@@ -4,6 +4,7 @@ import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { fromFile, LoadError, loadText, reloadText, sameContent, saveText, toFile } from '@/model/serialize'
 import { validate } from '@/model/validate'
+import type { StructDef } from '@/model/types'
 
 const exampleText = readFileSync('examples/robot.scaffold.yaml', 'utf8')
 const example = YAML.parse(exampleText)
@@ -36,7 +37,7 @@ describe('serialize', () => {
     expect(file.types.at(-1)).toEqual({ kind: 'primitive', name: 'Uuid', description: 'RFC 4122' })
     expect(file.transports).toEqual(['zenoh'])
     const again = fromFile(file)
-    expect(again.types.at(-1)).toMatchObject({ kind: 'primitive', name: 'Uuid' })
+    expect(again.types.find((t) => t.id === 'type:Uuid')).toMatchObject({ kind: 'primitive', name: 'Uuid' })
     expect(again.transports).toEqual(['zenoh'])
     expect(toFile(fromFile(example), { editor: false }).transports).toBeUndefined()
   })
@@ -87,6 +88,8 @@ describe('serialize', () => {
     expect(exported.modules[0]!.modules![0]!.color).toBe('#ff0000')
     expect(fromFile(exported).modules[1]!.color).toBe('#ff0000')
     const legacy = structuredClone(example)
+    // The legacy style only applies to modules without their own color.
+    delete legacy.modules[0].modules[0].color
     legacy.editor.style = { 'Core.Sensor': { color: '#00ff00' } }
     expect(fromFile(legacy).modules[1]!.color).toBe('#00ff00')
   })
@@ -107,7 +110,7 @@ describe('serialize', () => {
   it('reports unresolved references', () => {
     const bad = structuredClone(example)
     bad.links[0].to.module = 'Core.Nope'
-    bad.types[3].fields[0].type = { kind: 'ref', name: 'Missing' }
+    bad.dependencies[0].types[3].fields[0].type = { kind: 'ref', name: 'Missing' }
     try {
       fromFile(bad)
       expect.unreachable()
@@ -121,7 +124,7 @@ describe('serialize', () => {
 
   it('rejects duplicate referenced names', () => {
     const bad = structuredClone(example)
-    bad.interfaces[0].name = 'Vec3'
+    bad.dependencies[0].interfaces[0].name = 'Vec3'
     expect(() => fromFile(bad)).toThrow(/Duplicate interface name 'Vec3'/)
   })
 
@@ -143,9 +146,11 @@ describe('parameter direction', () => {
     expect(setMode!.params[0]!.direction).toBe('in')
     expect(raw!.params.map((prm) => prm.direction)).toEqual(['inout', 'in'])
     raw!.params[1]!.direction = 'out'
-    const params = toFile(p, { editor: false }).interfaces[1]!.messages[1]!.params
+    const params = toFile(p, { editor: false }).dependencies![0]!.interfaces[1]!.messages[1]!.params
     expect(params.map((prm) => prm.direction)).toEqual(['inout', 'out'])
-    expect(toFile(p, { editor: false }).interfaces[0]!.messages[0]!.params[0]!.direction).toBeUndefined()
+    expect(
+      toFile(p, { editor: false }).dependencies![0]!.interfaces[0]!.messages[0]!.params[0]!.direction
+    ).toBeUndefined()
   })
 })
 
@@ -238,5 +243,95 @@ describe('problem lines', () => {
     expect(linesOf(text)).toEqual([line])
     const bad = exampleText.replace('underlying: uint8', 'underlying: nope')
     expect(linesOf(bad)).toEqual([bad.split('\n').findIndex((l) => l.includes('underlying: nope')) + 1])
+  })
+})
+
+describe('module attributes', () => {
+  it('loads attributes with their types, and leaves them out when there are none', () => {
+    const p = fromFile(example)
+    const controller = p.modules.find((m) => m.name === 'Controller')!
+    const mode = p.types.find((t) => t.name === 'Mode')!
+    expect(controller.attributes).toMatchObject([
+      { name: 'mode', type: { kind: 'ref', id: mode.id }, default: 'Idle' }
+    ])
+    const file = toFile(p, { editor: false })
+    expect(file.modules[0]!.attributes).toBeUndefined()
+    expect(file.modules[0]!.modules![1]!.attributes).toEqual([
+      { name: 'mode', type: { kind: 'ref', name: 'Mode' }, default: 'Idle' }
+    ])
+  })
+
+  it('keeps attribute ids across a reload', () => {
+    const p = fromFile(example)
+    const again = reloadText(saveText(p, 'yaml', { editor: true }), 'yaml', p)
+    const ids = (q: typeof p) => q.modules.flatMap((m) => m.attributes.map((a) => a.id))
+    expect(ids(again)).toEqual(ids(p))
+  })
+
+  it('keeps default values as YAML values, integers too large for a number as text', () => {
+    const p = fromFile(example)
+    const sensor = p.modules.find((m) => m.name === 'Sensor')!
+    expect(sensor.attributes[0]!.default).toBe(50)
+    const pose = p.types.find((t) => t.name === 'Pose') as StructDef
+    expect(pose.fields.map((f) => f.default)).toEqual([undefined, [0, 0, 0, 1]])
+    const values = [true, -12, '18446744073709551615', 0.5, '42', null, { x: [1, 2] }]
+    sensor.attributes = values.map((value, i) => ({
+      id: `a${i}`,
+      name: `a${i}`,
+      type: { kind: 'primitive', name: 'string' },
+      description: '',
+      default: value
+    }))
+    const file = toFile(p, { editor: false })
+    expect(file.modules[0]!.modules![0]!.attributes!.map((a) => a.default)).toEqual(values)
+    const again = reloadText(saveText(p, 'yaml', { editor: true }), 'yaml', p)
+    expect(again.modules.find((m) => m.name === 'Sensor')!.attributes.map((a) => a.default)).toEqual(values)
+  })
+})
+
+describe('module methods', () => {
+  it('loads methods like interface messages, and leaves them out when there are none', () => {
+    const p = fromFile(example)
+    const controller = p.modules.find((m) => m.name === 'Controller')!
+    const mode = p.types.find((t) => t.name === 'Mode')!
+    expect(controller.methods).toMatchObject([
+      {
+        name: 'setMode',
+        params: [{ name: 'mode', type: { kind: 'ref', id: mode.id }, direction: 'in', const: true }],
+        returns: { kind: 'primitive', name: 'bool' }
+      },
+      { name: 'reset', description: '', params: [], returns: null },
+      { name: 'isRunning', const: true },
+      { name: 'instances', static: true }
+    ])
+    expect(controller.methods.map((x) => [!!x.static, !!x.const])).toEqual([
+      [false, false],
+      [false, false],
+      [false, true],
+      [true, false]
+    ])
+    const file = toFile(p, { editor: false })
+    expect(file.modules[0]!.methods).toBeUndefined()
+    expect(file.modules[0]!.modules![1]!.methods).toEqual(example.modules[0].modules[1].methods)
+  })
+
+  it('round-trips attribute qualifiers, left out when unset', () => {
+    const p = fromFile(example)
+    const sensor = p.modules.find((m) => m.name === 'Sensor')!
+    expect(sensor.attributes.map((a) => [a.name, !!a.static, !!a.const])).toEqual([
+      ['rateHz', false, false],
+      ['maxRateHz', true, true]
+    ])
+    expect('static' in sensor.attributes[0]!).toBe(false)
+    const file = toFile(p, { editor: false })
+    expect(file.modules[0]!.modules![0]!.attributes).toEqual(example.modules[0].modules[0].attributes)
+  })
+
+  it('keeps method and parameter ids across a reload', () => {
+    const p = fromFile(example)
+    const again = reloadText(saveText(p, 'yaml', { editor: true }), 'yaml', p)
+    const ids = (q: typeof p) =>
+      q.modules.flatMap((m) => m.methods.flatMap((x) => [x.id, ...x.params.map((prm) => prm.id)]))
+    expect(ids(again)).toEqual(ids(p))
   })
 })

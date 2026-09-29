@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { belowContent, contentTop, emptyProject, LAYOUT_PAD, modulePath, modulePaths } from '@/model/project'
+import {
+  ATTR_ROW,
+  belowContent,
+  contentTop,
+  emptyProject,
+  LAYOUT_PAD,
+  minSize,
+  modulePath,
+  modulePaths
+} from '@/model/project'
 import type { Module, Project } from '@/model/types'
 
 const mod = (id: string, parentId: string | null, y: number, height: number): Module => ({
@@ -8,6 +17,8 @@ const mod = (id: string, parentId: string | null, y: number, height: number): Mo
   description: '',
   parentId,
   metadata: {},
+  attributes: [],
+  methods: [],
   ports: [],
   layout: { x: 0, y, width: 100, height }
 })
@@ -40,5 +51,35 @@ describe('modulePaths', () => {
     const paths = modulePaths(p)
     for (const m of p.modules) expect(paths.get(m.id)).toBe(modulePath(p, m.id))
     expect(paths.get('b')).toBe('root.a.b')
+  })
+})
+
+describe('attributes', () => {
+  const attr = (name: string) => ({
+    id: name,
+    name,
+    type: { kind: 'primitive', name: 'bool' } as const,
+    description: ''
+  })
+
+  it('grow the smallest size of a module', () => {
+    const m = { ...mod('m', null, 0, 100), attributes: [attr('a'), attr('b')] }
+    for (const o of ['horizontal', 'vertical'] as const)
+      expect(minSize(m, o).height - minSize({ ...m, attributes: [] }, o).height).toBe(2 * ATTR_ROW + 8)
+  })
+
+  it('grow the smallest size of a module with methods too', () => {
+    const method = { id: 'f', name: 'f', description: '', params: [], returns: null }
+    const m = { ...mod('m', null, 0, 100), attributes: [attr('a')], methods: [method] }
+    for (const o of ['horizontal', 'vertical'] as const)
+      expect(minSize(m, o).height - minSize({ ...m, attributes: [], methods: [] }, o).height).toBe(
+        2 * (ATTR_ROW + 8)
+      )
+  })
+
+  it('push the content of a container down', () => {
+    const parent = { ...mod('parent', null, 0, 400), attributes: [attr('a')] }
+    const p: Project = { ...emptyProject(), modules: [parent] }
+    expect(belowContent(p, 'parent')).toBe(contentTop(p.orientation) + ATTR_ROW + 8 + LAYOUT_PAD)
   })
 })

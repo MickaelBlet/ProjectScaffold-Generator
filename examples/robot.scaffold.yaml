@@ -5,101 +5,9 @@ project:
   metadata:
     version: 0.1.0
 types:
-  - kind: struct
-    name: Vec3
-    fields:
-      - name: x
-        type:
-          kind: primitive
-          name: float32
-      - name: y
-        type:
-          kind: primitive
-          name: float32
-      - name: z
-        type:
-          kind: primitive
-          name: float32
-  - kind: enum
-    name: Mode
-    underlying: uint8
-    values:
-      - name: Idle
-        value: 0
-      - name: Run
-        value: 1
-      - name: Fault
-        value: 255
-  - kind: alias
-    name: Samples
-    type:
-      kind: vector
-      of:
-        kind: primitive
-        name: uint16
-  - kind: struct
-    name: Pose
-    description: Position and orientation
-    fields:
-      - name: position
-        type:
-          kind: ref
-          name: Vec3
-      - name: orientation
-        type:
-          kind: array
-          of:
-            kind: primitive
-            name: float64
-          size: 4
   - kind: primitive
     name: Primitive
-interfaces:
-  - name: Telemetry
-    messages:
-      - name: publish
-        params:
-          - name: pose
-            type:
-              kind: ref
-              name: Pose
-          - name: tags
-            type:
-              kind: map
-              key:
-                kind: primitive
-                name: string
-              value:
-                kind: list
-                of:
-                  kind: primitive
-                  name: uint8
-        returns: null
-  - name: Control
-    messages:
-      - name: setMode
-        params:
-          - name: mode
-            type:
-              kind: ref
-              name: Mode
-        returns:
-          kind: primitive
-          name: bool
-      - name: raw
-        params:
-          - name: samples
-            type:
-              kind: ref
-              name: Samples
-            direction: inout
-          - name: gain
-            type:
-              kind: optional
-              of:
-                kind: primitive
-                name: float32
-        returns: null
+interfaces: []
 modules:
   - name: Core
     metadata:
@@ -112,12 +20,59 @@ modules:
     modules:
       - name: Sensor
         color: "#8a4fd1"
+        attributes:
+          - name: rateHz
+            type:
+              kind: primitive
+              name: float32
+            default: 50
+          - name: maxRateHz
+            static: true
+            const: true
+            type:
+              kind: primitive
+              name: float32
+            default: 200
         ports:
           - name: out
             role: out
             interface: Telemetry
       - name: Controller
         color: "#d14f9e"
+        attributes:
+          - name: mode
+            type:
+              kind: ref
+              name: Mode
+            default: Idle
+        methods:
+          - name: setMode
+            description: Switch mode, false when the transition is not allowed
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: Mode
+                const: true
+            returns:
+              kind: primitive
+              name: bool
+          - name: reset
+            params: []
+            returns: null
+          - name: isRunning
+            const: true
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: instances
+            description: Number of controllers alive
+            static: true
+            params: []
+            returns:
+              kind: primitive
+              name: uint32
         ports:
           - name: telemetry
             role: in
@@ -178,37 +133,142 @@ links:
     constraints:
       direction: bidirectional
       ack:
-        required: true
+        required: false
       performance:
         class: normal
         maxLatencyMs: 50
       remote:
         enabled: true
         transport: tcp
+dependencies:
+  - name: Common
+    file: common.scaffold.yaml
+    types:
+      - kind: struct
+        name: Vec3
+        fields:
+          - name: x
+            type:
+              kind: primitive
+              name: float32
+          - name: y
+            type:
+              kind: primitive
+              name: float32
+          - name: z
+            type:
+              kind: primitive
+              name: float32
+      - kind: enum
+        name: Mode
+        underlying: uint8
+        values:
+          - name: Idle
+            value: 0
+          - name: Run
+            value: 1
+          - name: Fault
+            value: 255
+      - kind: alias
+        name: Samples
+        type:
+          kind: vector
+          of:
+            kind: primitive
+            name: uint16
+      - kind: struct
+        name: Pose
+        description: Position and orientation
+        fields:
+          - name: position
+            type:
+              kind: ref
+              name: Vec3
+          - name: orientation
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float64
+              size: 4
+            default:
+              - 0
+              - 0
+              - 0
+              - 1
+    interfaces:
+      - name: Telemetry
+        messages:
+          - name: publish
+            params:
+              - name: pose
+                type:
+                  kind: ref
+                  name: Pose
+              - name: tags
+                type:
+                  kind: map
+                  key:
+                    kind: primitive
+                    name: string
+                  value:
+                    kind: list
+                    of:
+                      kind: primitive
+                      name: uint8
+            returns: null
+      - name: Control
+        messages:
+          - name: setMode
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: Mode
+            returns:
+              kind: primitive
+              name: bool
+          - name: raw
+            params:
+              - name: samples
+                type:
+                  kind: ref
+                  name: Samples
+                direction: inout
+              - name: gain
+                type:
+                  kind: optional
+                  of:
+                    kind: primitive
+                    name: float32
+            returns: null
 editor:
   layout:
     Core:
-      x: 209.58070984744194
-      y: -86.89194764219295
-      width: 666
-      height: 421
+      x: 200
+      y: -60
+      width: 700
+      height: 420
     Core.Sensor:
-      x: 20
-      y: 92
-      width: 200
-      height: 72
+      x: 100
+      y: 120
+      width: 260
+      height: 280
     Core.Controller:
-      x: 425.1428571428572
-      y: 172.28571428571433
-      width: 200
-      height: 72
+      x: 460
+      y: 40
+      width: 220
+      height: 240
     Core.Logger:
-      x: 316.86178349514944
-      y: 72
+      x: 460
+      y: 320
       width: 200
-      height: 72
+      height: 80
     Operator:
-      x: -143
-      y: -77
-      width: 196
-      height: 316
+      x: -100
+      y: -60
+      width: 200
+      height: 220
+  views:
+    - name: Operator
+      root: Operator

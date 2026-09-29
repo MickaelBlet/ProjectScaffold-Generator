@@ -1,0 +1,85 @@
+schemaVersion: 1
+project:
+  name: Weather
+  description: Weather service feeding the ground station
+  metadata:
+    version: 2.3.0
+    owner: ops-team
+types:
+  - kind: alias
+    name: Degrees
+    description: Angle in decimal degrees
+    type:
+      kind: primitive
+      name: float64
+  - kind: struct
+    name: Wind
+    fields:
+      - name: direction
+        type:
+          kind: ref
+          name: Degrees
+      - name: speedMps
+        type:
+          kind: primitive
+          name: float32
+      - name: gustMps
+        type:
+          kind: optional
+          of:
+            kind: primitive
+            name: float32
+        default: null
+  - kind: struct
+    name: Forecast
+    fields:
+      - name: zone
+        type:
+          kind: primitive
+          name: string
+      - name: wind
+        type:
+          kind: ref
+          name: Wind
+      - name: visibilityKm
+        type:
+          kind: primitive
+          name: float32
+        default: 10
+      - name: flyable
+        type:
+          kind: primitive
+          name: bool
+        default: true
+interfaces:
+  - name: WeatherFeed
+    messages:
+      - name: forecast
+        params:
+          - name: forecast
+            type:
+              kind: ref
+              name: Forecast
+        returns: null
+modules:
+  - name: WeatherService
+    description: Publishes forecasts for the flight zones
+    color: "#3b8fd1"
+    attributes:
+      - name: refreshS
+        type:
+          kind: primitive
+          name: uint32
+        default: 600
+    ports:
+      - name: feed
+        role: out
+        interface: WeatherFeed
+links: []
+editor:
+  layout:
+    WeatherService:
+      x: 20
+      y: 20
+      width: 200
+      height: 98

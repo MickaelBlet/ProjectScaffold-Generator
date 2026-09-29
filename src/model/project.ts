@@ -1,15 +1,17 @@
 // Pure helpers over the in-memory project.
-import { isReservedTypeName, walkTypeRef } from './typeExpr'
+import { isReservedTypeName, mapTypeRef, printTypeExpr, walkTypeRef } from './typeExpr'
 import {
   GLOBAL_VIEW,
   type Orientation,
   type Id,
-  type Import,
+  type Dependency,
   type ImportedModule,
   type LinkConstraints,
+  type Method,
   type Module,
   type Port,
   type PortRole,
+  type Qualifier,
   type Project,
   type Rect,
   type TypeRef,
@@ -33,7 +35,7 @@ export function emptyProject(): Project {
     interfaces: [],
     modules: [],
     links: [],
-    imports: [],
+    dependencies: [],
     views: [],
     notes: [],
     orientation: 'horizontal'
@@ -74,11 +76,26 @@ export const PORT_BAND = 24
 /** Width taken by one port along a band. */
 export const PORT_COL = 90
 
-type WithPorts = { ports: { role: string }[] }
+/** Height of one line in a module's attribute or method compartment. */
+export const ATTR_ROW = 18
 
-/** Top of the area holding a module's content (submodules): below the header and the top band. */
-export function contentTop(o: Orientation): number {
-  return o === 'vertical' ? PORT_BAND + MODULE_HEADER : MODULE_HEADER
+type WithCompartments = { attributes?: readonly unknown[]; methods?: readonly unknown[] }
+type WithPorts = { ports: { role: string }[] } & WithCompartments
+
+/** Height of one compartment of `n` lines: none when empty. */
+const compartmentHeight = (n = 0): number => (n ? n * ATTR_ROW + 8 : 0)
+
+/** Height of a module's attribute and method compartments, below its header. */
+export function compartmentsHeight(m: WithCompartments): number {
+  return compartmentHeight(m.attributes?.length) + compartmentHeight(m.methods?.length)
+}
+
+/**
+ * Top of the area holding a module's content (submodules): below the header, the top band and
+ * the attributes and methods of `m`.
+ */
+export function contentTop(o: Orientation, m: WithCompartments = {}): number {
+  return (o === 'vertical' ? PORT_BAND + MODULE_HEADER : MODULE_HEADER) + compartmentsHeight(m)
 }
 
 /** Space kept below a module's content. */
@@ -86,13 +103,14 @@ export function contentBottom(o: Orientation): number {
   return o === 'vertical' ? PORT_BAND + LAYOUT_PAD : LAYOUT_PAD
 }
 
-/** Smallest size showing a module's header and ports. */
+/** Smallest size showing a module's header, attributes, methods and ports. */
 export function minSize(m: WithPorts, o: Orientation): { width: number; height: number } {
-  if (o === 'horizontal') return { width: 140, height: leafHeight(portRows(m)) }
+  const attrs = compartmentsHeight(m)
+  if (o === 'horizontal') return { width: 140, height: leafHeight(portRows(m)) + attrs }
   const ins = m.ports.filter((p) => p.role === 'in').length
   return {
     width: Math.max(140, Math.max(ins, m.ports.length - ins) * PORT_COL + 20),
-    height: 2 * PORT_BAND + MODULE_HEADER + 8
+    height: 2 * PORT_BAND + MODULE_HEADER + 8 + attrs
   }
 }
 
@@ -110,7 +128,7 @@ export function growAncestors(d: Project, id: Id): void {
     const parent = d.modules.find((m) => m.id === parentId)
     if (!parent) return
     child.layout.x = Math.max(child.layout.x, LAYOUT_PAD / 2)
-    child.layout.y = Math.max(child.layout.y, contentTop(d.orientation))
+    child.layout.y = Math.max(child.layout.y, contentTop(d.orientation, parent))
     parent.layout.width = Math.max(parent.layout.width, child.layout.x + child.layout.width + LAYOUT_PAD)
     parent.layout.height = Math.max(
       parent.layout.height,
@@ -127,7 +145,10 @@ export function childModules(p: Project, parentId: Id | null): Module[] {
 /** Parent-relative top of the free space below a module's submodules (`exceptId` left out). */
 export function belowContent(p: Project, parentId: Id, exceptId?: Id): number {
   return Math.max(
-    contentTop(p.orientation) + LAYOUT_PAD,
+    contentTop(
+      p.orientation,
+      p.modules.find((m) => m.id === parentId)
+    ) + LAYOUT_PAD,
     ...childModules(p, parentId)
       .filter((c) => c.id !== exceptId)
       .map((c) => c.layout.y + c.layout.height + LAYOUT_PAD)
@@ -152,7 +173,7 @@ export function subtreeIds(p: Project, id: Id): Set<Id> {
 
 export function modulePath(p: Project, id: Id): string {
   const imported = findImported(p, id)
-  if (imported) return `${imported.imp.name}/${imported.module.path}`
+  if (imported) return `${imported.dep.name}/${imported.module.path}`
   const parts: string[] = []
   let cur = p.modules.find((m) => m.id === id)
   while (cur) {
@@ -163,11 +184,11 @@ export function modulePath(p: Project, id: Id): string {
   return parts.join('.')
 }
 
-const findImportedIn = (p: Pick<Project, 'imports'>, id: Id): ImportedModule | undefined =>
+const findImportedIn = (p: Pick<Project, 'dependencies'>, id: Id): ImportedModule | undefined =>
   findImported(p, id)?.module
 
 /** `modulePath` of every module and imported module, computed at once. */
-export function modulePaths(p: Pick<Project, 'modules' | 'imports'>): Map<Id, string> {
+export function modulePaths(p: Pick<Project, 'modules' | 'dependencies'>): Map<Id, string> {
   const byId = new Map(p.modules.map((m) => [m.id, m]))
   const paths = new Map<Id, string>()
   const path = (m: Module): string => {
@@ -180,13 +201,13 @@ export function modulePaths(p: Pick<Project, 'modules' | 'imports'>): Map<Id, st
     return known
   }
   for (const m of p.modules) path(m)
-  for (const imp of p.imports) for (const m of imp.modules) paths.set(m.id, `${imp.name}/${m.path}`)
+  for (const dep of p.dependencies) for (const m of dep.modules) paths.set(m.id, `${dep.name}/${m.path}`)
   return paths
 }
 
 /** Text of a link end, `Module.Path:port`, from `modulePaths`. */
 export function endpointLabel(
-  p: Pick<Project, 'modules' | 'imports'>,
+  p: Pick<Project, 'modules' | 'dependencies'>,
   paths: Map<Id, string>,
   e: { moduleId: Id; portId: Id }
 ): string {
@@ -264,7 +285,7 @@ export function linkOrigin(p: Project, l: { from: { moduleId: Id }; to: { module
  * project's interface of the same name (null when there is none): changing it has no effect.
  */
 export function findPort(
-  p: Pick<Project, 'modules' | 'imports' | 'interfaces'>,
+  p: Pick<Project, 'modules' | 'dependencies' | 'interfaces'>,
   moduleId: Id,
   portId: Id
 ): Port | undefined {
@@ -276,25 +297,25 @@ export function findPort(
   return { ...rest, interfaceId: p.interfaces.find((i) => i.name === iface)?.id ?? null }
 }
 
-// Imports: modules of other projects placed on the canvas.
+// Imported modules: modules of dependencies placed on the canvas.
 
 export const IMPORTED_PREFIX = 'imported:'
 
 export const isImportedId = (id: Id): boolean => id.startsWith(IMPORTED_PREFIX)
 
 export function findImported(
-  p: Pick<Project, 'imports'>,
+  p: Pick<Project, 'dependencies'>,
   id: Id
-): { imp: Import; module: ImportedModule } | undefined {
+): { dep: Dependency; module: ImportedModule } | undefined {
   if (!isImportedId(id)) return undefined
-  for (const imp of p.imports) {
-    const module = imp.modules.find((m) => m.id === id)
-    if (module) return { imp, module }
+  for (const dep of p.dependencies) {
+    const module = dep.modules.find((m) => m.id === id)
+    if (module) return { dep, module }
   }
   return undefined
 }
 
-export const allImported = (p: Project): ImportedModule[] => p.imports.flatMap((i) => i.modules)
+export const allImported = (p: Project): ImportedModule[] => p.dependencies.flatMap((d) => d.modules)
 
 /** Top-level modules, notes and imported modules lying fully inside a frame, at their saved size. */
 export function frameContents(
@@ -342,6 +363,81 @@ export function nextModuleColor(p: Project): string {
   const count = new Map(hues.map((c) => [c, 0]))
   for (const m of p.modules) if (m.color && count.has(m.color)) count.set(m.color, count.get(m.color)! + 1)
   return hues.reduce((best, c) => (count.get(c)! < count.get(best)! ? c : best))
+}
+
+/** Set a qualifier of an attribute, method or parameter, or leave it out. */
+export function setQualifier(e: { [K in Qualifier]?: boolean }, q: Qualifier, on: boolean): void {
+  if (on) e[q] = true
+  else delete e[q]
+}
+
+/** Set a qualifier of a method, keeping the others consistent: `pure` and `override` imply `virtual`, which excludes `static`. */
+export function setMethodQualifier(m: Method, q: Qualifier, on: boolean): void {
+  setQualifier(m, q, on)
+  if (!on) {
+    if (q === 'virtual') for (const k of ['pure', 'override'] as const) setQualifier(m, k, false)
+    return
+  }
+  if (q === 'static') for (const k of ['virtual', 'pure', 'override'] as const) setQualifier(m, k, false)
+  else if (q === 'pure' || q === 'override' || q === 'virtual') {
+    m.virtual = true
+    setQualifier(m, 'static', false)
+  }
+}
+
+/** Bases of a module, direct and indirect, nearest first; a base met twice (or a cycle) is listed once. */
+export function ancestorModules(p: Project, id: Id): Module[] {
+  const seen = new Set<Id>([id])
+  const out: Module[] = []
+  let level = [id]
+  while (level.length) {
+    const next: Id[] = []
+    for (const cur of level)
+      for (const b of p.modules.find((m) => m.id === cur)?.bases ?? []) {
+        const base = p.modules.find((m) => m.id === b)
+        if (!base || seen.has(b)) continue
+        seen.add(b)
+        out.push(base)
+        next.push(b)
+      }
+    level = next
+  }
+  return out
+}
+
+/** Whether making `baseId` a base of `id` keeps the inheritance acyclic. */
+export function canDerive(p: Project, id: Id, baseId: Id): boolean {
+  return baseId !== id && !ancestorModules(p, baseId).some((m) => m.id === id)
+}
+
+/** Parameters (direction, const, type), return type and const of a method, to compare overrides. */
+export function methodSignature(m: Method): string {
+  const type = (t: TypeRef): string => printTypeExpr(mapTypeRef(t, (r) => ({ kind: 'ref', name: r.id })))
+  const params = m.params.map((prm) => `${prm.direction} ${prm.const ? 'const ' : ''}${type(prm.type)}`)
+  return `(${params.join(', ')})${m.returns ? type(m.returns) : ''}${m.const ? ' const' : ''}`
+}
+
+/**
+ * Pure methods a module inherits and does not implement: those of its bases not defined (by name)
+ * in itself or in a base nearer to it on the way.
+ */
+export function unimplementedMethods(p: Project, id: Id): { base: Module; method: Method }[] {
+  const byId = new Map(p.modules.map((m) => [m.id, m]))
+  const out = new Map<string, { base: Module; method: Method }>()
+  /** Walks the bases of `cur`; `defined` holds the names defined on the way from the module. */
+  const walk = (cur: Module, defined: Set<string>, stack: Set<Id>): void => {
+    for (const b of cur.bases ?? []) {
+      const base = byId.get(b)
+      if (!base || stack.has(b)) continue
+      for (const x of base.methods)
+        if (x.pure && !defined.has(x.name) && !out.has(x.name)) out.set(x.name, { base, method: x })
+      const names = new Set([...defined, ...base.methods.filter((x) => !x.pure).map((x) => x.name)])
+      walk(base, names, new Set([...stack, b]))
+    }
+  }
+  const mod = byId.get(id)
+  if (mod) walk(mod, new Set(mod.methods.map((x) => x.name)), new Set([id]))
+  return [...out.values()]
 }
 
 export function uniqueName(base: string, taken: Iterable<string>): string {
@@ -400,7 +496,7 @@ export function transportError(p: Project, name: string, except?: number): strin
 }
 
 export interface UsageOwner {
-  kind: 'type' | 'interface'
+  kind: 'type' | 'interface' | 'module'
   id: Id
 }
 
@@ -417,6 +513,15 @@ export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: strin
     for (const m of i.messages) {
       for (const prm of m.params) yield { ref: prm.type, where: `${i.name}.${m.name}(${prm.name})`, owner }
       if (m.returns) yield { ref: m.returns, where: `${i.name}.${m.name} returns`, owner }
+    }
+  }
+  for (const m of p.modules) {
+    const owner = { kind: 'module', id: m.id } as const
+    const path = modulePath(p, m.id)
+    for (const a of m.attributes) yield { ref: a.type, where: `${path}.${a.name}`, owner }
+    for (const x of m.methods) {
+      for (const prm of x.params) yield { ref: prm.type, where: `${path}.${x.name}(${prm.name})`, owner }
+      if (x.returns) yield { ref: x.returns, where: `${path}.${x.name} returns`, owner }
     }
   }
 }

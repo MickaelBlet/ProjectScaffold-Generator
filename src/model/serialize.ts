@@ -4,6 +4,8 @@ import {
   FileProjectSchema,
   SCHEMA_VERSION,
   type FileEditor,
+  type FileInterface,
+  type FileMessage,
   type FileModule,
   type FileProject,
   type FileTypeDef
@@ -12,6 +14,7 @@ import { mapTypeRef } from './typeExpr'
 import { pair } from './reuse'
 import {
   childModules,
+  compartmentsHeight,
   findImported,
   IMPORTED_PREFIX,
   leafHeight,
@@ -21,20 +24,28 @@ import {
   newId,
   portRows
 } from './project'
-import type {
-  Field,
-  Id,
-  Import,
-  Link,
-  Metadata,
-  Module,
-  Note,
-  Param,
-  Project,
-  Side,
-  TypeDef,
-  TypeRef,
-  View
+import {
+  METHOD_QUALIFIERS,
+  type Attribute,
+  type Field,
+  type Id,
+  type Dependency,
+  type Interface,
+  type Link,
+  type Message,
+  type Metadata,
+  type Method,
+  type Module,
+  type Note,
+  type Param,
+  type Qualifier,
+  type Project,
+  type Side,
+  type TypeDef,
+  type TypeRef,
+  type Value,
+  type ValueField,
+  type View
 } from './types'
 import type { FileTypeRef } from './schema'
 
@@ -63,6 +74,9 @@ export class LoadError extends Error {
 type DataPath = (string | number)[]
 
 const opt = (s: string): string | undefined => (s ? s : undefined)
+/** Qualifiers of `q` that are set, the others left out. */
+const qualifiers = (q: { [K in Qualifier]?: boolean }): { [K in Qualifier]?: true } =>
+  Object.fromEntries(METHOD_QUALIFIERS.filter((k) => q[k]).map((k) => [k, true]))
 const optMeta = (m: Metadata): Metadata | undefined => (Object.keys(m).length ? { ...m } : undefined)
 /** Name placements of the ports that have one, by port name. */
 const portLabels = (ports: { name: string; label?: Side }[]): Record<string, Side> | undefined => {
@@ -80,15 +94,41 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
   const ref = (t: TypeRef): FileTypeRef =>
     mapTypeRef(t, (r) => ({ kind: 'ref', name: typeName.get(r.id) ?? '__deleted__' }))
   const field = (f: Field) => ({ name: f.name, type: ref(f.type), description: opt(f.description) })
+  const valueField = (f: ValueField) => ({
+    ...field(f),
+    default: f.default
+  })
   const param = (prm: Param) => ({
     ...field(prm),
     direction: prm.direction === 'in' ? undefined : prm.direction
   })
+  const message = (m: Message) => ({
+    name: m.name,
+    description: opt(m.description),
+    params: m.params.map(param),
+    returns: m.returns ? ref(m.returns) : null
+  })
+  const attribute = (a: Attribute) => {
+    const { name, ...rest } = valueField(a)
+    return { name, ...qualifiers(a), ...rest }
+  }
+  const method = (m: Method) => ({
+    name: m.name,
+    description: opt(m.description),
+    ...qualifiers(m),
+    params: m.params.map((prm) => ({ ...param(prm), ...qualifiers(prm) })),
+    returns: m.returns ? ref(m.returns) : null
+  })
 
-  const types: FileTypeDef[] = p.types.map((t) => {
+  const typeDef = (t: TypeDef): FileTypeDef => {
     switch (t.kind) {
       case 'struct':
-        return { kind: 'struct', name: t.name, description: opt(t.description), fields: t.fields.map(field) }
+        return {
+          kind: 'struct',
+          name: t.name,
+          description: opt(t.description),
+          fields: t.fields.map(valueField)
+        }
       case 'enum':
         return {
           kind: 'enum',
@@ -102,6 +142,15 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       case 'primitive':
         return { kind: 'primitive', name: t.name, description: opt(t.description) }
     }
+  }
+  const iface = (i: Interface) => ({
+    name: i.name,
+    description: opt(i.description),
+    messages: i.messages.map(message)
+  })
+  const owned = (dependency: Id | undefined) => ({
+    types: p.types.filter((t) => t.dependency === dependency).map(typeDef),
+    interfaces: p.interfaces.filter((i) => i.dependency === dependency).map(iface)
   })
 
   const moduleTree = (parentId: Id | null): FileModule[] =>
@@ -110,8 +159,12 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       return {
         name: m.name,
         description: opt(m.description),
+        kind: m.kind,
+        bases: m.bases?.length ? m.bases.map((b) => modulePath(p, b)) : undefined,
         metadata: optMeta(m.metadata),
         color: m.color,
+        attributes: m.attributes.length ? m.attributes.map(attribute) : undefined,
+        methods: m.methods.length ? m.methods.map(method) : undefined,
         ports: m.ports.map((pt) => ({
           name: pt.name,
           role: pt.role,
@@ -126,7 +179,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     const imported = findImported(p, e.moduleId)
     if (imported)
       return {
-        import: imported.imp.name,
+        project: imported.dep.name,
         module: imported.module.path,
         port: imported.module.ports.find((pt) => pt.id === e.portId)?.name ?? ''
       }
@@ -140,40 +193,36 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     schemaVersion: SCHEMA_VERSION,
     project: { name: p.name, description: opt(p.description), metadata: optMeta(p.metadata) },
     transports: p.transports.length ? [...p.transports] : undefined,
-    types,
-    interfaces: p.interfaces.map((i) => ({
-      name: i.name,
-      description: opt(i.description),
-      messages: i.messages.map((m) => ({
-        name: m.name,
-        description: opt(m.description),
-        params: m.params.map(param),
-        returns: m.returns ? ref(m.returns) : null
-      }))
-    })),
+    ...owned(undefined),
     modules: moduleTree(null),
-    imports: p.imports.length
-      ? p.imports.map((i) => ({
-          name: i.name,
-          file: i.file,
-          modules: i.modules.map((m) => ({
-            module: m.path,
-            ports: m.ports.map((pt) => ({
-              name: pt.name,
-              role: pt.role,
-              interface: pt.interface,
-              description: opt(pt.description)
-            }))
-          }))
-        }))
-      : undefined,
     links: p.links.map((l) => ({
       name: l.name,
       description: opt(l.description),
       from: endpoint(l.from),
       to: endpoint(l.to),
       constraints: l.constraints
-    }))
+    })),
+    dependencies: p.dependencies.length
+      ? p.dependencies.map((x) => ({
+          name: x.name,
+          file: x.file,
+          uses: x.uses.length ? [...x.uses] : undefined,
+          indirect: x.indirect || undefined,
+          shared: x.shared.length ? [...x.shared] : undefined,
+          ...owned(x.id),
+          modules: x.modules.length
+            ? x.modules.map((m) => ({
+                module: m.path,
+                ports: m.ports.map((pt) => ({
+                  name: pt.name,
+                  role: pt.role,
+                  interface: pt.interface,
+                  description: opt(pt.description)
+                }))
+              }))
+            : undefined
+        }))
+      : undefined
   }
   if (options.editor) {
     const editor: FileEditor = {
@@ -193,12 +242,14 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           { locked: m.locked || undefined, labels: portLabels(m.ports) }
         ])
       )
-    if (p.imports.some((i) => i.modules.length))
-      editor.imports = Object.fromEntries(
-        p.imports.map((i) => [
-          i.name,
-          Object.fromEntries(i.modules.map((m) => [m.path, { ...m.position, labels: portLabels(m.ports) }]))
-        ])
+    if (p.dependencies.some((x) => x.modules.length))
+      editor.dependencies = Object.fromEntries(
+        p.dependencies
+          .filter((x) => x.modules.length)
+          .map((x) => [
+            x.name,
+            Object.fromEntries(x.modules.map((m) => [m.path, { ...m.position, labels: portLabels(m.ports) }]))
+          ])
       )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
     const routed = p.links.filter((l) => l.route)
@@ -271,13 +322,58 @@ export function fromFile(data: unknown, prev?: Project): Project {
     typeIds.set(name, id)
     return id
   }
-  const prevTypes = named(prev?.types, f.types)
-  const prevInterfaces = named(prev?.interfaces, f.interfaces)
-  const typeDefIds = f.types.map((t, i) => declare(t.name, 'type', prevTypes[i], ['types', i, 'name']))
-  const interfaceIds = f.interfaces.map((it, i) =>
-    declare(it.name, 'interface', prevInterfaces[i], ['interfaces', i, 'name'])
+  // Dependencies: their types and interfaces follow the project's own ones, in the same namespace.
+  const fileDependencies = f.dependencies ?? []
+  const prevDependencies = named(prev?.dependencies, fileDependencies)
+  const dependencyNames = new Set<string>()
+  const dependencyIds = fileDependencies.map((x, i) => {
+    if (dependencyNames.has(x.name)) report(`Duplicate dependency '${x.name}'`, ['dependencies', i, 'name'])
+    dependencyNames.add(x.name)
+    return idOf(prevDependencies[i], () => `dependency:${x.name}`)
+  })
+  fileDependencies.forEach((x, i) =>
+    (x.uses ?? []).forEach((u, j) => {
+      if (!dependencyNames.has(u))
+        report(`Dependency '${x.name}' uses unknown dependency '${u}'`, ['dependencies', i, 'uses', j])
+    })
   )
-  const interfaceNames = new Set(f.interfaces.map((i) => i.name))
+  /** Entries of the file with their owner dependency and their path in the file data. */
+  interface Entry<T> {
+    e: T
+    at: DataPath
+    dependency?: Id
+  }
+  const typeEntries: Entry<FileTypeDef>[] = [
+    ...f.types.map((e, i) => ({ e, at: ['types', i] })),
+    ...fileDependencies.flatMap((x, xi) =>
+      x.types.map((e, i) => ({ e, at: ['dependencies', xi, 'types', i], dependency: dependencyIds[xi]! }))
+    )
+  ]
+  const interfaceEntries: Entry<FileInterface>[] = [
+    ...f.interfaces.map((e, i) => ({ e, at: ['interfaces', i] })),
+    ...fileDependencies.flatMap((x, xi) =>
+      x.interfaces.map((e, i) => ({
+        e,
+        at: ['dependencies', xi, 'interfaces', i],
+        dependency: dependencyIds[xi]!
+      }))
+    )
+  ]
+  const owner = (dependency: Id | undefined) => (dependency ? { dependency } : {})
+
+  const prevTypes = named(
+    prev?.types,
+    typeEntries.map((x) => x.e)
+  )
+  const prevInterfaces = named(
+    prev?.interfaces,
+    interfaceEntries.map((x) => x.e)
+  )
+  const typeDefIds = typeEntries.map((x, i) => declare(x.e.name, 'type', prevTypes[i], [...x.at, 'name']))
+  const interfaceIds = interfaceEntries.map((x, i) =>
+    declare(x.e.name, 'interface', prevInterfaces[i], [...x.at, 'name'])
+  )
+  const interfaceNames = new Set(interfaceEntries.map((x) => x.e.name))
 
   const ref = (t: FileTypeRef, where: string, at: DataPath): TypeRef =>
     mapTypeRef(t, (r) => {
@@ -296,9 +392,42 @@ export function fromFile(data: unknown, prev?: Project): Project {
     type: ref(fl.type, `${where}.${fl.name}`, [...at, 'type']),
     description: fl.description ?? ''
   })
+  const valueField = (
+    fl: { name: string; type: FileTypeRef; description?: string; default?: unknown },
+    where: string,
+    was: { id: Id } | undefined,
+    at: DataPath
+  ): ValueField => {
+    const vf: ValueField = field(fl, where, was, at)
+    if (fl.default !== undefined) vf.default = fl.default as Value
+    return vf
+  }
+  /** Messages of an interface or methods of a module (`owner`), at `at` in the file data. */
+  const messages = (
+    list: readonly FileMessage[],
+    owner: string,
+    before: readonly Message[] | undefined,
+    at: DataPath
+  ): Message[] => {
+    const was = named(before, list)
+    return list.map((m, j) => {
+      const params = named(was[j]?.params, m.params)
+      const where = `${owner}.${m.name}`
+      return {
+        id: was[j]?.id ?? newId(),
+        name: m.name,
+        description: m.description ?? '',
+        params: m.params.map((prm, k) => ({
+          ...field(prm, where, params[k], [...at, j, 'params', k]),
+          direction: prm.direction ?? 'in'
+        })),
+        returns: m.returns ? ref(m.returns, `${where} returns`, [...at, j, 'returns']) : null
+      }
+    })
+  }
 
-  const types: TypeDef[] = f.types.map((t, i) => {
-    const base = { id: typeDefIds[i]!, name: t.name, description: t.description ?? '' }
+  const types: TypeDef[] = typeEntries.map(({ e: t, at, dependency }, i) => {
+    const base = { id: typeDefIds[i]!, name: t.name, description: t.description ?? '', ...owner(dependency) }
     const was = prevTypes[i]
     switch (t.kind) {
       case 'struct': {
@@ -306,7 +435,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
         return {
           ...base,
           kind: 'struct',
-          fields: t.fields.map((fl, j) => field(fl, t.name, fields[j], ['types', i, 'fields', j]))
+          fields: t.fields.map((fl, j) => valueField(fl, t.name, fields[j], [...at, 'fields', j]))
         }
       }
       case 'enum': {
@@ -319,40 +448,26 @@ export function fromFile(data: unknown, prev?: Project): Project {
         }
       }
       case 'alias':
-        return { ...base, kind: 'alias', type: ref(t.type, t.name, ['types', i, 'type']) }
+        return { ...base, kind: 'alias', type: ref(t.type, t.name, [...at, 'type']) }
       case 'primitive':
         return { ...base, kind: 'primitive' }
     }
   })
 
-  const interfaces = f.interfaces.map((i, idx) => {
-    const messages = named(prevInterfaces[idx]?.messages, i.messages)
-    return {
-      id: interfaceIds[idx]!,
-      name: i.name,
-      description: i.description ?? '',
-      messages: i.messages.map((m, j) => {
-        const params = named(messages[j]?.params, m.params)
-        return {
-          id: messages[j]?.id ?? newId(),
-          name: m.name,
-          description: m.description ?? '',
-          params: m.params.map((prm, k) => ({
-            ...field(prm, `${i.name}.${m.name}`, params[k], ['interfaces', idx, 'messages', j, 'params', k]),
-            direction: prm.direction ?? 'in'
-          })),
-          returns: m.returns
-            ? ref(m.returns, `${i.name}.${m.name} returns`, ['interfaces', idx, 'messages', j, 'returns'])
-            : null
-        }
-      })
-    }
-  })
+  const interfaces: Interface[] = interfaceEntries.map(({ e: i, at, dependency }, idx) => ({
+    id: interfaceIds[idx]!,
+    name: i.name,
+    description: i.description ?? '',
+    ...owner(dependency),
+    messages: messages(i.messages, i.name, prevInterfaces[idx]?.messages, [...at, 'messages'])
+  }))
 
   const layout = f.editor?.layout ?? {}
   const modules: Module[] = []
   const moduleByPath = new Map<string, Module>()
   const prevPaths = prev ? modulePaths(prev) : new Map<Id, string>()
+  /** Modules with bases, resolved once all modules are known. */
+  const derived: { mod: Module; path: string; bases: string[]; at: DataPath }[] = []
 
   // Auto layout (modules without editor data): rows of siblings, parents grown to fit children.
   const PAD = 20
@@ -385,13 +500,28 @@ export function fromFile(data: unknown, prev?: Project): Project {
       const was = before[i]
       const renamed = !!was && prevPaths.get(was.id) !== path
       const ports = named(was?.ports, fm.ports)
+      const attributes = named(was?.attributes, fm.attributes ?? [])
+      const height = leafHeight(portRows(fm)) + compartmentsHeight(fm)
       const portNames = new Set<string>()
       const mod: Module = {
         id: idOf(was, () => `module:${path}`),
         name: fm.name,
         description: fm.description ?? '',
         parentId,
+        ...(fm.kind && fm.kind !== 'class' && { kind: fm.kind }),
         metadata: { ...(fm.metadata ?? {}) },
+        attributes: (fm.attributes ?? []).map((a, j) => ({
+          ...valueField(a, path, attributes[j], [...at, i, 'attributes', j]),
+          ...qualifiers(a)
+        })),
+        methods: messages(fm.methods ?? [], path, was?.methods, [...at, i, 'methods']).map((x, j): Method => {
+          const fx = fm.methods![j]!
+          return {
+            ...x,
+            ...qualifiers(fx),
+            params: x.params.map((prm, k) => ({ ...prm, ...qualifiers(fx.params[k]!) }))
+          }
+        }),
         ports: fm.ports.map((pt, j) => {
           if (portNames.has(pt.name))
             report(`Duplicate port '${path}:${pt.name}'`, [...at, i, 'ports', j, 'name'])
@@ -416,16 +546,13 @@ export function fromFile(data: unknown, prev?: Project): Project {
             description: pt.description ?? ''
           }
         }),
-        layout: { x: 0, y: 0, width: MODULE_WIDTH, height: leafHeight(portRows(fm)) }
+        layout: { x: 0, y: 0, width: MODULE_WIDTH, height }
       }
       modules.push(mod)
       moduleByPath.set(path, mod)
+      if (fm.bases?.length) derived.push({ mod, path, bases: fm.bases, at: [...at, i, 'bases'] })
 
-      const inner = addModules(fm.modules ?? [], mod.id, path, leafHeight(portRows(fm)), [
-        ...at,
-        i,
-        'modules'
-      ])
+      const inner = addModules(fm.modules ?? [], mod.id, path, height, [...at, i, 'modules'])
       const style = f.editor?.style?.[path]
       const color = fm.color ?? style?.color
       if (color) mod.color = color
@@ -457,36 +584,41 @@ export function fromFile(data: unknown, prev?: Project): Project {
     return extent
   }
   addModules(f.modules, null, '', 0, ['modules'])
+  for (const { mod, path, bases, at } of derived)
+    mod.bases = bases.flatMap((b, j) => {
+      const base = moduleByPath.get(b)
+      if (!base) report(`Module '${path}': unknown base '${b}'`, [...at, j])
+      return base ? [base.id] : []
+    })
 
-  // Imported modules: placed on the right of the project's modules when they have no position.
-  const importNames = new Set<string>()
+  // Placed modules of dependencies: on the right of the project's modules when they have no position.
   let importY = PAD
   const importX =
     Math.max(0, ...modules.filter((m) => !m.parentId).map((m) => m.layout.x + m.layout.width)) + GAP_X * 2
-  const prevImports = named(prev?.imports, f.imports ?? [])
-  const imports: Import[] = (f.imports ?? []).map((i, idx) => {
-    if (importNames.has(i.name)) report(`Duplicate import '${i.name}'`, ['imports', idx, 'name'])
-    importNames.add(i.name)
+  const dependencies: Dependency[] = fileDependencies.map((i, idx) => {
     const paths = new Set<string>()
-    const importWas = prevImports[idx]
+    const fileModules = i.modules ?? []
     const before = pair(
-      importWas?.modules ?? [],
+      prevDependencies[idx]?.modules ?? [],
       (m) => m.path,
-      i.modules.map((m) => m.module)
+      fileModules.map((m) => m.module)
     )
     return {
-      id: idOf(importWas, () => `import:${i.name}`),
+      id: dependencyIds[idx]!,
       name: i.name,
       file: i.file,
-      modules: i.modules.map((m, j) => {
-        const where = `Import '${i.name}' module '${m.module}'`
+      uses: [...(i.uses ?? [])],
+      indirect: i.indirect ?? false,
+      shared: [...(i.shared ?? [])],
+      modules: fileModules.map((m, j) => {
+        const where = `Dependency '${i.name}' module '${m.module}'`
         if (paths.has(m.module))
-          report(`${where}: listed more than once`, ['imports', idx, 'modules', j, 'module'])
+          report(`${where}: listed more than once`, ['dependencies', idx, 'modules', j, 'module'])
         paths.add(m.module)
         const portNames = new Set<string>()
         const was = before[j]
         const ports = named(was?.ports, m.ports)
-        const saved = f.editor?.imports?.[i.name]?.[m.module]
+        const saved = f.editor?.dependencies?.[i.name]?.[m.module]
         const at = saved ?? was?.position
         const position = at ? { x: at.x, y: at.y } : { x: importX, y: importY }
         if (!at) importY += leafHeight(portRows(m)) + GAP_Y
@@ -497,7 +629,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
           ports: m.ports.map((pt, k) => {
             if (portNames.has(pt.name))
               report(`${where}: duplicate port '${pt.name}'`, [
-                'imports',
+                'dependencies',
                 idx,
                 'modules',
                 j,
@@ -520,15 +652,18 @@ export function fromFile(data: unknown, prev?: Project): Project {
     }
   })
 
-  const endpoint = (e: { import?: string; module: string; port: string }, where: string, at: DataPath) => {
-    if (e.import !== undefined) {
-      const imp = imports.find((i) => i.name === e.import)
-      const mod = imp?.modules.find((m) => m.path === e.module)
+  const endpoint = (e: { project?: string; module: string; port: string }, where: string, at: DataPath) => {
+    if (e.project !== undefined) {
+      const dep = dependencies.find((x) => x.name === e.project)
+      const mod = dep?.modules.find((m) => m.path === e.module)
       const port = mod?.ports.find((pt) => pt.name === e.port)
-      if (!imp) report(`${where}: unknown import '${e.import}'`, [...at, 'import'])
+      if (!dep) report(`${where}: unknown dependency '${e.project}'`, [...at, 'project'])
       else if (!mod)
-        report(`${where}: module '${e.module}' is not listed in import '${e.import}'`, [...at, 'module'])
-      else if (!port) report(`${where}: unknown port '${e.import}/${e.module}:${e.port}'`, [...at, 'port'])
+        report(`${where}: module '${e.module}' is not placed from dependency '${e.project}'`, [
+          ...at,
+          'module'
+        ])
+      else if (!port) report(`${where}: unknown port '${e.project}/${e.module}:${e.port}'`, [...at, 'port'])
       return { moduleId: mod?.id ?? '', portId: port?.id ?? '' }
     }
     const mod = moduleByPath.get(e.module)
@@ -587,7 +722,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
     interfaces,
     modules,
     links,
-    imports,
+    dependencies,
     views,
     notes,
     orientation: f.editor?.orientation ?? 'horizontal'

@@ -1,6 +1,13 @@
 // On-disk format (YAML/JSON). Source of truth for the published JSON Schema.
 import { z } from 'zod'
-import { INT_PRIMITIVES, PARAM_DIRECTIONS, PERFORMANCE_CLASSES, PRIMITIVES, type TypeRefOf } from './types'
+import {
+  INT_PRIMITIVES,
+  MODULE_KINDS,
+  PARAM_DIRECTIONS,
+  PERFORMANCE_CLASSES,
+  PRIMITIVES,
+  type TypeRefOf
+} from './types'
 
 export const SCHEMA_VERSION = 1
 
@@ -31,34 +38,45 @@ const Field = z.object({
   description: Description
 })
 
-const TypeDef = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('struct'),
-    name: Identifier,
-    description: Description,
-    fields: z.array(Field)
-  }),
-  z.object({
-    kind: z.literal('enum'),
-    name: Identifier,
-    description: Description,
-    underlying: z.enum(INT_PRIMITIVES),
-    values: z.array(z.object({ name: Identifier, value: z.int() }))
-  }),
-  z.object({
-    kind: z.literal('alias'),
-    name: Identifier,
-    description: Description,
-    type: FileTypeRefSchema
-  }),
-  z
-    .object({
-      kind: z.literal('primitive'),
+const ValueField = Field.extend({
+  default: z
+    .json()
+    .optional()
+    .describe(
+      'default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name; any value for a custom primitive'
+    )
+})
+
+const TypeDef = z
+  .discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('struct'),
       name: Identifier,
-      description: Description
-    })
-    .describe('custom primitive: an opaque type that generators map to a native type')
-])
+      description: Description,
+      fields: z.array(ValueField)
+    }),
+    z.object({
+      kind: z.literal('enum'),
+      name: Identifier,
+      description: Description,
+      underlying: z.enum(INT_PRIMITIVES),
+      values: z.array(z.object({ name: Identifier, value: z.int() }))
+    }),
+    z.object({
+      kind: z.literal('alias'),
+      name: Identifier,
+      description: Description,
+      type: FileTypeRefSchema
+    }),
+    z
+      .object({
+        kind: z.literal('primitive'),
+        name: Identifier,
+        description: Description
+      })
+      .describe('custom primitive: an opaque type that generators map to a native type')
+  ])
+  .meta({ id: 'TypeDef' })
 
 const Param = Field.extend({
   direction: z
@@ -74,11 +92,34 @@ const Message = z.object({
   returns: FileTypeRefSchema.nullable()
 })
 
-const Interface = z.object({
-  name: Identifier,
-  description: Description,
-  messages: z.array(Message)
+const Attribute = ValueField.extend({
+  static: z.boolean().optional().describe('shared by all instances of the module'),
+  const: z.boolean().optional().describe('not changed after initialization')
 })
+
+const MethodParam = Param.extend({
+  const: z.boolean().optional().describe('not changed by the method (in parameters only)')
+})
+
+const Method = Message.extend({
+  params: z.array(MethodParam),
+  static: z.boolean().optional().describe('called without a module instance'),
+  const: z.boolean().optional().describe("leaves the module's state unchanged"),
+  virtual: z.boolean().optional().describe('can be overridden by derived modules'),
+  pure: z
+    .boolean()
+    .optional()
+    .describe('pure virtual (`= 0`): not implemented by this module (virtual only)'),
+  override: z.boolean().optional().describe('overrides a virtual method of a base module (virtual only)')
+})
+
+const Interface = z
+  .object({
+    name: Identifier,
+    description: Description,
+    messages: z.array(Message)
+  })
+  .meta({ id: 'Interface' })
 
 const Port = z.object({
   name: Identifier,
@@ -90,8 +131,12 @@ const Port = z.object({
 export interface FileModule {
   name: string
   description?: string
+  kind?: (typeof MODULE_KINDS)[number]
+  bases?: string[]
   metadata?: Record<string, string>
   color?: string
+  attributes?: z.infer<typeof Attribute>[]
+  methods?: FileMethod[]
   ports: z.infer<typeof Port>[]
   modules?: FileModule[]
 }
@@ -101,8 +146,20 @@ const Module: z.ZodType<FileModule> = z
     z.object({
       name: Identifier,
       description: Description,
+      kind: z
+        .enum(MODULE_KINDS)
+        .optional()
+        .describe(
+          'class (default): concrete; abstract: may have pure methods; interface: only pure methods, no attributes'
+        ),
+      bases: z
+        .array(QualifiedName)
+        .optional()
+        .describe('paths of the modules of this project it derives from, in order'),
       metadata: Metadata,
       color: z.string().optional().describe('accent color (CSS color)'),
+      attributes: z.array(Attribute).optional().describe('typed properties of the module'),
+      methods: z.array(Method).optional().describe('method prototypes of the module'),
       ports: z.array(Port),
       modules: z.array(Module).optional()
     })
@@ -110,20 +167,34 @@ const Module: z.ZodType<FileModule> = z
   .meta({ id: 'Module' })
 
 const Endpoint = z.object({
-  import: Identifier.optional().describe('name of an import: the module belongs to that other project'),
+  project: Identifier.optional().describe('name of a dependency: the module belongs to that other project'),
   module: QualifiedName,
   port: Identifier
 })
 
-const Import = z
+const Dependency = z
   .object({
-    name: Identifier.describe('referenced by link endpoints (`import`)'),
+    name: Identifier.describe('referenced by `uses` of other dependencies and by link endpoints (`project`)'),
     file: z.string().describe('file of the other project, relative to this one'),
+    uses: z
+      .array(Identifier)
+      .optional()
+      .describe('dependencies of this list whose types and interfaces this one uses'),
+    indirect: z.boolean().optional().describe('only listed because another dependency uses it'),
+    shared: z
+      .array(Identifier)
+      .optional()
+      .describe('types and interfaces it defines like another dependency of this list, listed there'),
+    types: z.array(TypeDef).describe('its own types, as last read from it'),
+    interfaces: z.array(Interface).describe('its own interfaces, as last read from it'),
     modules: z
       .array(z.object({ module: QualifiedName, ports: z.array(Port) }))
-      .describe('modules of the other project that links reach, with their ports as last read from it')
+      .optional()
+      .describe('its modules placed on this canvas so that links reach them, with their ports as last read')
   })
-  .describe('Another project whose modules this one links to')
+  .describe(
+    "Another project this one uses: its types and interfaces share the namespace of the project's own ones, which reference them by name, and links may reach its modules"
+  )
 
 const LinkConstraints = z.object({
   direction: z.enum(['unidirectional', 'bidirectional']),
@@ -203,13 +274,13 @@ const Editor = z
       )
       .optional(),
     notes: z.array(EditorNote).optional(),
-    imports: z
+    dependencies: z
       .record(
         Identifier,
         z.record(QualifiedName, z.object({ x: z.number(), y: z.number(), labels: PortLabels }))
       )
       .optional()
-      .describe('canvas position of imported modules, by import and module path'),
+      .describe('canvas position of the placed modules of dependencies, by dependency and module path'),
     orientation: z
       .enum(['horizontal', 'vertical'])
       .optional()
@@ -230,12 +301,16 @@ export const FileProjectSchema = z
     interfaces: z.array(Interface),
     modules: z.array(Module),
     links: z.array(Link),
-    imports: z.array(Import).optional(),
+    dependencies: z.array(Dependency).optional(),
     editor: Editor.optional()
   })
   .meta({ id: 'ScaffoldProject', title: 'ProjectScaffold architecture file' })
 
 export type FileProject = z.infer<typeof FileProjectSchema>
 export type FileTypeDef = z.infer<typeof TypeDef>
+export type FileMessage = z.infer<typeof Message>
+export type FileInterface = z.infer<typeof Interface>
+export type FileMethod = z.infer<typeof Method>
 export type FileLink = z.infer<typeof Link>
 export type FileEditor = z.infer<typeof Editor>
+export type FileDependency = z.infer<typeof Dependency>

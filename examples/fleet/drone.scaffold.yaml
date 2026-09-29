@@ -1,0 +1,1531 @@
+schemaVersion: 1
+project:
+  name: Drone
+  description: Onboard software of a delivery quadcopter
+  metadata:
+    version: 1.2.0
+    owner: flight-team
+    platform: quad-x
+transports:
+  - mavlink
+  - spi
+  - i2c
+types:
+  - kind: struct
+    name: ImuSample
+    fields:
+      - name: accel
+        type:
+          kind: ref
+          name: Vec3
+      - name: gyro
+        type:
+          kind: ref
+          name: Vec3
+      - name: stamp
+        type:
+          kind: ref
+          name: Timestamp
+  - kind: struct
+    name: PidGains
+    fields:
+      - name: kp
+        type:
+          kind: primitive
+          name: float32
+        default: 1
+      - name: ki
+        type:
+          kind: primitive
+          name: float32
+        default: 0
+      - name: kd
+        type:
+          kind: primitive
+          name: float32
+        default: 0
+  - kind: struct
+    name: MixerConfig
+    fields:
+      - name: gains
+        type:
+          kind: ref
+          name: PidGains
+      - name: motorCount
+        type:
+          kind: primitive
+          name: uint8
+        default: 4
+      - name: frame
+        type:
+          kind: primitive
+          name: string
+        default: quad-x
+  - kind: enum
+    name: SensorStatus
+    underlying: uint8
+    values:
+      - name: Off
+        value: 0
+      - name: Ok
+        value: 1
+      - name: Degraded
+        value: 2
+      - name: Failed
+        value: 3
+interfaces:
+  - name: SensorData
+    description: Raw measurements towards the estimator
+    messages:
+      - name: imu
+        params:
+          - name: sample
+            type:
+              kind: ref
+              name: ImuSample
+        returns: null
+      - name: gps
+        params:
+          - name: fix
+            type:
+              kind: ref
+              name: GeoPoint
+          - name: satellites
+            type:
+              kind: primitive
+              name: uint8
+        returns: null
+modules:
+  - name: HAL
+    description: Hardware abstraction layer (class hierarchy only, no ports)
+    color: "#7a7a7a"
+    ports: []
+    modules:
+      - name: ISensor
+        description: Contract of every sensor driver
+        kind: interface
+        methods:
+          - name: start
+            virtual: true
+            pure: true
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: stop
+            virtual: true
+            pure: true
+            params: []
+            returns: null
+          - name: status
+            const: true
+            virtual: true
+            pure: true
+            params: []
+            returns:
+              kind: ref
+              name: SensorStatus
+        ports: []
+      - name: SensorBase
+        description: Common state of the sensor drivers
+        kind: abstract
+        bases:
+          - HAL.ISensor
+        attributes:
+          - name: rateHz
+            type:
+              kind: primitive
+              name: float32
+            default: 100
+          - name: state
+            type:
+              kind: ref
+              name: SensorStatus
+            default: Off
+          - name: instances
+            static: true
+            type:
+              kind: primitive
+              name: uint32
+            default: 0
+        methods:
+          - name: stop
+            virtual: true
+            override: true
+            params: []
+            returns: null
+          - name: status
+            const: true
+            virtual: true
+            override: true
+            params: []
+            returns:
+              kind: ref
+              name: SensorStatus
+          - name: configure
+            virtual: true
+            params:
+              - name: rateHz
+                type:
+                  kind: primitive
+                  name: float32
+                const: true
+            returns:
+              kind: primitive
+              name: bool
+          - name: count
+            description: Number of drivers alive
+            static: true
+            params: []
+            returns:
+              kind: primitive
+              name: uint32
+        ports: []
+  - name: Avionics
+    description: Flight-critical computer
+    metadata:
+      safety: DAL-B
+      cpu: stm32h7
+    color: "#d14f4f"
+    ports:
+      - name: command
+        role: in
+        interface: Command
+      - name: telemetry
+        role: out
+        interface: Telemetry
+      - name: events
+        role: out
+        interface: Events
+      - name: motors
+        role: out
+        interface: Actuation
+    modules:
+      - name: Imu
+        bases:
+          - HAL.SensorBase
+        color: "#8a4fd1"
+        attributes:
+          - name: bias
+            type:
+              kind: ref
+              name: Vec3
+            default:
+              x: 0.01
+              y: -0.02
+          - name: range
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: int16
+              size: 2
+            default:
+              - -16
+              - 16
+        methods:
+          - name: start
+            virtual: true
+            override: true
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: calibrate
+            params:
+              - name: samples
+                type:
+                  kind: primitive
+                  name: uint32
+                const: true
+              - name: bias
+                type:
+                  kind: ref
+                  name: Vec3
+                direction: out
+            returns:
+              kind: primitive
+              name: bool
+        ports:
+          - name: samples
+            role: out
+            interface: SensorData
+      - name: Gps
+        bases:
+          - HAL.SensorBase
+        color: "#8a4fd1"
+        attributes:
+          - name: device
+            const: true
+            type:
+              kind: primitive
+              name: string
+            default: /dev/ttyS1
+          - name: minSatellites
+            type:
+              kind: primitive
+              name: uint8
+            default: 6
+          - name: fixQuality
+            type:
+              kind: primitive
+              name: char
+            default: A
+        methods:
+          - name: start
+            virtual: true
+            override: true
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+        ports:
+          - name: fix
+            role: out
+            interface: SensorData
+      - name: Estimator
+        description: Extended Kalman filter fusing IMU and GPS
+        attributes:
+          - name: covariance
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float64
+              size: 3
+            default:
+              - 0.1
+              - 0.1
+              - 0.5
+          - name: lastPose
+            type:
+              kind: optional
+              of:
+                kind: ref
+                name: Pose
+            default: null
+        methods:
+          - name: reset
+            params:
+              - name: origin
+                type:
+                  kind: ref
+                  name: GeoPoint
+                const: true
+            returns: null
+          - name: converged
+            const: true
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+        ports:
+          - name: imu
+            role: in
+            interface: SensorData
+          - name: gps
+            role: in
+            interface: SensorData
+          - name: state
+            role: out
+            interface: Telemetry
+      - name: FlightController
+        description: Mode logic and attitude control
+        color: "#d14f9e"
+        attributes:
+          - name: mode
+            type:
+              kind: ref
+              name: FlightMode
+            default: Disarmed
+          - name: gains
+            type:
+              kind: ref
+              name: PidGains
+            default:
+              kp: 1.2
+              kd: 0.05
+          - name: limits
+            type:
+              kind: map
+              key:
+                kind: primitive
+                name: string
+              value:
+                kind: primitive
+                name: float32
+            default:
+              maxTiltDeg: 35
+              maxClimbMps: 5
+          - name: eventCounts
+            type:
+              kind: map
+              key:
+                kind: ref
+                name: Severity
+              value:
+                kind: primitive
+                name: uint32
+            default:
+              Warning: 0
+              Error: 0
+          - name: home
+            type:
+              kind: ref
+              name: GeoPoint
+            default:
+              lat: 48.8584
+              lon: 2.2945
+          - name: mission
+            type:
+              kind: optional
+              of:
+                kind: ref
+                name: Mission
+            default: null
+          - name: recent
+            type:
+              kind: list
+              of:
+                kind: ref
+                name: Event
+            default: []
+          - name: loopHz
+            static: true
+            const: true
+            type:
+              kind: primitive
+              name: uint16
+            default: 400
+        methods:
+          - name: arm
+            params:
+              - name: force
+                type:
+                  kind: primitive
+                  name: bool
+                const: true
+            returns:
+              kind: primitive
+              name: bool
+          - name: step
+            params:
+              - name: dtS
+                type:
+                  kind: primitive
+                  name: float32
+                const: true
+            returns: null
+          - name: currentMode
+            const: true
+            params: []
+            returns:
+              kind: ref
+              name: FlightMode
+          - name: version
+            static: true
+            params: []
+            returns:
+              kind: primitive
+              name: string
+        ports:
+          - name: command
+            role: in
+            interface: Command
+          - name: state
+            role: in
+            interface: Telemetry
+          - name: actuation
+            role: out
+            interface: Actuation
+          - name: events
+            role: out
+            interface: Events
+      - name: Mixer
+        attributes:
+          - name: config
+            type:
+              kind: ref
+              name: MixerConfig
+            default:
+              gains:
+                kp: 0.8
+                ki: 0.1
+                kd: 0.02
+              motorCount: 4
+        ports:
+          - name: actuation
+            role: in
+            interface: Actuation
+          - name: motors
+            role: out
+            interface: Actuation
+  - name: Motors
+    description: ESCs on the CAN bus
+    color: "#e08a2e"
+    attributes:
+      - name: count
+        const: true
+        type:
+          kind: primitive
+          name: uint8
+        default: 4
+      - name: idle
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float32
+          size: 4
+        default:
+          - 0.05
+          - 0.05
+          - 0.05
+          - 0.05
+    ports:
+      - name: throttle
+        role: in
+        interface: Actuation
+  - name: Payload
+    description: Companion computer for the camera
+    color: "#2e9e8f"
+    ports:
+      - name: video
+        role: out
+        interface: Video
+    modules:
+      - name: Camera
+        attributes:
+          - name: resolution
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: uint16
+              size: 2
+            default:
+              - 1920
+              - 1080
+          - name: fps
+            type:
+              kind: primitive
+              name: uint8
+            default: 30
+          - name: modes
+            type:
+              kind: set
+              of:
+                kind: primitive
+                name: string
+            default:
+              - photo
+              - video
+        ports:
+          - name: video
+            role: out
+            interface: Video
+      - name: Recorder
+        attributes:
+          - name: chunkMs
+            type:
+              kind: primitive
+              name: uint32
+            default: 2000
+        ports:
+          - name: video
+            role: in
+            interface: Video
+          - name: storage
+            role: out
+            interface: Storage
+  - name: FlashStore
+    description: Onboard storage
+    attributes:
+      - name: capacity
+        type:
+          kind: primitive
+          name: uint64
+        default: 68719476736
+      - name: signature
+        const: true
+        type:
+          kind: primitive
+          name: bytes
+        default: FLSH
+    ports:
+      - name: storage
+        role: in
+        interface: Storage
+  - name: Radio
+    description: Datalink to the ground station
+    metadata:
+      band: 2.4GHz
+    color: "#d6c21f"
+    attributes:
+      - name: callsign
+        type:
+          kind: primitive
+          name: string
+        default: DRN-01
+      - name: frequencyMHz
+        type:
+          kind: primitive
+          name: float32
+        default: 2437.5
+      - name: maxPeers
+        static: true
+        const: true
+        type:
+          kind: primitive
+          name: uint8
+        default: 8
+      - name: bootTime
+        type:
+          kind: ref
+          name: Timestamp
+        description: Custom primitive
+        default: 1970-01-01T00:00:00Z
+      - name: rallyPoints
+        type:
+          kind: ref
+          name: Route
+        description: Fallback landing spots
+        default:
+          - point:
+              lat: 48.86
+              lon: 2.29
+          - point:
+              lat: 48.85
+              lon: 2.3
+              alt: 35
+            speedMps: 3
+            holdS: 10
+    ports:
+      - name: uplink
+        role: in
+        interface: Command
+      - name: command
+        role: out
+        interface: Command
+      - name: telemetry
+        role: in
+        interface: Telemetry
+      - name: downlink
+        role: out
+        interface: Telemetry
+      - name: events
+        role: in
+        interface: Events
+      - name: eventsDown
+        role: out
+        interface: Events
+      - name: video
+        role: in
+        interface: Video
+      - name: videoDown
+        role: out
+        interface: Video
+links:
+  - name: imu_to_estimator
+    from:
+      module: Avionics.Imu
+      port: samples
+    to:
+      module: Avionics.Estimator
+      port: imu
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 1
+        rateHz: 1000
+      remote:
+        enabled: true
+        transport: spi
+  - name: gps_to_estimator
+    from:
+      module: Avionics.Gps
+      port: fix
+    to:
+      module: Avionics.Estimator
+      port: gps
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: low
+        rateHz: 10
+      remote:
+        enabled: true
+        transport: serial
+  - name: estimator_to_controller
+    from:
+      module: Avionics.Estimator
+      port: state
+    to:
+      module: Avionics.FlightController
+      port: state
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 2
+        rateHz: 400
+      remote:
+        enabled: false
+  - name: estimator_to_avionics
+    description: Inner out port to the container's out port
+    from:
+      module: Avionics.Estimator
+      port: state
+    to:
+      module: Avionics
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        rateHz: 50
+      remote:
+        enabled: false
+  - name: avionics_to_controller
+    description: Container's in port to an inner in port
+    from:
+      module: Avionics
+      port: command
+    to:
+      module: Avionics.FlightController
+      port: command
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 50
+      performance:
+        class: normal
+        maxLatencyMs: 10
+      remote:
+        enabled: false
+  - name: controller_to_mixer
+    from:
+      module: Avionics.FlightController
+      port: actuation
+    to:
+      module: Avionics.Mixer
+      port: actuation
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 1
+        rateHz: 400
+      remote:
+        enabled: false
+  - name: mixer_to_avionics
+    from:
+      module: Avionics.Mixer
+      port: motors
+    to:
+      module: Avionics
+      port: motors
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        rateHz: 400
+      remote:
+        enabled: false
+  - name: controller_events
+    from:
+      module: Avionics.FlightController
+      port: events
+    to:
+      module: Avionics
+      port: events
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+      remote:
+        enabled: false
+  - name: avionics_to_motors
+    from:
+      module: Avionics
+      port: motors
+    to:
+      module: Motors
+      port: throttle
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 2
+        rateHz: 400
+      remote:
+        enabled: true
+        transport: can
+  - name: radio_to_avionics
+    from:
+      module: Radio
+      port: command
+    to:
+      module: Avionics
+      port: command
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 200
+      performance:
+        class: normal
+        maxLatencyMs: 100
+      remote:
+        enabled: true
+        transport: mavlink
+  - name: avionics_to_radio
+    from:
+      module: Avionics
+      port: telemetry
+    to:
+      module: Radio
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        rateHz: 50
+      remote:
+        enabled: true
+        transport: mavlink
+  - name: events_to_radio
+    from:
+      module: Avionics
+      port: events
+    to:
+      module: Radio
+      port: events
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+      remote:
+        enabled: true
+        transport: mavlink
+  - name: camera_to_payload
+    from:
+      module: Payload.Camera
+      port: video
+    to:
+      module: Payload
+      port: video
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+        rateHz: 30
+      remote:
+        enabled: false
+  - name: camera_to_recorder
+    from:
+      module: Payload.Camera
+      port: video
+    to:
+      module: Payload.Recorder
+      port: video
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+        rateHz: 30
+      remote:
+        enabled: true
+        transport: shm
+  - name: recorder_to_flash
+    description: Direct link out of its container, to a module at another level
+    from:
+      module: Payload.Recorder
+      port: storage
+    to:
+      module: FlashStore
+      port: storage
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: bulk
+      remote:
+        enabled: false
+  - name: payload_to_radio
+    from:
+      module: Payload
+      port: video
+    to:
+      module: Radio
+      port: video
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+        rateHz: 30
+      remote:
+        enabled: true
+        transport: ipc
+dependencies:
+  - name: Fleet
+    file: fleet.scaffold.yaml
+    uses:
+      - Units
+    types:
+      - kind: enum
+        name: FlightMode
+        underlying: uint8
+        values:
+          - name: Disarmed
+            value: 0
+          - name: Armed
+            value: 1
+          - name: Takeoff
+            value: 2
+          - name: Mission
+            value: 3
+          - name: ReturnHome
+            value: 4
+          - name: Land
+            value: 5
+          - name: Emergency
+            value: 255
+      - kind: enum
+        name: Severity
+        underlying: int8
+        values:
+          - name: Debug
+            value: -1
+          - name: Info
+            value: 0
+          - name: Warning
+            value: 1
+          - name: Error
+            value: 2
+          - name: Critical
+            value: 3
+      - kind: struct
+        name: Vec3
+        fields:
+          - name: x
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+          - name: y
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+          - name: z
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+      - kind: struct
+        name: Pose
+        description: Position, velocity and attitude at a time point
+        fields:
+          - name: position
+            type:
+              kind: ref
+              name: GeoPoint
+          - name: velocity
+            type:
+              kind: ref
+              name: Vec3
+          - name: attitude
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float64
+              size: 4
+            description: Quaternion (w, x, y, z)
+            default:
+              - 1
+              - 0
+              - 0
+              - 0
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+      - kind: struct
+        name: Waypoint
+        fields:
+          - name: point
+            type:
+              kind: ref
+              name: GeoPoint
+          - name: speedMps
+            type:
+              kind: primitive
+              name: float32
+            default: 5
+          - name: holdS
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: float32
+      - kind: alias
+        name: Route
+        type:
+          kind: vector
+          of:
+            kind: ref
+            name: Waypoint
+      - kind: struct
+        name: Mission
+        fields:
+          - name: id
+            type:
+              kind: primitive
+              name: uint32
+          - name: name
+            type:
+              kind: primitive
+              name: string
+          - name: route
+            type:
+              kind: ref
+              name: Route
+          - name: tags
+            type:
+              kind: set
+              of:
+                kind: primitive
+                name: string
+            default: []
+          - name: params
+            type:
+              kind: map
+              key:
+                kind: primitive
+                name: string
+              value:
+                kind: primitive
+                name: float64
+            default: {}
+      - kind: struct
+        name: BatteryState
+        fields:
+          - name: voltage
+            type:
+              kind: primitive
+              name: float32
+          - name: cells
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float32
+              size: 4
+          - name: percent
+            type:
+              kind: primitive
+              name: uint8
+          - name: charging
+            type:
+              kind: primitive
+              name: bool
+            default: false
+      - kind: struct
+        name: Event
+        fields:
+          - name: severity
+            type:
+              kind: ref
+              name: Severity
+            default: Info
+          - name: code
+            type:
+              kind: primitive
+              name: uint16
+          - name: text
+            type:
+              kind: primitive
+              name: string
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+          - name: payload
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: bytes
+            default: null
+      - kind: alias
+        name: Frame
+        description: Encoded video frame
+        type:
+          kind: primitive
+          name: bytes
+      - kind: struct
+        name: VideoFrame
+        fields:
+          - name: width
+            type:
+              kind: primitive
+              name: uint16
+          - name: height
+            type:
+              kind: primitive
+              name: uint16
+          - name: codec
+            type:
+              kind: primitive
+              name: string
+            default: h264
+          - name: data
+            type:
+              kind: ref
+              name: Frame
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+    interfaces:
+      - name: Telemetry
+        description: State published by a drone
+        messages:
+          - name: pose
+            params:
+              - name: pose
+                type:
+                  kind: ref
+                  name: Pose
+            returns: null
+          - name: battery
+            params:
+              - name: state
+                type:
+                  kind: ref
+                  name: BatteryState
+            returns: null
+          - name: mode
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: FlightMode
+            returns: null
+      - name: Command
+        description: Orders sent to a drone
+        messages:
+          - name: arm
+            params:
+              - name: force
+                type:
+                  kind: primitive
+                  name: bool
+            returns:
+              kind: primitive
+              name: bool
+          - name: setMode
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: FlightMode
+            returns:
+              kind: primitive
+              name: bool
+          - name: upload
+            description: Load a mission, returns its id
+            params:
+              - name: mission
+                type:
+                  kind: ref
+                  name: Mission
+            returns:
+              kind: primitive
+              name: uint32
+          - name: selfTest
+            params:
+              - name: report
+                type:
+                  kind: list
+                  of:
+                    kind: primitive
+                    name: string
+                direction: inout
+              - name: failures
+                type:
+                  kind: primitive
+                  name: uint16
+                direction: out
+            returns: null
+      - name: Events
+        messages:
+          - name: report
+            params:
+              - name: event
+                type:
+                  kind: ref
+                  name: Event
+            returns: null
+      - name: Video
+        messages:
+          - name: frame
+            params:
+              - name: frame
+                type:
+                  kind: ref
+                  name: VideoFrame
+            returns: null
+      - name: Actuation
+        messages:
+          - name: throttle
+            params:
+              - name: motors
+                type:
+                  kind: array
+                  of:
+                    kind: primitive
+                    name: float32
+                  size: 4
+            returns: null
+      - name: Storage
+        messages:
+          - name: write
+            params:
+              - name: key
+                type:
+                  kind: primitive
+                  name: string
+              - name: data
+                type:
+                  kind: primitive
+                  name: bytes
+            returns:
+              kind: primitive
+              name: bool
+          - name: read
+            params:
+              - name: key
+                type:
+                  kind: primitive
+                  name: string
+              - name: data
+                type:
+                  kind: primitive
+                  name: bytes
+                direction: out
+            returns:
+              kind: primitive
+              name: bool
+  - name: Units
+    file: units.scaffold.yaml
+    indirect: true
+    types:
+      - kind: primitive
+        name: Timestamp
+        description: Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+      - kind: alias
+        name: Meters
+        description: Distance in meters
+        type:
+          kind: primitive
+          name: float64
+      - kind: struct
+        name: GeoPoint
+        description: WGS84 position
+        fields:
+          - name: lat
+            type:
+              kind: ref
+              name: Degrees
+          - name: lon
+            type:
+              kind: ref
+              name: Degrees
+          - name: alt
+            type:
+              kind: ref
+              name: Meters
+            description: Altitude above mean sea level
+            default: 0
+    interfaces:
+      - name: Clock
+        description: Time source
+        messages:
+          - name: now
+            params: []
+            returns:
+              kind: ref
+              name: Timestamp
+  - name: Ground
+    file: ground.scaffold.yaml
+    uses:
+      - Weather
+    types:
+      - kind: struct
+        name: Alert
+        fields:
+          - name: event
+            type:
+              kind: ref
+              name: Event
+          - name: acknowledged
+            type:
+              kind: primitive
+              name: bool
+            default: false
+          - name: forecast
+            type:
+              kind: optional
+              of:
+                kind: ref
+                name: Forecast
+            default: null
+    interfaces:
+      - name: Operator
+        description: Actions of the human operator
+        messages:
+          - name: approve
+            params:
+              - name: missionId
+                type:
+                  kind: primitive
+                  name: uint32
+            returns:
+              kind: primitive
+              name: bool
+          - name: abort
+            params: []
+            returns: null
+  - name: Weather
+    file: weather.scaffold.yaml
+    indirect: true
+    types:
+      - kind: alias
+        name: Degrees
+        description: Angle in decimal degrees
+        type:
+          kind: primitive
+          name: float64
+      - kind: struct
+        name: Wind
+        fields:
+          - name: direction
+            type:
+              kind: ref
+              name: Degrees
+          - name: speedMps
+            type:
+              kind: primitive
+              name: float32
+          - name: gustMps
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: float32
+            default: null
+      - kind: struct
+        name: Forecast
+        fields:
+          - name: zone
+            type:
+              kind: primitive
+              name: string
+          - name: wind
+            type:
+              kind: ref
+              name: Wind
+          - name: visibilityKm
+            type:
+              kind: primitive
+              name: float32
+            default: 10
+          - name: flyable
+            type:
+              kind: primitive
+              name: bool
+            default: true
+    interfaces:
+      - name: WeatherFeed
+        messages:
+          - name: forecast
+            params:
+              - name: forecast
+                type:
+                  kind: ref
+                  name: Forecast
+            returns: null
+editor:
+  layout:
+    HAL:
+      x: 613
+      y: 20
+      width: 240
+      height: 484
+    HAL.ISensor:
+      x: 20
+      y: 46
+      width: 200
+      height: 134
+    HAL.SensorBase:
+      x: 20
+      y: 250
+      width: 200
+      height: 214
+    Avionics:
+      x: 20
+      y: 551
+      width: 1426
+      height: 650
+    Avionics.Imu:
+      x: 125
+      y: 143
+      width: 200
+      height: 160
+    Avionics.Gps:
+      x: 125
+      y: 373
+      width: 200
+      height: 160
+    Avionics.Estimator:
+      x: 441
+      y: 246
+      width: 200
+      height: 184
+    Avionics.FlightController:
+      x: 757
+      y: 174
+      width: 200
+      height: 328
+    Avionics.Mixer:
+      x: 1080
+      y: 189
+      width: 260
+      height: 100
+    Motors:
+      x: 1562
+      y: 355
+      width: 200
+      height: 116
+    Payload:
+      x: 415
+      y: 1271
+      width: 637
+      height: 207
+    Payload.Camera:
+      x: 20
+      y: 53
+      width: 200
+      height: 134
+    Payload.Recorder:
+      x: 336
+      y: 71
+      width: 200
+      height: 98
+    FlashStore:
+      x: 1562
+      y: 1028
+      width: 200
+      height: 116
+    Radio:
+      x: 1560
+      y: 540
+      width: 200
+      height: 280
+  views:
+    - name: Avionics
+      root: Avionics
+    - name: Payload
+      root: Payload
+    - name: Flight chain
+      hidden:
+        - HAL
+        - Payload
+        - FlashStore
+    - name: Estimator
+      root: Avionics.Estimator
+  style:
+    Motors:
+      locked: true
+  links:
+    imu_to_estimator:
+      points:
+        - x: 383
+          y: 223
+        - x: 383
+          y: 300
+    avionics_to_motors:
+      from:
+        side: right
+        at: 0.25
+      to:
+        side: left
+        at: 0.5
+    recorder_to_flash:
+      points:
+        - x: 1300
+          y: 1391
+        - x: 1300
+          y: 1086
+  notes:
+    - kind: frame
+      text: Flight-critical (DAL-B)
+      x: 0
+      y: 320
+      width: 1790
+      height: 900
+      color: "#d14f4f"
+      locked: true
+    - kind: note
+      text: "HAL: C++-like hierarchy. ISensor («interface», pure methods) ← SensorBase (abstract) ← Avionics.Imu, Avionics.Gps (concrete, override start())."
+      x: 880
+      y: 40
+      width: 300
+      height: 120
+      color: "#fff3b0"
+    - kind: note
+      text: "Transports: spi, serial, can, shm, ipc (built-in) and mavlink (custom, see `transports`)."
+      x: 20
+      y: 40
+      width: 280
+      height: 110
+      locked: true
+    - kind: note
+      text: Recorder → FlashStore leaves its container directly, without a port on Payload.
+      x: 1100
+      y: 1290
+      width: 280
+      height: 90

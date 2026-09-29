@@ -1,0 +1,1092 @@
+schemaVersion: 1
+project:
+  name: Ground
+  description: Ground control station supervising the drone
+  metadata:
+    version: 0.9.0
+    owner: ops-team
+transports:
+  - mavlink
+  - rtp
+types:
+  - kind: struct
+    name: Alert
+    fields:
+      - name: event
+        type:
+          kind: ref
+          name: Event
+      - name: acknowledged
+        type:
+          kind: primitive
+          name: bool
+        default: false
+      - name: forecast
+        type:
+          kind: optional
+          of:
+            kind: ref
+            name: Forecast
+        default: null
+interfaces:
+  - name: Operator
+    description: Actions of the human operator
+    messages:
+      - name: approve
+        params:
+          - name: missionId
+            type:
+              kind: primitive
+              name: uint32
+        returns:
+          kind: primitive
+          name: bool
+      - name: abort
+        params: []
+        returns: null
+modules:
+  - name: Datalink
+    description: Ground side of the radio link
+    color: "#d6c21f"
+    attributes:
+      - name: port
+        const: true
+        type:
+          kind: primitive
+          name: uint16
+        default: 14550
+      - name: peers
+        type:
+          kind: map
+          key:
+            kind: primitive
+            name: string
+          value:
+            kind: ref
+            name: GeoPoint
+        default:
+          DRN-01:
+            lat: 48.85
+            lon: 2.35
+    ports:
+      - name: downlink
+        role: in
+        interface: Telemetry
+      - name: events
+        role: in
+        interface: Events
+      - name: video
+        role: in
+        interface: Video
+      - name: orders
+        role: in
+        interface: Command
+      - name: uplink
+        role: out
+        interface: Command
+      - name: telemetry
+        role: out
+        interface: Telemetry
+      - name: alerts
+        role: out
+        interface: Events
+      - name: videoFeed
+        role: out
+        interface: Video
+  - name: MissionControl
+    description: Planning and supervision
+    color: "#2e9e8f"
+    ports:
+      - name: telemetry
+        role: in
+        interface: Telemetry
+      - name: weather
+        role: in
+        interface: WeatherFeed
+      - name: alerts
+        role: in
+        interface: Events
+      - name: operator
+        role: in
+        interface: Operator
+      - name: orders
+        role: out
+        interface: Command
+    modules:
+      - name: Planner
+        attributes:
+          - name: maxWindMps
+            type:
+              kind: primitive
+              name: float32
+            default: 12
+          - name: pending
+            type:
+              kind: vector
+              of:
+                kind: ref
+                name: Mission
+            default: []
+        methods:
+          - name: plan
+            params:
+              - name: mission
+                type:
+                  kind: ref
+                  name: Mission
+                const: true
+              - name: forecast
+                type:
+                  kind: ref
+                  name: Forecast
+                const: true
+            returns:
+              kind: ref
+              name: Route
+          - name: feasible
+            const: true
+            params:
+              - name: route
+                type:
+                  kind: ref
+                  name: Route
+                const: true
+            returns:
+              kind: primitive
+              name: bool
+        ports:
+          - name: telemetry
+            role: in
+            interface: Telemetry
+          - name: weather
+            role: in
+            interface: WeatherFeed
+          - name: operator
+            role: in
+            interface: Operator
+          - name: orders
+            role: out
+            interface: Command
+      - name: Dashboard
+        attributes:
+          - name: theme
+            type:
+              kind: primitive
+              name: string
+            default: dark
+          - name: alerts
+            type:
+              kind: list
+              of:
+                kind: ref
+                name: Alert
+            default: []
+        ports:
+          - name: telemetry
+            role: in
+            interface: Telemetry
+          - name: alerts
+            role: in
+            interface: Events
+          - name: operator
+            role: out
+            interface: Operator
+  - name: VideoWall
+    ports:
+      - name: video
+        role: in
+        interface: Video
+links:
+  - name: drone_downlink
+    from:
+      project: Drone
+      module: Radio
+      port: downlink
+    to:
+      module: Datalink
+      port: downlink
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        maxLatencyMs: 200
+        rateHz: 50
+      remote:
+        enabled: true
+        transport: mavlink
+  - name: drone_events
+    from:
+      project: Drone
+      module: Radio
+      port: eventsDown
+    to:
+      module: Datalink
+      port: events
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+      remote:
+        enabled: true
+        transport: mavlink
+  - name: drone_video
+    from:
+      project: Drone
+      module: Radio
+      port: videoDown
+    to:
+      module: Datalink
+      port: video
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+        rateHz: 30
+      remote:
+        enabled: true
+        transport: rtp
+  - name: ground_uplink
+    from:
+      module: Datalink
+      port: uplink
+    to:
+      project: Drone
+      module: Radio
+      port: uplink
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 1000
+      performance:
+        class: low
+        maxLatencyMs: 500
+      remote:
+        enabled: true
+        transport: mavlink
+  - name: weather_feed
+    from:
+      project: Weather
+      module: WeatherService
+      port: feed
+    to:
+      module: MissionControl
+      port: weather
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: low
+      remote:
+        enabled: true
+        transport: http
+  - name: datalink_telemetry
+    from:
+      module: Datalink
+      port: telemetry
+    to:
+      module: MissionControl
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        rateHz: 50
+      remote:
+        enabled: true
+        transport: websocket
+  - name: datalink_alerts
+    from:
+      module: Datalink
+      port: alerts
+    to:
+      module: MissionControl
+      port: alerts
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: websocket
+  - name: datalink_video
+    from:
+      module: Datalink
+      port: videoFeed
+    to:
+      module: VideoWall
+      port: video
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+        rateHz: 30
+      remote:
+        enabled: true
+        transport: rtp
+  - name: control_orders
+    from:
+      module: MissionControl
+      port: orders
+    to:
+      module: Datalink
+      port: orders
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: grpc
+  - name: mc_telemetry_planner
+    from:
+      module: MissionControl
+      port: telemetry
+    to:
+      module: MissionControl.Planner
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: mc_telemetry_dashboard
+    from:
+      module: MissionControl
+      port: telemetry
+    to:
+      module: MissionControl.Dashboard
+      port: telemetry
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        rateHz: 10
+      remote:
+        enabled: false
+  - name: mc_weather
+    from:
+      module: MissionControl
+      port: weather
+    to:
+      module: MissionControl.Planner
+      port: weather
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: low
+      remote:
+        enabled: false
+  - name: mc_alerts
+    from:
+      module: MissionControl
+      port: alerts
+    to:
+      module: MissionControl.Dashboard
+      port: alerts
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: dashboard_operator
+    from:
+      module: MissionControl.Dashboard
+      port: operator
+    to:
+      module: MissionControl.Planner
+      port: operator
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 30000
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: planner_orders
+    from:
+      module: MissionControl.Planner
+      port: orders
+    to:
+      module: MissionControl
+      port: orders
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: false
+dependencies:
+  - name: Drone
+    file: drone.scaffold.yaml
+    uses:
+      - Fleet
+    types:
+      - kind: struct
+        name: ImuSample
+        fields:
+          - name: accel
+            type:
+              kind: ref
+              name: Vec3
+          - name: gyro
+            type:
+              kind: ref
+              name: Vec3
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+      - kind: struct
+        name: PidGains
+        fields:
+          - name: kp
+            type:
+              kind: primitive
+              name: float32
+            default: 1
+          - name: ki
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+          - name: kd
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+      - kind: struct
+        name: MixerConfig
+        fields:
+          - name: gains
+            type:
+              kind: ref
+              name: PidGains
+          - name: motorCount
+            type:
+              kind: primitive
+              name: uint8
+            default: 4
+          - name: frame
+            type:
+              kind: primitive
+              name: string
+            default: quad-x
+      - kind: enum
+        name: SensorStatus
+        underlying: uint8
+        values:
+          - name: Off
+            value: 0
+          - name: Ok
+            value: 1
+          - name: Degraded
+            value: 2
+          - name: Failed
+            value: 3
+    interfaces:
+      - name: SensorData
+        description: Raw measurements towards the estimator
+        messages:
+          - name: imu
+            params:
+              - name: sample
+                type:
+                  kind: ref
+                  name: ImuSample
+            returns: null
+          - name: gps
+            params:
+              - name: fix
+                type:
+                  kind: ref
+                  name: GeoPoint
+              - name: satellites
+                type:
+                  kind: primitive
+                  name: uint8
+            returns: null
+    modules:
+      - module: Radio
+        ports:
+          - name: uplink
+            role: in
+            interface: Command
+          - name: command
+            role: out
+            interface: Command
+          - name: telemetry
+            role: in
+            interface: Telemetry
+          - name: downlink
+            role: out
+            interface: Telemetry
+          - name: events
+            role: in
+            interface: Events
+          - name: eventsDown
+            role: out
+            interface: Events
+          - name: video
+            role: in
+            interface: Video
+          - name: videoDown
+            role: out
+            interface: Video
+  - name: Weather
+    file: weather.scaffold.yaml
+    types:
+      - kind: alias
+        name: Degrees
+        description: Angle in decimal degrees
+        type:
+          kind: primitive
+          name: float64
+      - kind: struct
+        name: Wind
+        fields:
+          - name: direction
+            type:
+              kind: ref
+              name: Degrees
+          - name: speedMps
+            type:
+              kind: primitive
+              name: float32
+          - name: gustMps
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: float32
+            default: null
+      - kind: struct
+        name: Forecast
+        fields:
+          - name: zone
+            type:
+              kind: primitive
+              name: string
+          - name: wind
+            type:
+              kind: ref
+              name: Wind
+          - name: visibilityKm
+            type:
+              kind: primitive
+              name: float32
+            default: 10
+          - name: flyable
+            type:
+              kind: primitive
+              name: bool
+            default: true
+    interfaces:
+      - name: WeatherFeed
+        messages:
+          - name: forecast
+            params:
+              - name: forecast
+                type:
+                  kind: ref
+                  name: Forecast
+            returns: null
+    modules:
+      - module: WeatherService
+        ports:
+          - name: feed
+            role: out
+            interface: WeatherFeed
+  - name: Fleet
+    file: fleet.scaffold.yaml
+    uses:
+      - Units
+    indirect: true
+    types:
+      - kind: enum
+        name: FlightMode
+        underlying: uint8
+        values:
+          - name: Disarmed
+            value: 0
+          - name: Armed
+            value: 1
+          - name: Takeoff
+            value: 2
+          - name: Mission
+            value: 3
+          - name: ReturnHome
+            value: 4
+          - name: Land
+            value: 5
+          - name: Emergency
+            value: 255
+      - kind: enum
+        name: Severity
+        underlying: int8
+        values:
+          - name: Debug
+            value: -1
+          - name: Info
+            value: 0
+          - name: Warning
+            value: 1
+          - name: Error
+            value: 2
+          - name: Critical
+            value: 3
+      - kind: struct
+        name: Vec3
+        fields:
+          - name: x
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+          - name: y
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+          - name: z
+            type:
+              kind: primitive
+              name: float32
+            default: 0
+      - kind: struct
+        name: Pose
+        description: Position, velocity and attitude at a time point
+        fields:
+          - name: position
+            type:
+              kind: ref
+              name: GeoPoint
+          - name: velocity
+            type:
+              kind: ref
+              name: Vec3
+          - name: attitude
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float64
+              size: 4
+            description: Quaternion (w, x, y, z)
+            default:
+              - 1
+              - 0
+              - 0
+              - 0
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+      - kind: struct
+        name: Waypoint
+        fields:
+          - name: point
+            type:
+              kind: ref
+              name: GeoPoint
+          - name: speedMps
+            type:
+              kind: primitive
+              name: float32
+            default: 5
+          - name: holdS
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: float32
+      - kind: alias
+        name: Route
+        type:
+          kind: vector
+          of:
+            kind: ref
+            name: Waypoint
+      - kind: struct
+        name: Mission
+        fields:
+          - name: id
+            type:
+              kind: primitive
+              name: uint32
+          - name: name
+            type:
+              kind: primitive
+              name: string
+          - name: route
+            type:
+              kind: ref
+              name: Route
+          - name: tags
+            type:
+              kind: set
+              of:
+                kind: primitive
+                name: string
+            default: []
+          - name: params
+            type:
+              kind: map
+              key:
+                kind: primitive
+                name: string
+              value:
+                kind: primitive
+                name: float64
+            default: {}
+      - kind: struct
+        name: BatteryState
+        fields:
+          - name: voltage
+            type:
+              kind: primitive
+              name: float32
+          - name: cells
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float32
+              size: 4
+          - name: percent
+            type:
+              kind: primitive
+              name: uint8
+          - name: charging
+            type:
+              kind: primitive
+              name: bool
+            default: false
+      - kind: struct
+        name: Event
+        fields:
+          - name: severity
+            type:
+              kind: ref
+              name: Severity
+            default: Info
+          - name: code
+            type:
+              kind: primitive
+              name: uint16
+          - name: text
+            type:
+              kind: primitive
+              name: string
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+          - name: payload
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: bytes
+            default: null
+      - kind: alias
+        name: Frame
+        description: Encoded video frame
+        type:
+          kind: primitive
+          name: bytes
+      - kind: struct
+        name: VideoFrame
+        fields:
+          - name: width
+            type:
+              kind: primitive
+              name: uint16
+          - name: height
+            type:
+              kind: primitive
+              name: uint16
+          - name: codec
+            type:
+              kind: primitive
+              name: string
+            default: h264
+          - name: data
+            type:
+              kind: ref
+              name: Frame
+          - name: stamp
+            type:
+              kind: ref
+              name: Timestamp
+    interfaces:
+      - name: Telemetry
+        description: State published by a drone
+        messages:
+          - name: pose
+            params:
+              - name: pose
+                type:
+                  kind: ref
+                  name: Pose
+            returns: null
+          - name: battery
+            params:
+              - name: state
+                type:
+                  kind: ref
+                  name: BatteryState
+            returns: null
+          - name: mode
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: FlightMode
+            returns: null
+      - name: Command
+        description: Orders sent to a drone
+        messages:
+          - name: arm
+            params:
+              - name: force
+                type:
+                  kind: primitive
+                  name: bool
+            returns:
+              kind: primitive
+              name: bool
+          - name: setMode
+            params:
+              - name: mode
+                type:
+                  kind: ref
+                  name: FlightMode
+            returns:
+              kind: primitive
+              name: bool
+          - name: upload
+            description: Load a mission, returns its id
+            params:
+              - name: mission
+                type:
+                  kind: ref
+                  name: Mission
+            returns:
+              kind: primitive
+              name: uint32
+          - name: selfTest
+            params:
+              - name: report
+                type:
+                  kind: list
+                  of:
+                    kind: primitive
+                    name: string
+                direction: inout
+              - name: failures
+                type:
+                  kind: primitive
+                  name: uint16
+                direction: out
+            returns: null
+      - name: Events
+        messages:
+          - name: report
+            params:
+              - name: event
+                type:
+                  kind: ref
+                  name: Event
+            returns: null
+      - name: Video
+        messages:
+          - name: frame
+            params:
+              - name: frame
+                type:
+                  kind: ref
+                  name: VideoFrame
+            returns: null
+      - name: Actuation
+        messages:
+          - name: throttle
+            params:
+              - name: motors
+                type:
+                  kind: array
+                  of:
+                    kind: primitive
+                    name: float32
+                  size: 4
+            returns: null
+      - name: Storage
+        messages:
+          - name: write
+            params:
+              - name: key
+                type:
+                  kind: primitive
+                  name: string
+              - name: data
+                type:
+                  kind: primitive
+                  name: bytes
+            returns:
+              kind: primitive
+              name: bool
+          - name: read
+            params:
+              - name: key
+                type:
+                  kind: primitive
+                  name: string
+              - name: data
+                type:
+                  kind: primitive
+                  name: bytes
+                direction: out
+            returns:
+              kind: primitive
+              name: bool
+  - name: Units
+    file: units.scaffold.yaml
+    indirect: true
+    shared:
+      - Degrees
+    types:
+      - kind: primitive
+        name: Timestamp
+        description: Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+      - kind: alias
+        name: Meters
+        description: Distance in meters
+        type:
+          kind: primitive
+          name: float64
+      - kind: struct
+        name: GeoPoint
+        description: WGS84 position
+        fields:
+          - name: lat
+            type:
+              kind: ref
+              name: Degrees
+          - name: lon
+            type:
+              kind: ref
+              name: Degrees
+          - name: alt
+            type:
+              kind: ref
+              name: Meters
+            description: Altitude above mean sea level
+            default: 0
+    interfaces:
+      - name: Clock
+        description: Time source
+        messages:
+          - name: now
+            params: []
+            returns:
+              kind: ref
+              name: Timestamp
+editor:
+  layout:
+    Datalink:
+      x: 362
+      y: 228
+      width: 380
+      height: 188
+    MissionControl:
+      x: 42
+      y: 532
+      width: 330
+      height: 629
+    MissionControl.Planner:
+      x: 20
+      y: 375
+      width: 290
+      height: 208
+    MissionControl.Dashboard:
+      x: 65
+      y: 119
+      width: 200
+      height: 140
+    VideoWall:
+      x: 520
+      y: 800
+      width: 200
+      height: 92
+  views:
+    - name: Mission control
+      root: MissionControl
+    - name: Datalink
+      hidden:
+        - MissionControl.Dashboard
+        - VideoWall
+  style:
+    Datalink:
+      labels:
+        uplink: left
+  dependencies:
+    Drone:
+      Radio:
+        x: 191
+        y: 20
+    Weather:
+      WeatherService:
+        x: 20
+        y: 276
+  orientation: vertical
+  links:
+    weather_feed:
+      to:
+        side: top
+        at: 0.4
+  notes:
+    - kind: note
+      text: "Radio (project Drone) and WeatherService (project Weather) are modules of dependencies placed here (dashed): double-click to open their project."
+      x: 800
+      y: 20
+      width: 300
+      height: 130
+      color: "#fff3b0"
+    - kind: frame
+      text: Ground station
+      x: 30
+      y: 200
+      width: 740
+      height: 990
+      color: "#2e9e8f"

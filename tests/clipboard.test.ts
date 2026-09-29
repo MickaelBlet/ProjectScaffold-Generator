@@ -120,3 +120,31 @@ describe('clipboard', () => {
     expect(parseClip('{"a":1}')).toBeNull()
   })
 })
+
+describe('clipboard attributes', () => {
+  it('pastes attributes with fresh ids, typed with the same types', () => {
+    const controller = byPath('Core.Controller')
+    const clip = copyItems(example, [controller.id])!
+    let pasted: string[] = []
+    const p = produce(example, (d) => void (pasted = pasteClip(d, clip, { parent: 'original' })))
+    const copy = p.modules.find((m) => m.id === pasted[0])!
+    expect(copy.attributes.map((a) => a.name)).toEqual(['mode'])
+    expect(copy.attributes[0]!.id).not.toBe(controller.attributes[0]!.id)
+    expect(copy.attributes[0]!.type).toEqual(controller.attributes[0]!.type)
+    expect(copy.methods.map((x) => x.name)).toEqual(['setMode', 'reset', 'isRunning', 'instances'])
+    expect(copy.methods[0]!.id).not.toBe(controller.methods[0]!.id)
+    expect(copy.methods[0]!.params[0]!.id).not.toBe(controller.methods[0]!.params[0]!.id)
+  })
+
+  it('rebinds attribute types to the target project by name', () => {
+    const target = produce(
+      emptyProject(),
+      (d) => void pasteClip(d, copyProject(example, emptyProject(), false)!, { parent: null })
+    )
+    const mode = target.types.find((t) => t.name === 'Mode')!
+    const controller = target.modules.find((m) => m.name === 'Controller')!
+    expect(controller.attributes[0]!.type).toEqual({ kind: 'ref', id: mode.id })
+    expect(controller.methods[0]!.params[0]!.type).toEqual({ kind: 'ref', id: mode.id })
+    expect(validate(target).filter((pr) => pr.severity === 'error')).toEqual([])
+  })
+})

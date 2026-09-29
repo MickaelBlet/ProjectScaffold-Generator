@@ -6,7 +6,13 @@ import { validate } from '@/model/validate'
 import type { EnumDef, Project, StructDef } from '@/model/types'
 
 const example = YAML.parse(readFileSync('examples/robot.scaffold.yaml', 'utf8'))
-const load = (): Project => fromFile(structuredClone(example))
+/** The example, with the types and interfaces of its dependencies made its own: edited and checked here. */
+const load = (): Project => {
+  const p = fromFile(structuredClone(example))
+  for (const e of [...p.types, ...p.interfaces]) delete e.dependency
+  p.dependencies = []
+  return p
+}
 const messages = (p: Project, severity = 'error') =>
   validate(p)
     .filter((pr) => pr.severity === severity)
@@ -40,6 +46,8 @@ describe('validate', () => {
   it('flags invalid map keys', () => {
     const p = load()
     const vec3 = type<StructDef>(p, 'Vec3')
+    // Another type: the default no longer fits.
+    delete type<StructDef>(p, 'Pose').fields[1]!.default
     type<StructDef>(p, 'Pose').fields[1]!.type = {
       kind: 'map',
       key: { kind: 'ref', id: vec3.id },
@@ -58,11 +66,15 @@ describe('validate', () => {
       description: '',
       type: { kind: 'ref', id: mode.id }
     })
+    // Another type: the default no longer fits.
+    delete type<StructDef>(p, 'Pose').fields[1]!.default
     type<StructDef>(p, 'Pose').fields[1]!.type = {
       kind: 'set',
       of: { kind: 'ref', id: 'alias-mode' }
     }
     expect(messages(p)).toEqual([])
+    // Another type: the default no longer fits.
+    delete type<StructDef>(p, 'Pose').fields[1]!.default
     type<StructDef>(p, 'Pose').fields[1]!.type = { kind: 'set', of: { kind: 'primitive', name: 'float32' } }
     expect(messages(p, 'warning')).toEqual(['Pose.orientation: floating-point set key'])
   })
@@ -100,7 +112,9 @@ describe('validate', () => {
 
   it('requires bidirectional links for messages with return values', () => {
     const p = load()
-    link(p, 'operator_to_core').constraints.direction = 'unidirectional'
+    const c = link(p, 'operator_to_core').constraints
+    c.direction = 'unidirectional'
+    c.ack.required = true
     expect(messages(p)).toEqual([
       "Link 'operator_to_core' is unidirectional but Control.setMode returns a value",
       "Link 'operator_to_core' is unidirectional but Control.raw has out parameters",
@@ -158,6 +172,8 @@ describe('validate', () => {
   it('accepts custom primitives as map keys', () => {
     const p = load()
     p.types.push({ id: 'uuid', kind: 'primitive', name: 'Uuid', description: '' })
+    // Another type: the default no longer fits.
+    delete type<StructDef>(p, 'Pose').fields[1]!.default
     type<StructDef>(p, 'Pose').fields[1]!.type = {
       kind: 'map',
       key: { kind: 'ref', id: 'uuid' },
@@ -198,5 +214,65 @@ describe('validate', () => {
     expect(messages(p)).toEqual([])
     add('wrong', [parent.id, 'po'], ['child', 'ci'])
     expect(messages(p)).toEqual(["Link 'wrong': source port 'po' must be an 'in' port"])
+  })
+})
+
+describe('validate module attributes', () => {
+  it('flags duplicate attributes and deleted types', () => {
+    const p = load()
+    const controller = mod(p, 'Controller')
+    controller.attributes.push({ ...controller.attributes[0]!, id: 'dup' })
+    expect(messages(p)).toContain("Core.Controller: duplicate attribute 'mode'")
+    controller.attributes = [{ id: 'a', name: 'x', type: { kind: 'ref', id: 'gone' }, description: '' }]
+    expect(messages(p)).toContain('Core.Controller.x: references a deleted type')
+  })
+
+  it('checks defaults of attributes and struct fields against their type', () => {
+    const p = load()
+    expect(messages(p)).toEqual([])
+    mod(p, 'Controller').attributes[0]!.default = 'Nope'
+    const vec = type<StructDef>(p, 'Vec3')
+    vec.fields[0]!.default = 1.5
+    vec.fields[1]!.default = 'up'
+    expect(messages(p)).toEqual([
+      'Vec3.y default: Expected a number, got text up',
+      'Core.Controller.mode default: Expected a value of Mode (Idle, Run, Fault), got text Nope'
+    ])
+  })
+})
+
+describe('validate module methods', () => {
+  it('flags duplicate methods and parameters, names clashing with attributes and deleted types', () => {
+    const p = load()
+    const controller = mod(p, 'Controller')
+    const [setMode] = controller.methods
+    controller.methods.push({ ...setMode!, id: 'dup' })
+    expect(messages(p)).toContain("Core.Controller: duplicate method 'setMode'")
+    controller.methods = [
+      {
+        ...setMode!,
+        name: 'mode',
+        params: [...setMode!.params, { ...setMode!.params[0]!, id: 'p2' }],
+        returns: { kind: 'ref', id: 'gone' }
+      }
+    ]
+    expect(messages(p)).toEqual([
+      "Core.Controller: 'mode' is both an attribute and a method",
+      "Core.Controller.mode: duplicate parameter 'mode'",
+      'Core.Controller.mode returns: references a deleted type'
+    ])
+  })
+
+  it('flags const out parameters', () => {
+    const p = load()
+    mod(p, 'Controller').methods[0]!.params[0]!.direction = 'inout'
+    expect(messages(p)).toEqual(['Core.Controller.setMode(mode): an inout parameter cannot be const'])
+  })
+
+  it('flags static const methods', () => {
+    const p = load()
+    const instances = mod(p, 'Controller').methods.find((x) => x.name === 'instances')!
+    instances.const = true
+    expect(messages(p)).toEqual(['Core.Controller.instances: a static method cannot be const'])
   })
 })
