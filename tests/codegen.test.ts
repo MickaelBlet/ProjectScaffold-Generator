@@ -207,6 +207,18 @@ describe('C++17 generation', () => {
     expect(warnings).toEqual(["Operator: 'operator' is a C++ keyword, renamed in the generated code"])
   })
 
+  it('generates the rover: modules wired by their ports only', () => {
+    const { files, warnings } = generate(exported('examples/rover.scaffold.yaml'), cpp17())
+    expect(warnings).toEqual([])
+    const text = (path: string): string => files.find((f) => f.path === path)!.text
+    expect(text('include/rover/Perception.hpp')).toContain(
+      '::rover::IFrameSink& frames() { return preprocess().in(); }'
+    )
+    expect(text('src/Perception.cpp')).toContain('detector().out().forward(detections_);')
+    expect(text('src/System.cpp')).toContain('camera().frames().connect(recorder().frames());')
+    expect(text('src/Motors.cpp')).toContain('void Motors::onDriveCommand(const ::rover::Command& command)')
+  })
+
   it('generates types and interfaces of a project without modules', () => {
     const { files } = generate(exported('examples/common.scaffold.yaml'), cpp17())
     expect(files.map((f) => f.path)).toContain('include/common/interfaces/ITelemetry.hpp')

@@ -183,6 +183,7 @@ bool Controller::setMode(const ::common::Mode mode)
   - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files).
   - `.scaffold-gen.json` in the output directory records what was generated (keep it with the code).
 - A template set in `<output directory>/.scaffold/templates/` is used instead of the built-in one (or `-t <dir>`).
+- [`examples/rover.scaffold.yaml`](examples/rover.scaffold.yaml) is made of modules with ports only (no attributes nor methods): frames, detections, drive commands, lifecycle and health calls between a camera, a perception container (with its content wired through its ports), a planner, motors, a recorder and a supervisor. `npm run generate -- examples/rover.scaffold.yaml` writes it into `examples/generated/rover`.
 
 ### C++17 mapping
 

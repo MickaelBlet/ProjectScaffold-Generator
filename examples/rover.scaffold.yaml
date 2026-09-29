@@ -1,0 +1,452 @@
+schemaVersion: 1
+project:
+  name: Rover
+  description: Autonomous rover whose modules only talk through their ports, typed by interfaces
+types:
+  - kind: struct
+    name: Frame
+    description: Camera image
+    fields:
+      - name: id
+        type:
+          kind: primitive
+          name: uint64
+      - name: width
+        type:
+          kind: primitive
+          name: uint16
+        default: 640
+      - name: height
+        type:
+          kind: primitive
+          name: uint16
+        default: 480
+      - name: pixels
+        type:
+          kind: primitive
+          name: bytes
+  - kind: struct
+    name: Detection
+    fields:
+      - name: label
+        type:
+          kind: primitive
+          name: string
+      - name: score
+        type:
+          kind: primitive
+          name: float32
+      - name: box
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float32
+          size: 4
+        description: x, y, width, height in pixels
+  - kind: alias
+    name: Detections
+    type:
+      kind: vector
+      of:
+        kind: ref
+        name: Detection
+  - kind: struct
+    name: Command
+    fields:
+      - name: speed
+        type:
+          kind: primitive
+          name: float32
+        description: m/s
+      - name: turn
+        type:
+          kind: primitive
+          name: float32
+        description: rad/s
+  - kind: enum
+    name: Health
+    underlying: uint8
+    values:
+      - name: Ok
+        value: 0
+      - name: Degraded
+        value: 1
+      - name: Failed
+        value: 2
+interfaces:
+  - name: FrameSink
+    description: Receives camera frames
+    messages:
+      - name: push
+        params:
+          - name: frame
+            type:
+              kind: ref
+              name: Frame
+        returns: null
+  - name: DetectionSink
+    description: Receives the objects seen in a frame
+    messages:
+      - name: publish
+        params:
+          - name: detections
+            type:
+              kind: ref
+              name: Detections
+        returns: null
+  - name: Drive
+    messages:
+      - name: command
+        params:
+          - name: command
+            type:
+              kind: ref
+              name: Command
+        returns: null
+  - name: Lifecycle
+    messages:
+      - name: start
+        params: []
+        returns:
+          kind: primitive
+          name: bool
+      - name: stop
+        params: []
+        returns: null
+  - name: HealthQuery
+    messages:
+      - name: health
+        params: []
+        returns:
+          kind: ref
+          name: Health
+modules:
+  - name: Camera
+    description: Captures frames
+    color: "#d6c21f"
+    ports:
+      - name: frames
+        role: out
+        interface: FrameSink
+      - name: lifecycle
+        role: in
+        interface: Lifecycle
+  - name: Perception
+    description: Finds objects in the frames
+    color: "#2e9e8f"
+    ports:
+      - name: frames
+        role: in
+        interface: FrameSink
+      - name: health
+        role: in
+        interface: HealthQuery
+      - name: detections
+        role: out
+        interface: DetectionSink
+    modules:
+      - name: Preprocess
+        description: Undistorts and scales the frames
+        color: "#3b8fd1"
+        ports:
+          - name: in
+            role: in
+            interface: FrameSink
+          - name: out
+            role: out
+            interface: FrameSink
+      - name: Detector
+        color: "#8a4fd1"
+        ports:
+          - name: in
+            role: in
+            interface: FrameSink
+          - name: health
+            role: in
+            interface: HealthQuery
+          - name: out
+            role: out
+            interface: DetectionSink
+  - name: Planner
+    description: Turns detections into drive commands
+    color: "#d14f9e"
+    ports:
+      - name: detections
+        role: in
+        interface: DetectionSink
+      - name: drive
+        role: out
+        interface: Drive
+  - name: Motors
+    color: "#d1733b"
+    ports:
+      - name: drive
+        role: in
+        interface: Drive
+      - name: lifecycle
+        role: in
+        interface: Lifecycle
+  - name: Recorder
+    description: Logs frames and detections
+    color: "#6b7f8e"
+    ports:
+      - name: frames
+        role: in
+        interface: FrameSink
+      - name: detections
+        role: in
+        interface: DetectionSink
+  - name: Supervisor
+    description: Starts, stops and watches the others
+    color: "#4f9ed1"
+    ports:
+      - name: camera
+        role: out
+        interface: Lifecycle
+      - name: motors
+        role: out
+        interface: Lifecycle
+      - name: perception
+        role: out
+        interface: HealthQuery
+links:
+  - name: camera_to_perception
+    from:
+      module: Camera
+      port: frames
+    to:
+      module: Perception
+      port: frames
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 5
+        rateHz: 30
+      remote:
+        enabled: false
+  - name: camera_to_recorder
+    from:
+      module: Camera
+      port: frames
+    to:
+      module: Recorder
+      port: frames
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+      remote:
+        enabled: false
+  - name: frames_in
+    from:
+      module: Perception
+      port: frames
+    to:
+      module: Perception.Preprocess
+      port: in
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 5
+        rateHz: 30
+      remote:
+        enabled: false
+  - name: preprocess_to_detector
+    from:
+      module: Perception.Preprocess
+      port: out
+    to:
+      module: Perception.Detector
+      port: in
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 5
+        rateHz: 30
+      remote:
+        enabled: false
+  - name: detections_out
+    from:
+      module: Perception.Detector
+      port: out
+    to:
+      module: Perception
+      port: detections
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 5
+        rateHz: 30
+      remote:
+        enabled: false
+  - name: health_in
+    from:
+      module: Perception
+      port: health
+    to:
+      module: Perception.Detector
+      port: health
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: perception_to_planner
+    from:
+      module: Perception
+      port: detections
+    to:
+      module: Planner
+      port: detections
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 5
+        rateHz: 30
+      remote:
+        enabled: false
+  - name: perception_to_recorder
+    from:
+      module: Perception
+      port: detections
+    to:
+      module: Recorder
+      port: detections
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: bulk
+      remote:
+        enabled: false
+  - name: planner_to_motors
+    from:
+      module: Planner
+      port: drive
+    to:
+      module: Motors
+      port: drive
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 2
+        rateHz: 50
+      remote:
+        enabled: false
+  - name: supervise_camera
+    from:
+      module: Supervisor
+      port: camera
+    to:
+      module: Camera
+      port: lifecycle
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: low
+      remote:
+        enabled: false
+  - name: supervise_motors
+    from:
+      module: Supervisor
+      port: motors
+    to:
+      module: Motors
+      port: lifecycle
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: low
+      remote:
+        enabled: false
+  - name: supervise_perception
+    description: The supervisor runs on the ground station
+    from:
+      module: Supervisor
+      port: perception
+    to:
+      module: Perception
+      port: health
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        maxLatencyMs: 100
+      remote:
+        enabled: true
+        transport: tcp
+editor:
+  layout:
+    Camera:
+      x: 336
+      y: 103
+      width: 200
+      height: 72
+    Perception:
+      x: 652
+      y: 58
+      width: 844
+      height: 162
+    Perception.Preprocess:
+      x: 144
+      y: 58
+      width: 200
+      height: 72
+    Perception.Detector:
+      x: 460
+      y: 46
+      width: 200
+      height: 96
+    Planner:
+      x: 1612
+      y: 186
+      width: 200
+      height: 72
+    Motors:
+      x: 1928
+      y: 91
+      width: 200
+      height: 96
+    Recorder:
+      x: 1612
+      y: 20
+      width: 200
+      height: 96
+    Supervisor:
+      x: 20
+      y: 79
+      width: 200
+      height: 120
