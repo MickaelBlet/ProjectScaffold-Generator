@@ -1049,13 +1049,6 @@ editor:
       y: 800
       width: 200
       height: 92
-  views:
-    - name: Mission control
-      root: MissionControl
-    - name: Datalink
-      hidden:
-        - MissionControl.Dashboard
-        - VideoWall
   style:
     Datalink:
       labels:

@@ -1470,14 +1470,11 @@ editor:
       root: Avionics
     - name: Payload
       root: Payload
-    - name: Flight chain
-      hidden:
-        - HAL
-        - Payload
-        - FlashStore
     - name: Estimator
       root: Avionics.Estimator
   style:
+    Avionics:
+      locked: true
     Motors:
       locked: true
   links:
@@ -1494,12 +1491,24 @@ editor:
       to:
         side: left
         at: 0.5
+    camera_to_payload:
+      points:
+        - x: 285
+          y: 69
+        - x: 565
+          y: 49
     recorder_to_flash:
       points:
         - x: 1300
           y: 1391
         - x: 1300
           y: 1086
+    payload_to_radio:
+      points:
+        - x: 1220
+          y: 1020
+        - x: 1480
+          y: 920
   notes:
     - kind: frame
       text: Flight-critical (DAL-B)
