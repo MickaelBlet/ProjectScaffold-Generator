@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Buttons, menus and panels use a shared set of SVG icons.
 - Module colors are saved on the module (`color`), no longer in `editor.style`, which still reads them.
 - Ports of linked modules from other projects follow their links like local ones; drill-down stand-ins sit on the top / bottom in vertical orientation and follow the ports they link to.
+- Explorer: compact rows, and modules nested under their parent as in the Outline (chevron or Left / Right to fold, port count).
 - The structured type editor of a field opens on a full-width row below it.
 - Linting checks types (`typescript-eslint` type-checked rules) and React rules (`eslint-plugin-react-hooks` recommended); `npm run lint` passes, including the Electron files.
 - Canvas code split: graph building in `canvas/flowGraph.ts`, shared constants in `canvas/constants.ts`, port placement of module nodes in `usePortLayout`.
