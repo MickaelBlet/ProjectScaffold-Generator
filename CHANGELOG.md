@@ -95,5 +95,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Port names of containers are drawn above the links crossing them.
 - _Swap ends_ in the link inspector also swaps the link's attachments and reverses its bends, like _Reverse direction_.
 - Hints no longer tell to double-click the canvas to add a module (right-click it).
