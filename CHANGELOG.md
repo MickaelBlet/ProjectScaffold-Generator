@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Module and note backgrounds are slightly translucent, so links passing behind them stay visible.
 - The Tauri window is frameless like the Electron one: minimize, maximize and close buttons in the toolbar, which moves the window (`src-tauri/capabilities/default.json`).
 - _File › Open…_ accepts several files at once, each opened in its own tab (one at a time in VS Code).
 - Recent projects moved from a separate button into _File › Open Recent_.
