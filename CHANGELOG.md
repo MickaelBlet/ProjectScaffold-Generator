@@ -11,10 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - C++-like classes for modules: `kind` (`class`, `abstract`, `interface`), `bases` (modules derived from) and `virtual`, `pure` (`= 0`) and `override` method qualifiers, edited in the module inspector (_Implement_ adds missing overrides of inherited pure methods), shown on the canvas as `«interface» Name : Base`, with UML inheritance arrows to the bases (dashed to interfaces; _View › Inheritance arrows_), and `virtual f(): R override = 0`, and checked: pure methods only in abstract modules and interfaces, all of them in interfaces, overrides matching a virtual base method, inherited pure methods implemented by concrete modules, no inheritance cycles.
 - Dependencies (`dependencies` in the project file; _Insert › Add dependency…_): another project file whose types and interfaces a project uses by reference, read-only, in the same namespace as its own, and whose modules it can place on the canvas to link to (_Insert › Link to another project…_), resizable like the project's own. A snapshot is kept in the file for generators; the dependencies of a dependency come with it (`indirect`). Same definitions are merged: an own one becomes the dependency's, two dependencies share it (`shared`); a different one is left out with a warning. Refreshed from the files (_Refresh dependencies_) and live from an open tab; renames of modules, ports, types and interfaces follow; entities removed from a dependency but still used are kept as own ones. Listed in the Explorer and the _Dependencies_ panel (open, refresh, place a module, detach, remove). Importing a project also brings its dependencies. See `examples/common.scaffold.yaml`, `robot.scaffold.yaml` and `station.scaffold.yaml`.
-- Module methods (`methods` in modules): prototypes like interface messages — parameters with their direction, optional return type, `static` and `const` qualifiers, `const` parameters — edited in the module inspector and listed as `name(a: T): R` in a compartment below the attributes; in the outline, search and type usages.
+- Module methods (`methods` in modules): prototypes like interface messages — parameters with their direction, optional return type, `static` and `const` qualifiers, `const` parameters — edited in the module inspector and listed as `name(a: T): R` in a compartment below the attributes; in the Modules panel, search and type usages.
 - Module attributes (`attributes` in modules), optionally `static` and `const`: typed properties edited in the module inspector, listed as `name: type` in a compartment below the module's header, apart from the ports where links attach; containers keep their content below them.
 - Default values (`default`) of module attributes and struct fields: YAML values (one-line flow literals in the inspector, a choice for `bool` and enums) checked against the type — struct fields missing or unknown, list sizes, set duplicates, map keys, integer ranges — opaque for custom primitives, and shown as `= value`.
-- VS Code extension (`scripts/build_vscode.sh` or `docker buildx bake vscode` → `.vsix`): project files open as text with an editable diagram preview beside them (Ctrl+K V), or in a full diagram editor; text cursor and diagram selection follow each other; Explorer, Outline, Links and Settings in a ProjectScaffold side bar following the active project file; problems in the Problems panel, outline in the Outline view / breadcrumbs; theme and colors follow the VS Code color theme (theme setting _VS Code_); exports and dependency refresh go through the files next to the document.
+- VS Code extension (`scripts/build_vscode.sh` or `docker buildx bake vscode` → `.vsix`): project files open as text with an editable diagram preview beside them (Ctrl+K V), or in a full diagram editor; text cursor and diagram selection follow each other; Explorer, Modules, Links and Settings in a ProjectScaffold side bar following the active project file; problems in the Problems panel, outline in the Outline view / breadcrumbs; theme and colors follow the VS Code color theme (theme setting _VS Code_); exports and dependency refresh go through the files next to the document.
 - Example fleet of projects (`examples/fleet/`): shared units, weather, drone and ground station projects built on dependencies.
 - Custom primitive types (`kind: primitive` in `types`): opaque types that generators map to a native type, added from the Explorer (+P).
 - Custom transports (`transports` in the project file), managed in the project inspector or added from a remote link (Transport > New transport…); an undeclared transport is a warning, declared from the link.
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit as text (_View › Edit as text (YAML)_, Alt+U): the project file edited in a tab, with syntax coloring, completion from the file schema and the project's names (Ctrl+Space), visible whitespace, the editor data shown or hidden, and errors located at their line. Valid edits apply as one undo step each; the element under the caret is selected and zoomed to.
 - Files changed by another program are reloaded (checked every 2 s and on focus), asking first when the document has unsaved changes.
 - Reloading a project from its text keeps the ids and editor data of its entities, renamed ones included, so the selection, open editors and views survive.
-- Keyboard navigation of the Explorer, Outline, Links, Search and Problems lists (arrows, Home / End, Enter / Space; Left / Right collapse and expand in the Outline) and of the document tabs.
+- Keyboard navigation of the Explorer, Modules, Links, Search and Problems lists (arrows, Home / End, Enter / Space; Left / Right collapse and expand in Modules) and of the document tabs.
 - Dialogs, the command palette and the document tabs carry ARIA roles and labels.
 - Selection history: Alt+Left / Alt+Right go back to the previous selection and forward again, bringing it into view.
 - Links drawn straight between modules: drag the → in a module's header onto another module (or an `in` port), or a port onto a module; the missing `out` / `in` ports are added, with the interface of the other end.
@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Build (`npm run build`, `scripts/build_web.sh [--check]`): single self-contained `dist-web/index.html` working from `file://`, using the File System Access API when available.
 - Unsaved edits are kept across page reloads and restored at startup.
 - Document tabs: several projects open at once, each with its own undo history; the open documents are restored after a reload.
-- Dockable, stackable and floating panels (Explorer, Outline, Links, Inspector, Problems, Search, Settings) with a persistent layout.
+- Dockable, stackable and floating panels (Explorer, Modules, Links, Inspector, Problems, Search, Settings) with a persistent layout.
 - Diagram views as tabs, splittable side by side: global view, module drill-down views (outside modules shown as stand-ins, breadcrumbs), modules hidden per view. Stored in `editor.views`.
 - Type, interface, module and link editors in tabs.
 - Multi-selection (Ctrl+click, Shift+drag), with align, distribute, same size, group into a module, color and delete.
@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README screenshot of the editor (`docs/demo.png`).
 - Context menus (right click), double-click the canvas to zoom, inline rename (F2), keyboard nudging, alignment guides, snap to grid.
 - Command palette (Ctrl+Shift+P), go to anything (Ctrl+P), keyboard shortcuts sheet (`?`), menu bar.
-- Outline panel (module tree: reveal, hide in view, drag to re-parent), full-text Search panel, filters in Problems, "used by" lists for types.
+- Modules panel (module tree: reveal, hide in view, drag to re-parent), full-text Search panel, filters in Problems, "used by" lists for types.
 - Module colors (module `color`), sticky notes and frames (`editor.notes`); modules locked in `editor.style`.
 - Diagram export as PNG / SVG.
 - Settings: light / dark / system theme, link style and badges, port style (dots, arrows, hollow, shapes), grid, guides, minimap.
@@ -78,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Buttons, menus and panels use a shared set of SVG icons.
 - Module colors are saved on the module (`color`), no longer in `editor.style`, which still reads them.
 - Ports of linked modules from other projects follow their links like local ones; drill-down stand-ins sit on the top / bottom in vertical orientation and follow the ports they link to.
-- Explorer: compact rows, and modules nested under their parent as in the Outline (chevron or Left / Right to fold, port count).
+- Explorer: compact rows, and modules nested under their parent as in the Modules panel (chevron or Left / Right to fold, port count).
 - The structured type editor of a field opens on a full-width row below it.
 - Linting checks types (`typescript-eslint` type-checked rules) and React rules (`eslint-plugin-react-hooks` recommended); `npm run lint` passes, including the Electron files.
 - Canvas code split: graph building in `canvas/flowGraph.ts`, shared constants in `canvas/constants.ts`, port placement of module nodes in `usePortLayout`.
