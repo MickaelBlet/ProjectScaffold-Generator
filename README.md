@@ -40,8 +40,8 @@ Both desktop apps at once (parallel, shared web build): `scripts/build_desktop.s
 VS Code extension: `*.scaffold.yaml` / `.yml` / `.json` files open as text, with an editable diagram preview beside them (_Open Preview_ in the editor title, or Ctrl+K V), like the Markdown preview: on the left of the text by default, and the _ProjectScaffold_ side bar opens with it (settings `projectScaffold.preview.position`, `projectScaffold.preview.showSideBar`); the full-window diagram is under _Reopen Editor With… › ProjectScaffold_ (or _Open in Full Diagram Editor_ from the explorer menu for any YAML/JSON project file). The file stays a VS Code text document (dirty state, save, hot exit, git diff). The text cursor and the diagram selection follow each other (setting `projectScaffold.syncSelection`). Undo in the preview undoes the diagram's changes; undo in the text, the text's. The app's Explorer, Modules, Links, Dependencies and Settings are in the _ProjectScaffold_ side bar (activity bar), for the project file being edited: selecting there shows it in the diagram and the text. Problems go to the VS Code Problems panel on the line of their entity; the outline to the Outline view and breadcrumbs of the text. Dependencies are refreshed from the files next to the document. With the theme setting _VS Code_ (the default), the colors are those of the VS Code color theme. While a diagram has the focus, its shortcuts win over VS Code's.
 
 ```sh
-scripts/build_vscode.sh     # -> dist-vscode/project-scaffold-<version>.vsix (or: docker buildx bake vscode)
-code --install-extension dist-vscode/project-scaffold-*.vsix
+scripts/build_vscode.sh     # -> dist-vscode/project-scaffold-vscode-<version>.vsix (or: docker buildx bake vscode)
+code --install-extension dist-vscode/project-scaffold-vscode-*.vsix
 ```
 
 Development: `npm run build && npm run vscode:compile`, then `code --extensionDevelopmentPath="$PWD/vscode" examples` opens an Extension Development Host.
