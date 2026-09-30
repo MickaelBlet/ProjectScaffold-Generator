@@ -196,6 +196,8 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     schemaVersion: SCHEMA_VERSION,
     project: { name: p.name, description: opt(p.description), metadata: optMeta(p.metadata) },
     transports: p.transports.length ? [...p.transports] : undefined,
+    remoteDefaults:
+      p.remoteDefaults && Object.keys(p.remoteDefaults).length ? clean(p.remoteDefaults) : undefined,
     binaries: p.binaries.length
       ? p.binaries.map((b) => ({ name: b.name, description: opt(b.description), color: b.color }))
       : undefined,
@@ -749,6 +751,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
     description: f.project.description ?? '',
     metadata: { ...(f.project.metadata ?? {}) },
     transports: [...(f.transports ?? [])],
+    ...(f.remoteDefaults ? { remoteDefaults: clean(f.remoteDefaults) } : {}),
     binaries,
     types,
     interfaces,

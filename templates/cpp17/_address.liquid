@@ -1,12 +1,22 @@
 {%- comment -%}
-  Default address of a link between binaries (C++ and Python alike): `127.0.0.1:<47000 + index>`,
-  or the name of the shared memory `<project>_<link>`. Parameter: r (with `index` and `link`).
+  Address of a link between binaries (C++ and Python alike), from its resolved settings: `host:port`
+  of the client (where the caller connects) or of the server (where the callee listens), or the name
+  of the shared memory. Parameters: r (with `link` and `settings`), side ('client' or 'server').
 {%- endcomment -%}
 {%- liquid
   if r.link.constraints.remote.transport == 'shm'
-    echo project.ident | snake | append: '_' | append: r.link.name | snake
+    echo r.settings.name
   else
-    assign port = 47000 | plus: r.index
-    echo '127.0.0.1:' | append: port
+    assign at = r.settings.client
+    if side == 'server'
+      assign at = r.settings.server
+    endif
+    if at.host != nil
+      if at.host contains ':'
+        echo '[' | append: at.host | append: ']:' | append: at.port
+      else
+        echo at.host | append: ':' | append: at.port
+      endif
+    endif
   endif
 -%}

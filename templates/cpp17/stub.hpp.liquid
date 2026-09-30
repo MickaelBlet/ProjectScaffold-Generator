@@ -21,10 +21,12 @@ public:
 
     void bind({% render '_qualified', e: item %}& target) { target_ = &target; }
 
-    /// Receives the calls of link `link` over `transport`, at `address`.
-    void serve(const std::string& transport, const std::string& address, const std::string& link)
+    /// Receives the calls over `transport`, at `address`; `capacity`: bytes of each ring of shm.
+    void serve(const std::string& transport, const std::string& address,
+               std::uint32_t capacity = remote::ringCapacity)
     {
-        server_ = remote::serve(transport, address, link, [this](const Bytes& frame) { return dispatch(frame); });
+        server_ = remote::serve(
+            transport, address, [this](const Bytes& frame) { return dispatch(frame); }, capacity);
     }
 
     /// Makes the call of a frame: the reply frame, or nothing when the call wants none.

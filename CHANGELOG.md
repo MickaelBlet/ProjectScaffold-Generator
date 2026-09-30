@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Transport settings of remote links (`constraints.remote.settings`), edited in the link inspector under _Transport settings_: client and server host and port (tcp, udp, http, websocket, grpc), request path (http, websocket), shared memory segment and ring capacity (shm), socket (ipc), broker and topic (mqtt), interface and frame id (can), device and baud rate (serial), and free `options` for any transport, custom ones included. Checked: fields not applying to the transport, http paths, shared memory names, two links listening on the same port or sharing a segment. C++17 generation uses them for the generated transports and lists them in the user sections of the others; template context: `r.settings` (defaults applied) and `link.constraints.remote.settings`.
+- Remote defaults (`remoteDefaults` in the project file, project inspector): client and server host and first port of the links between binaries.
+
+### Changed
+
+- C++17 generation: the server side of a link between binaries reads its address from `<PROJECT>_<LINK>_LISTEN` (the client keeps `<PROJECT>_<LINK>`). `remote::connect(transport, address, path)` and `remote::serve(transport, address, handler, capacity)` (Python `connect` / `serve` alike) take the http / websocket path and the shm capacity in place of the link name; Python `Link` has `client_address` / `server_address` in place of `address`.
+
+### Fixed
+
+- C++17 transports: bracketed IPv6 hosts (`[::1]:47000`) resolve, as in Python.
+
 ## [0.1.0] - 2026-09-30
 
 ### Added

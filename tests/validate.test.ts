@@ -169,6 +169,34 @@ describe('validate', () => {
     expect(messages(p, 'warning')).toEqual([])
   })
 
+  it('checks transport settings', () => {
+    const p = load()
+    const core = link(p, 'operator_to_core').constraints.remote
+    core.settings = { server: { port: 5000 }, name: 'seg', options: { qos: '1' } }
+    const other = link(p, 'sensor_to_controller').constraints.remote
+    other.settings = { path: 'x' }
+    expect(messages(p, 'warning')).toEqual([
+      "Link 'sensor_to_controller': transport settings set but link is not remote",
+      "Link 'operator_to_core': name does not apply to transport 'tcp'"
+    ])
+    Object.assign(other, { enabled: true, transport: 'http' })
+    delete core.settings.name
+    expect(messages(p)).toEqual(["Link 'sensor_to_controller': path 'x' must start with '/'"])
+    other.settings = { path: '/x', server: { host: '127.0.0.1', port: 5000 } }
+    expect(messages(p, 'warning')).toEqual([
+      "Link 'operator_to_core' listens on tcp 127.0.0.1:5000, as link 'sensor_to_controller'"
+    ])
+    p.remoteDefaults = { server: { host: '0.0.0.0' } }
+    expect(messages(p, 'warning')).toEqual([])
+    Object.assign(core, { transport: 'shm', settings: { name: '/seg' } })
+    Object.assign(other, { transport: 'shm', settings: { name: 'seg' } })
+    expect(messages(p, 'warning')).toEqual([
+      "Link 'operator_to_core' uses the shared memory 'seg' of link 'sensor_to_controller'"
+    ])
+    core.settings = { name: 'a/b' }
+    expect(messages(p)).toEqual(["Link 'operator_to_core': shared memory name 'a/b' is not valid"])
+  })
+
   it('accepts custom primitives as map keys', () => {
     const p = load()
     p.types.push({ id: 'uuid', kind: 'primitive', name: 'Uuid', description: '' })

@@ -42,6 +42,25 @@ describe('serialize', () => {
     expect(toFile(fromFile(example), { editor: false }).transports).toBeUndefined()
   })
 
+  it('round-trips transport settings and remote defaults', () => {
+    const p = fromFile(example)
+    const remote = p.links.find((l) => l.constraints.remote.enabled)!.constraints.remote
+    remote.settings = {
+      client: { host: '10.0.0.2', port: 5000 },
+      server: { port: 5000 },
+      options: { a: 'b' }
+    }
+    p.remoteDefaults = { server: { host: '0.0.0.0' }, basePort: 48000 }
+    const file = toFile(p, { editor: false })
+    expect(file.remoteDefaults).toEqual({ server: { host: '0.0.0.0' }, basePort: 48000 })
+    const again = fromFile(file)
+    expect(again.remoteDefaults).toEqual(p.remoteDefaults)
+    expect(again.links.find((l) => l.constraints.remote.enabled)!.constraints.remote.settings).toEqual(
+      remote.settings
+    )
+    expect(toFile(fromFile(example), { editor: false }).remoteDefaults).toBeUndefined()
+  })
+
   it('round-trips locked modules and notes', () => {
     const p = fromFile(example)
     p.modules[1]!.locked = true

@@ -233,7 +233,14 @@ describe('generation context', () => {
     expect(client.proxies.map((r) => r.index)).toEqual([0, 1, 2, 3, 4, 5])
     expect(client.stubs.map((r) => [r.index, r.interface.name])).toEqual([[6, 'Status']])
     // Through the fields of Sample and Tree, sorted by name.
-    expect(ctx.remoteTypes.map((t) => t.name)).toEqual(['Mode', 'Numbers', 'Sample', 'Samples', 'Tree', 'Vec3'])
+    expect(ctx.remoteTypes.map((t) => t.name)).toEqual([
+      'Mode',
+      'Numbers',
+      'Sample',
+      'Samples',
+      'Tree',
+      'Vec3'
+    ])
     const scale = ctx.interfaces.find((i) => i.name === 'Echo')!.messages.find((m) => m.name === 'scale')!
     expect(scale.inputs.map((p) => p.name)).toEqual(['v', 'factor'])
     expect(scale.outputs.map((p) => p.name)).toEqual(['v'])
@@ -313,17 +320,33 @@ describe('C++17 generation', () => {
     const text = (path: string): string => files.find((f) => f.path === path)!.text
     const client = text('src/ClientSystem.cpp')
     expect(client).toContain(
-      'echoUdpProxy_.open(remote::connect("udp", remote::address("RELAY_ECHO_UDP", "127.0.0.1:47001"), "echo_udp"),\n' +
+      'echoUdpProxy_.open(remote::connect("udp", remote::address("RELAY_ECHO_UDP", "127.0.0.1:47001")),\n' +
         '        false, std::chrono::milliseconds(5000));'
     )
-    expect(client).toContain('remote::address("RELAY_ECHO_SHM", "relay_echo_shm")')
+    // Settings of the links: client and server ends, http path, shared memory name and capacity.
+    expect(client).toContain('remote::address("RELAY_ECHO_TCP", "127.0.0.1:47210")')
+    expect(client).toContain('remote::address("RELAY_ECHO_HTTP", "127.0.0.1:47002"), "/relay/echo")')
+    expect(client).toContain('remote::address("RELAY_ECHO_WEBSOCKET", "127.0.0.1:47003"), "/echo_websocket")')
+    expect(client).toContain('remote::address("RELAY_ECHO_SHM", "relay_echo_segment")')
+    const server = text('src/ServerSystem.cpp')
+    expect(server).toContain(
+      'echoTcpStub_.serve("tcp", remote::address("RELAY_ECHO_TCP_LISTEN", "0.0.0.0:47210"));'
+    )
+    expect(server).toContain(
+      'echoShmStub_.serve("shm", remote::address("RELAY_ECHO_SHM_LISTEN", "relay_echo_segment"), 4194304);'
+    )
     // No transport generated for mqtt: left to a user section.
     expect(client).not.toContain('remote::connect("mqtt"')
     expect(client).toContain('// Open echoMqttProxy_ with a remote::Channel to binary Server over mqtt.')
-    expect(client).toContain('statusStub_.serve("tcp", remote::address("RELAY_STATUS", "127.0.0.1:47006"), "status");')
+    expect(client).toContain('    // Settings: broker broker.local:1883, topic relay/echo, qos=1.')
+    expect(client).toContain(
+      'statusStub_.serve("tcp", remote::address("RELAY_STATUS_LISTEN", "127.0.0.1:47006"));'
+    )
     expect(text('src/server/main.cpp')).toContain('relay::remote::waitForStop();')
     expect(text('CMakeLists.txt')).toContain('src/remote/transport.cpp')
-    expect(text('CMakeLists.txt')).toContain('target_link_libraries(relay ${SCAFFOLD_SCOPE} Threads::Threads)')
+    expect(text('CMakeLists.txt')).toContain(
+      'target_link_libraries(relay ${SCAFFOLD_SCOPE} Threads::Threads)'
+    )
     const proxy = text('include/relay/remote/EchoProxy.hpp')
     expect(proxy).toContain('const Bytes reply_ = caller_.call(2, request_.bytes(), true);')
     expect(proxy).toContain('caller_.call(3, request_.bytes(), false);')
@@ -336,8 +359,19 @@ describe('C++17 generation', () => {
     expect(peer).toContain('self.echo_tcp = EchoProxy.connect(links.ECHO_TCP)')
     expect(peer).not.toContain('links.ECHO_MQTT')
     expect(text('python/relay/links.py')).toContain(
-      "ECHO_SHM = Link('echo_shm', 4, 'Echo', 'shm', 'RELAY_ECHO_SHM', 'relay_echo_shm', True, 2, 'Client', 'Server')"
+      "ECHO_SHM = Link('echo_shm', 4, 'Echo', 'shm', 'RELAY_ECHO_SHM', 'relay_echo_segment', 'RELAY_ECHO_SHM_LISTEN', " +
+        "'relay_echo_segment', '/', 4194304, 'name relay_echo_segment, capacity 4194304', {}, True, 2, 'Client', 'Server')"
     )
+    expect(text('python/relay/links.py')).toContain(
+      "'/', 1048576, 'broker broker.local:1883, topic relay/echo, qos=1', {'qos': '1'}"
+    )
+    // Project defaults: hosts of both ends, first port.
+    const relay = exported('tests/fixtures/relay.scaffold.yaml')
+    relay.remoteDefaults = { client: { host: '10.0.0.2' }, server: { host: '::' }, basePort: 50000 }
+    const moved = generate(relay, cpp17()).files
+    const at = (path: string): string => moved.find((f) => f.path === path)!.text
+    expect(at('src/ClientSystem.cpp')).toContain('remote::address("RELAY_ECHO_UDP", "10.0.0.2:50001")')
+    expect(at('src/ServerSystem.cpp')).toContain('remote::address("RELAY_ECHO_UDP_LISTEN", "[::]:50001")')
     // Without links between binaries: neither transports nor Python.
     const plain = generate(exported('tests/fixtures/plant.scaffold.yaml'), cpp17()).files.map((f) => f.path)
     expect(plain.filter((p) => p.includes('remote') || p.startsWith('python/'))).toEqual([])

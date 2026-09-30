@@ -40,6 +40,38 @@
             "minLength": 1
           }
         },
+        "remoteDefaults": {
+          "type": "object",
+          "properties": {
+            "client": {
+              "description": "host the callers connect to",
+              "type": "object",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "server": {
+              "description": "host the callees listen on",
+              "type": "object",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "basePort": {
+              "description": "port of the first remote link, the next ones following (default 47000)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "description": "defaults of the addresses of the remote links (default host 127.0.0.1)"
+        },
         "binaries": {
           "description": "executables the top-level modules are split into (each names its own); links between two of them must be remote",
           "type": "array",
@@ -198,6 +230,10 @@
                       },
                       "transport": {
                         "type": "string"
+                      },
+                      "settings": {
+                        "description": "settings of the transport; the fields that apply depend on it",
+                        "$ref": "#/$defs/TransportSettings"
                       }
                     },
                     "required": [
@@ -1226,6 +1262,114 @@
         "name",
         "ports"
       ]
+    },
+    "TransportSettings": {
+      "type": "object",
+      "properties": {
+        "client": {
+          "description": "where the caller connects (tcp, udp, http, websocket, grpc)",
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "server": {
+          "description": "where the callee listens (tcp, udp, http, websocket, grpc)",
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "path": {
+          "description": "request path (http, websocket; default /<link>)",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "description": "shared memory segment (shm; default <project>_<link>)",
+          "type": "string",
+          "minLength": 1
+        },
+        "capacity": {
+          "description": "bytes of each ring (shm; default 1048576)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "socket": {
+          "description": "unix socket path (ipc)",
+          "type": "string",
+          "minLength": 1
+        },
+        "broker": {
+          "description": "broker (mqtt)",
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "topic": {
+          "description": "topic (mqtt)",
+          "type": "string",
+          "minLength": 1
+        },
+        "interface": {
+          "description": "network interface (can)",
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "description": "frame id (can)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "device": {
+          "description": "device path (serial)",
+          "type": "string",
+          "minLength": 1
+        },
+        "baud": {
+          "description": "baud rate (serial)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "options": {
+          "description": "free settings, for any transport",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

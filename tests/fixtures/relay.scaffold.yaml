@@ -353,6 +353,9 @@ links:
       remote:
         enabled: true
         transport: tcp
+        settings:
+          client: { host: 127.0.0.1, port: 47210 }
+          server: { host: 0.0.0.0, port: 47210 }
   - name: echo_udp
     from:
       module: Caller
@@ -386,6 +389,8 @@ links:
       remote:
         enabled: true
         transport: http
+        settings:
+          path: /relay/echo
   - name: echo_websocket
     from:
       module: Caller
@@ -420,6 +425,9 @@ links:
       remote:
         enabled: true
         transport: shm
+        settings:
+          name: relay_echo_segment
+          capacity: 4194304
   - name: echo_mqtt
     from:
       module: Caller
@@ -437,6 +445,10 @@ links:
       remote:
         enabled: true
         transport: mqtt
+        settings:
+          broker: { host: broker.local, port: 1883 }
+          topic: relay/echo
+          options: { qos: '1' }
   - name: status
     from:
       module: Service

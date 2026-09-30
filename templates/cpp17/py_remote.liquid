@@ -31,7 +31,7 @@ class {{ item.name }}Proxy:
     @classmethod
     def connect(cls, link: Link) -> {{ item.name }}Proxy:
         """Proxy calling the server of `link`; connects on the first call."""
-        return cls(connect(link.transport, link.address, link.name), link.ack, link.timeout)
+        return cls(connect(link.transport, link.client_address, link.path), link.ack, link.timeout)
 
     def close(self) -> None:
         self._caller.close()
@@ -97,7 +97,7 @@ class {{ item.name }}Stub:
     @classmethod
     def serve(cls, link: Link, handler: {{ item.name }}Handler) -> Server:
         """Receives the calls of `link` into `handler` until the server is closed."""
-        return serve(link.transport, link.address, link.name, cls(handler))
+        return serve(link.transport, link.server_address, cls(handler), link.capacity)
 
     def __call__(self, frame: bytes) -> Optional[bytes]:
         return respond(frame, self._handle)

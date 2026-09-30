@@ -3,6 +3,8 @@
 // with their links sorted into wiring at the right level.
 import { dependencyName } from '../model/dependencies'
 import { mapTypeRef, walkTypeRef } from '../model/typeExpr'
+import { DEFAULT_BASE_PORT, DEFAULT_HOST, DEFAULT_SHM_CAPACITY, transportFields } from '../model/transports'
+import { snake } from './filters'
 import type {
   FileInterface,
   FileLink,
@@ -11,7 +13,16 @@ import type {
   FileProject,
   FileTypeDef
 } from '../model/schema'
-import type { ModuleKind, ParamDirection, PerformanceClass, PortRole, TypeRefOf, Value } from '../model/types'
+import type {
+  HostPort,
+  ModuleKind,
+  ParamDirection,
+  PerformanceClass,
+  PortRole,
+  TransportSettings,
+  TypeRefOf,
+  Value
+} from '../model/types'
 
 export type TypeKind = FileTypeDef['kind']
 
@@ -95,7 +106,29 @@ export interface GenConstraints {
   direction: 'unidirectional' | 'bidirectional'
   ack: { required: boolean; timeoutMs: number | null }
   performance: { class: PerformanceClass; maxLatencyMs: number | null; rateHz: number | null }
-  remote: { enabled: boolean; transport: string | null }
+  remote: { enabled: boolean; transport: string | null; settings: GenSettings }
+}
+
+export interface GenHostPort {
+  host: string | null
+  port: number | null
+}
+
+/** Settings of a transport (see `model/transports.ts`): null when unset. */
+export interface GenSettings {
+  client: GenHostPort
+  server: GenHostPort
+  path: string | null
+  name: string | null
+  capacity: number | null
+  socket: string | null
+  broker: GenHostPort
+  topic: string | null
+  interface: string | null
+  id: number | null
+  device: string | null
+  baud: number | null
+  options: { name: string; value: string }[]
 }
 
 export interface GenLink {
@@ -196,6 +229,8 @@ export interface GenRemote {
   interface: GenInterface
   /** End in the other binary. */
   peer: { binary: string; module: string; port: string }
+  /** Settings of the link's transport, defaults applied (see `GenRemoteLink.settings`). */
+  settings: GenSettings
 }
 
 /** Link between two binaries: `from` calls through a proxy, `to` receives through a stub. */
@@ -205,6 +240,12 @@ export interface GenRemoteLink {
   interface: GenInterface
   from: { binary: string; module: string; port: string }
   to: { binary: string; module: string; port: string }
+  /**
+   * Settings of the link's transport, with the defaults of the fields that apply to it: client and
+   * server host from `remoteDefaults` (else 127.0.0.1), port `basePort + index` (47000), path
+   * `/<link>`, shared memory `<project>_<link>`, capacity 1 MiB.
+   */
+  settings: GenSettings
 }
 
 /**
@@ -247,6 +288,8 @@ export interface GenContext {
     metadata: Record<string, string>
   }
   transports: string[]
+  /** Defaults of the addresses of the remote links, resolved. */
+  remoteDefaults: { client: { host: string }; server: { host: string }; basePort: number }
   /** The project's own types and interfaces. */
   types: GenType[]
   interfaces: GenInterface[]
@@ -488,6 +531,30 @@ export function buildContext(file: FileProject): GenContext {
     const b = binaryOfTop.get(path.split('.')[0]!)
     return b ? systems[binaries.indexOf(b)]! : null
   }
+  const ident = dependencyName(file.project.name)
+  const remoteDefaults = {
+    client: { host: file.remoteDefaults?.client?.host ?? DEFAULT_HOST },
+    server: { host: file.remoteDefaults?.server?.host ?? DEFAULT_HOST },
+    basePort: file.remoteDefaults?.basePort ?? DEFAULT_BASE_PORT
+  }
+  /** Settings of link `l`, the `index`th between binaries, with the defaults of its transport. */
+  const resolveSettings = (l: FileLink, index: number): GenSettings => {
+    const s = l.constraints.remote.settings ?? {}
+    const fields = transportFields(l.constraints.remote.transport)
+    const port = remoteDefaults.basePort + index
+    return genSettings({
+      ...s,
+      ...(fields.includes('client')
+        ? { client: { host: remoteDefaults.client.host, port, ...s.client } }
+        : {}),
+      ...(fields.includes('server')
+        ? { server: { host: remoteDefaults.server.host, port, ...s.server } }
+        : {}),
+      ...(fields.includes('path') ? { path: s.path ?? `/${l.name}` } : {}),
+      ...(fields.includes('name') ? { name: s.name ?? snake(`${ident}_${l.name}`) } : {}),
+      ...(fields.includes('capacity') ? { capacity: s.capacity ?? DEFAULT_SHM_CAPACITY } : {})
+    })
+  }
   const remoteInterfaces = new Map<string, GenInterface>()
   const remoteLinks: GenRemoteLink[] = []
   const links = file.links.map(genLink)
@@ -565,26 +632,33 @@ export function buildContext(file: FileProject): GenContext {
     }
     remoteInterfaces.set(face.name, face)
     const index = remoteLinks.length
+    const settings = resolveSettings(
+      file.links.find((f) => f.name === l.name)!,
+      index
+    )
     remoteLinks.push({
       index,
       link: l,
       interface: face,
       from: { binary: at.binary!.name, module: from.module, port: from.port },
-      to: { binary: peer.binary!.name, module: to.module, port: to.port }
+      to: { binary: peer.binary!.name, module: to.module, port: to.port },
+      settings
     })
     at.proxies.push({
       index,
       link: l,
       local: connection.from,
       interface: face,
-      peer: { binary: peer.binary!.name, module: to.module, port: to.port }
+      peer: { binary: peer.binary!.name, module: to.module, port: to.port },
+      settings
     })
     peer.stubs.push({
       index,
       link: l,
       local: connection.to,
       interface: face,
-      peer: { binary: at.binary!.name, module: from.module, port: from.port }
+      peer: { binary: at.binary!.name, module: from.module, port: from.port },
+      settings
     })
   }
   const remoteTypes = new Map<string, GenType>()
@@ -604,11 +678,12 @@ export function buildContext(file: FileProject): GenContext {
   return {
     project: {
       name: file.project.name,
-      ident: dependencyName(file.project.name),
+      ident,
       description: file.project.description ?? '',
       metadata: { ...(file.project.metadata ?? {}) }
     },
     transports: file.transports ?? [],
+    remoteDefaults,
     types,
     interfaces,
     modules,
@@ -645,7 +720,34 @@ function genLink(l: FileLink): GenLink {
         maxLatencyMs: c.performance.maxLatencyMs ?? null,
         rateHz: c.performance.rateHz ?? null
       },
-      remote: { enabled: c.remote.enabled, transport: c.remote.transport ?? null }
+      remote: {
+        enabled: c.remote.enabled,
+        transport: c.remote.transport ?? null,
+        settings: genSettings(c.remote.settings ?? {})
+      }
     }
+  }
+}
+
+const genHostPort = (h: HostPort | undefined): GenHostPort => ({
+  host: h?.host ?? null,
+  port: h?.port ?? null
+})
+
+function genSettings(s: TransportSettings): GenSettings {
+  return {
+    client: genHostPort(s.client),
+    server: genHostPort(s.server),
+    path: s.path ?? null,
+    name: s.name ?? null,
+    capacity: s.capacity ?? null,
+    socket: s.socket ?? null,
+    broker: genHostPort(s.broker),
+    topic: s.topic ?? null,
+    interface: s.interface ?? null,
+    id: s.id ?? null,
+    device: s.device ?? null,
+    baud: s.baud ?? null,
+    options: Object.entries(s.options ?? {}).map(([name, value]) => ({ name, value }))
   }
 }

@@ -15,6 +15,7 @@ import { normalizeFile } from './sync'
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
 import { valueErrors } from './defaults'
 import { binariesOf, crosses } from './binaries'
+import { DEFAULT_HOST, foreignFields } from './transports'
 import {
   INT_RANGES,
   TRANSPORTS,
@@ -342,6 +343,9 @@ export function validate(p: Project): Problem[] {
   for (const n of duplicates(p.links.map((l) => l.name)))
     push('error', { kind: 'project' }, `Duplicate link name '${n}'`)
   const endpoints = new Set<string>()
+  // Remote links by the address their server binds, and by shm segment: collisions.
+  const servers = new Map<string, string>()
+  const segments = new Map<string, string>()
   for (const l of p.links) {
     const target = { kind: 'link', id: l.id } as const
     const from = findPort(p, l.from.moduleId, l.from.portId)
@@ -415,6 +419,49 @@ export function validate(p: Project): Problem[] {
       push('warning', target, `Link '${l.name}': unknown transport '${c.remote.transport}'`)
     if (!c.remote.enabled && c.remote.transport)
       push('warning', target, `Link '${l.name}': transport set but link is not remote`)
+    const settings = c.remote.settings
+    if (!c.remote.enabled && settings)
+      push('warning', target, `Link '${l.name}': transport settings set but link is not remote`)
+    if (settings && c.remote.enabled) {
+      const transport = c.remote.transport
+      const foreign = foreignFields(settings, transport)
+      if (foreign.length)
+        push(
+          'warning',
+          target,
+          `Link '${l.name}': ${foreign.join(', ')} ${foreign.length > 1 ? 'do' : 'does'} not apply to transport '${transport ?? ''}'`
+        )
+      if (
+        (transport === 'http' || transport === 'websocket') &&
+        settings.path &&
+        !settings.path.startsWith('/')
+      )
+        push('error', target, `Link '${l.name}': path '${settings.path}' must start with '/'`)
+      if (transport === 'shm' && settings.name !== undefined) {
+        if (!/^\/?[^/]+$/.test(settings.name) || settings.name.length > 255)
+          push('error', target, `Link '${l.name}': shared memory name '${settings.name}' is not valid`)
+        const segment = settings.name.replace(/^\//, '')
+        const other = segments.get(segment)
+        if (other)
+          push('warning', target, `Link '${l.name}' uses the shared memory '${segment}' of link '${other}'`)
+        else segments.set(segment, l.name)
+      }
+      const port = settings.server?.port
+      const family =
+        transport === 'udp'
+          ? 'udp'
+          : ['tcp', 'http', 'websocket', 'grpc'].includes(transport ?? '')
+            ? 'tcp'
+            : null
+      if (family && port !== undefined) {
+        const host = settings.server?.host ?? p.remoteDefaults?.server?.host ?? DEFAULT_HOST
+        const key = `${family} ${host}:${port}`
+        const other = servers.get(key)
+        if (other)
+          push('warning', target, `Link '${l.name}' listens on ${family} ${host}:${port}, as link '${other}'`)
+        else servers.set(key, l.name)
+      }
+    }
     if (l.from.moduleId === l.to.moduleId)
       push('warning', target, `Link '${l.name}' loops back on the same module`)
   }

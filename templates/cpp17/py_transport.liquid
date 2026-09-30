@@ -411,9 +411,9 @@ class UdpChannel(Channel):
 class HttpChannel(_StreamChannel):
     """One POST per call, on a connection of its own."""
 
-    def __init__(self, address: str, link: str) -> None:
+    def __init__(self, address: str, path: str) -> None:
         super().__init__(address)
-        self._link = link
+        self._path = path
         self._reply: Optional[bytes] = None
 
     def _send(self, data: bytes, deadline: float) -> None:
@@ -422,7 +422,7 @@ class HttpChannel(_StreamChannel):
         try:
             host = _split(self._address)[0]
             sock.sendall(
-                f'POST /{self._link} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/octet-stream\r\n'
+                f'POST {self._path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/octet-stream\r\n'
                 f'Content-Length: {len(data)}\r\nConnection: close\r\n\r\n'.encode() + data)
             stream = _Input(sock)
             head = stream.until(b'\r\n\r\n', 16384, deadline)
@@ -443,9 +443,9 @@ class HttpChannel(_StreamChannel):
 
 
 class WebSocketChannel(_StreamChannel):
-    def __init__(self, address: str, link: str) -> None:
+    def __init__(self, address: str, path: str) -> None:
         super().__init__(address)
-        self._link = link
+        self._path = path
 
     def _open(self, deadline: float) -> None:
         if self._sock is not None:
@@ -455,7 +455,7 @@ class WebSocketChannel(_StreamChannel):
         key = base64.b64encode(os.urandom(16)).decode()
         host = _split(self._address)[0]
         self._sock.sendall(
-            f'GET /{self._link} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
+            f'GET {self._path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
             f'Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n'.encode())
         head = self._input.until(b'\r\n\r\n', 16384, deadline)
         if head is None:
@@ -519,16 +519,17 @@ class ShmChannel(Channel):
         self._shm = None
 
 
-def connect(transport: str, address: str, link: str) -> Channel:
-    """Channel to the server of link `link` at `address` (`host:port`, or a name for shm)."""
+def connect(transport: str, address: str, path: str = '/') -> Channel:
+    """Channel to the server at `address` (`host:port`, or a name for shm); `path`: request path of
+    http and websocket."""
     if transport == 'tcp':
         return TcpChannel(address)
     if transport == 'udp':
         return UdpChannel(address)
     if transport == 'http':
-        return HttpChannel(address, link)
+        return HttpChannel(address, path)
     if transport == 'websocket':
-        return WebSocketChannel(address, link)
+        return WebSocketChannel(address, path)
     if transport == 'shm':
         return ShmChannel(address)
     raise RemoteError(f"transport '{transport}' is not generated: write a Channel for it")
@@ -733,13 +734,13 @@ class UdpServer(Server):
 class ShmServer(Server):
     """Makes the segment (replacing a stale one), reads the calls ring, writes the replies ring."""
 
-    def __init__(self, address: str, handler: Handler) -> None:
+    def __init__(self, address: str, handler: Handler, capacity: int = RING_CAPACITY) -> None:
         super().__init__(handler)
         self._name = _shm_name(address)
         _shm_unlink(self._name)
-        self._shm = _shm_open(self._name, create=True, size=_shm_size(RING_CAPACITY))
+        self._shm = _shm_open(self._name, create=True, size=_shm_size(capacity))
         buf = self._shm.buf
-        _U32.pack_into(buf, 4, RING_CAPACITY)
+        _U32.pack_into(buf, 4, capacity)
         _U32.pack_into(buf, 0, SHM_MAGIC)
         self._rings = _rings(buf)
         del buf
@@ -765,8 +766,9 @@ class ShmServer(Server):
         self._shm.unlink()
 
 
-def serve(transport: str, address: str, link: str, handler: Handler) -> Server:
-    """Server of link `link` at `address`, calling `handler` for each call received."""
+def serve(transport: str, address: str, handler: Handler, capacity: int = RING_CAPACITY) -> Server:
+    """Server at `address`, calling `handler` for each call received; `capacity`: bytes of each ring
+    of shm."""
     if transport == 'tcp':
         return TcpServer(address, handler)
     if transport == 'udp':
@@ -776,5 +778,5 @@ def serve(transport: str, address: str, link: str, handler: Handler) -> Server:
     if transport == 'websocket':
         return WebSocketServer(address, handler)
     if transport == 'shm':
-        return ShmServer(address, handler)
+        return ShmServer(address, handler, capacity)
     raise RemoteError(f"transport '{transport}' is not generated: write a Server for it")

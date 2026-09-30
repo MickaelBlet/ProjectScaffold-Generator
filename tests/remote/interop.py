@@ -100,14 +100,14 @@ def main() -> int:
         stop = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
         signal.signal(signal.SIGINT, lambda *_: stop.set())
-        with serve(transport, address, 'echo', EchoStub(Echo())):
+        with serve(transport, address, EchoStub(Echo())):
             print('ready', flush=True)
             while not stop.wait(0.1):
                 pass
         return 0
     if mode == 'call':
         transport, address, ack = sys.argv[3], sys.argv[4], sys.argv[5] == 'true'
-        proxy = EchoProxy(connect(transport, address, 'echo'), ack, 3.0)
+        proxy = EchoProxy(connect(transport, address, '/echo'), ack, 3.0)
         try:
             call(proxy, transport)
         finally:

@@ -53,7 +53,10 @@ export function settleBinaries(d: Project, before: BinarySnapshot): void {
   for (const l of d.links) {
     const remote = l.constraints.remote
     if (crosses(after, l)) remote.enabled = true
-    else if (crosses(before.of, l) && remote.enabled && !remote.transport) remote.enabled = false
+    else if (crosses(before.of, l) && remote.enabled && !remote.transport) {
+      remote.enabled = false
+      delete remote.settings
+    }
   }
 }
 

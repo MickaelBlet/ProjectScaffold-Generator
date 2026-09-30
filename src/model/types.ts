@@ -248,12 +248,55 @@ export const TRANSPORTS = [
   'can',
   'serial'
 ] as const
+export type Transport = (typeof TRANSPORTS)[number]
+
+/** Network end: host name or address, and port. */
+export interface HostPort {
+  host?: string
+  port?: number
+}
+
+/** Settings of a link's transport; the fields that apply depend on it (see `transports.ts`). */
+export interface TransportSettings {
+  /** Where the caller connects (tcp, udp, http, websocket, grpc). */
+  client?: HostPort
+  /** Where the callee listens (tcp, udp, http, websocket, grpc). */
+  server?: HostPort
+  /** Request path (http, websocket). */
+  path?: string
+  /** Shared memory segment (shm). */
+  name?: string
+  /** Bytes of each ring (shm). */
+  capacity?: number
+  /** Unix socket path (ipc). */
+  socket?: string
+  /** Broker (mqtt). */
+  broker?: HostPort
+  topic?: string
+  /** Network interface (can). */
+  interface?: string
+  /** Frame id (can). */
+  id?: number
+  /** Device path (serial). */
+  device?: string
+  baud?: number
+  /** Free settings, for any transport. */
+  options?: Record<string, string>
+}
+
+/** Defaults of the addresses of the remote links. */
+export interface RemoteDefaults {
+  client?: { host?: string }
+  server?: { host?: string }
+  /** Port of the first remote link; the next ones follow. */
+  basePort?: number
+}
 
 export interface LinkConstraints {
   direction: 'unidirectional' | 'bidirectional'
   ack: { required: boolean; timeoutMs?: number }
   performance: { class: PerformanceClass; maxLatencyMs?: number; rateHz?: number }
-  remote: { enabled: boolean; transport?: string }
+  remote: { enabled: boolean; transport?: string; settings?: TransportSettings }
 }
 
 export interface Endpoint {
@@ -372,6 +415,8 @@ export interface Project {
   metadata: Metadata
   /** Transports offered for remote links, besides `TRANSPORTS`. */
   transports: string[]
+  /** Defaults of the addresses of the remote links. */
+  remoteDefaults?: RemoteDefaults
   /** Executables the top-level modules are split into; none: one binary holding everything. */
   binaries: Binary[]
   types: TypeDef[]

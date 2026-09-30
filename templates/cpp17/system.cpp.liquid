@@ -26,12 +26,16 @@ namespace {% render '_ns', e: system %} {
 {% render '_generated_transport', transport: r.link.constraints.remote.transport %}
 {% endcapture %}
 {% if generated == 'true' %}
-    {{ r.link.name | camel }}Proxy_.open(remote::connect("{{ transport }}", remote::address("{% render '_address_variable', r: r %}", "{% render '_address', r: r %}"), "{{ r.link.name }}"),
+    {{ r.link.name | camel }}Proxy_.open(remote::connect("{{ transport }}", remote::address("{% render '_address_variable', r: r, side: 'client' %}", "{% render '_address', r: r, side: 'client' %}"){% if r.settings.path %}, "{{ r.settings.path }}"{% endif %}),
         {{ r.link.constraints.ack.required }}, std::chrono::milliseconds({{ r.link.constraints.ack.timeoutMs | default: 5000 }}));
 {% endif %}
     {% user 'link.' | append: r.link.name %}
 {% unless generated == 'true' %}
     // Open {{ r.link.name | camel }}Proxy_ with a remote::Channel to binary {{ r.peer.binary }} over {{ transport }}.
+{% capture settings %}{% render '_settings', s: r.link.constraints.remote.settings %}{% endcapture %}
+{% if settings != '' %}
+    // Settings: {{ settings }}.
+{% endif %}
 {% endunless %}
     {% enduser %}
 {% endfor %}
@@ -44,11 +48,15 @@ namespace {% render '_ns', e: system %} {
 {% render '_generated_transport', transport: r.link.constraints.remote.transport %}
 {% endcapture %}
 {% if generated == 'true' %}
-    {{ r.link.name | camel }}Stub_.serve("{{ transport }}", remote::address("{% render '_address_variable', r: r %}", "{% render '_address', r: r %}"), "{{ r.link.name }}");
+    {{ r.link.name | camel }}Stub_.serve("{{ transport }}", remote::address("{% render '_address_variable', r: r, side: 'server' %}", "{% render '_address', r: r, side: 'server' %}"){% if r.settings.capacity %}, {{ r.settings.capacity }}{% endif %});
 {% endif %}
     {% user 'link.' | append: r.link.name %}
 {% unless generated == 'true' %}
     // Receive the calls of binary {{ r.peer.binary }} over {{ transport }} into {{ r.link.name | camel }}Stub_.dispatch().
+{% capture settings %}{% render '_settings', s: r.link.constraints.remote.settings %}{% endcapture %}
+{% if settings != '' %}
+    // Settings: {{ settings }}.
+{% endif %}
 {% endunless %}
     {% enduser %}
 {% endfor %}

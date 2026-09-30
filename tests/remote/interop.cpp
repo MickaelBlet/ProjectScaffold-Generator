@@ -159,13 +159,13 @@ int main(int argc, char** argv)
             Echo echo;
             EchoStub stub;
             stub.bind(echo);
-            stub.serve(transport, address, "echo");
+            stub.serve(transport, address);
             std::cout << "ready" << std::endl;
             remote::waitForStop();
             return 0;
         }
         EchoProxy proxy;
-        proxy.open(remote::connect(transport, address, "echo"), argc > 4 && std::strcmp(argv[4], "true") == 0,
+        proxy.open(remote::connect(transport, address, "/echo"), argc > 4 && std::strcmp(argv[4], "true") == 0,
                    std::chrono::milliseconds(3000));
         return call(proxy, transport);
     } catch (const std::exception& e) {

@@ -89,7 +89,9 @@ HostPort split(const std::string& address)
 {
     const std::size_t colon = address.rfind(':');
     if (colon == std::string::npos) throw Error("address '" + address + "' is not host:port");
-    return {address.substr(0, colon), address.substr(colon + 1)};
+    std::string host = address.substr(0, colon);
+    if (host.size() >= 2 && host.front() == '[' && host.back() == ']') host = host.substr(1, host.size() - 2);
+    return {host, address.substr(colon + 1)};
 }
 
 void configure(int fd, int type)
@@ -413,7 +415,6 @@ bool wsRead(int fd, Input& in, Bytes& message, std::mt19937* mask, Clock::time_p
 // each with its head (bytes written) and tail (bytes read) counters.
 
 constexpr std::uint32_t shmMagic = 0x314D4353; // "SCM1"
-constexpr std::uint32_t ringCapacity = 1u << 20;
 constexpr std::size_t ringHeader = 64;
 constexpr std::size_t shmSize(std::uint32_t capacity) { return ringHeader + 2 * (ringHeader + capacity); }
 
@@ -609,7 +610,7 @@ private:
 /// One POST per call, on a connection of its own.
 class HttpChannel final : public FrameChannel {
 public:
-    HttpChannel(std::string address, std::string link) : address_(std::move(address)), link_(std::move(link)) {}
+    HttpChannel(std::string address, std::string path) : address_(std::move(address)), path_(std::move(path)) {}
 
 private:
     void open(Clock::time_point) override {}
@@ -617,7 +618,7 @@ private:
     {
         reply_.reset();
         Fd fd = openSocket(address_, SOCK_STREAM, false);
-        sendAll(fd.get(), "POST /" + link_ + " HTTP/1.1\r\nHost: " + split(address_).host +
+        sendAll(fd.get(), "POST " + path_ + " HTTP/1.1\r\nHost: " + split(address_).host +
                               "\r\nContent-Type: application/octet-stream\r\nContent-Length: " +
                               std::to_string(frame.size()) + "\r\nConnection: close\r\n\r\n");
         sendAll(fd.get(), frame.data(), frame.size());
@@ -642,14 +643,14 @@ private:
     void drop() override { reply_.reset(); }
 
     std::string address_;
-    std::string link_;
+    std::string path_;
     std::optional<Bytes> reply_;
 };
 
 class WebSocketChannel final : public FrameChannel {
 public:
-    WebSocketChannel(std::string address, std::string link)
-        : address_(std::move(address)), link_(std::move(link)), random_(std::random_device()())
+    WebSocketChannel(std::string address, std::string path)
+        : address_(std::move(address)), path_(std::move(path)), random_(std::random_device()())
     {
     }
 
@@ -662,7 +663,7 @@ private:
         std::uint8_t nonce[16];
         for (std::uint8_t& b : nonce) b = static_cast<std::uint8_t>(random_() & 0xff);
         const std::string key = base64(nonce, sizeof nonce);
-        sendAll(fd_.get(), "GET /" + link_ + " HTTP/1.1\r\nHost: " + split(address_).host +
+        sendAll(fd_.get(), "GET " + path_ + " HTTP/1.1\r\nHost: " + split(address_).host +
                                "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + key +
                                "\r\nSec-WebSocket-Version: 13\r\n\r\n");
         std::string head;
@@ -685,7 +686,7 @@ private:
     }
 
     std::string address_;
-    std::string link_;
+    std::string path_;
     std::mt19937 random_;
     Fd fd_;
     std::unique_ptr<Input> in_;
@@ -911,15 +912,16 @@ private:
 /// Makes the segment (replacing a stale one), reads the calls ring, writes the replies ring.
 class ShmServer final : public Threads {
 public:
-    ShmServer(const std::string& address, Handler handler) : name_(shmName(address)), handler_(std::move(handler))
+    ShmServer(const std::string& address, Handler handler, std::uint32_t capacity)
+        : name_(shmName(address)), handler_(std::move(handler))
     {
         ::shm_unlink(name_.c_str());
         const Fd fd(::shm_open(name_.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600));
         if (!fd) fail("cannot create shared memory " + name_);
-        const std::size_t size = shmSize(ringCapacity);
+        const std::size_t size = shmSize(capacity);
         if (::ftruncate(fd.get(), static_cast<off_t>(size)) != 0) fail("ftruncate");
         mapping_ = map(fd.get(), size);
-        store(mapping_->data() + 4, ringCapacity);
+        store(mapping_->data() + 4, capacity);
         store(mapping_->data(), shmMagic);
         spawn([this] { run(); });
     }
@@ -971,25 +973,24 @@ std::string address(const char* variable, const std::string& fallback)
     return value && *value ? value : fallback;
 }
 
-std::unique_ptr<Channel> connect(const std::string& transport, const std::string& address, const std::string& link)
+std::unique_ptr<Channel> connect(const std::string& transport, const std::string& address, const std::string& path)
 {
     if (transport == "tcp") return std::make_unique<TcpChannel>(address);
     if (transport == "udp") return std::make_unique<UdpChannel>(address);
-    if (transport == "http") return std::make_unique<HttpChannel>(address, link);
-    if (transport == "websocket") return std::make_unique<WebSocketChannel>(address, link);
+    if (transport == "http") return std::make_unique<HttpChannel>(address, path);
+    if (transport == "websocket") return std::make_unique<WebSocketChannel>(address, path);
     if (transport == "shm") return std::make_unique<ShmChannel>(address);
     throw Error("transport '" + transport + "' is not generated: implement a remote::Channel");
 }
 
-std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, const std::string& link,
-                              Handler handler)
+std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, Handler handler,
+                              std::uint32_t capacity)
 {
-    (void)link;
     if (transport == "tcp") return std::make_unique<StreamServer>(address, std::move(handler), tcpSession);
     if (transport == "udp") return std::make_unique<UdpServer>(address, std::move(handler));
     if (transport == "http") return std::make_unique<StreamServer>(address, std::move(handler), httpSession);
     if (transport == "websocket") return std::make_unique<StreamServer>(address, std::move(handler), webSocketSession);
-    if (transport == "shm") return std::make_unique<ShmServer>(address, std::move(handler));
+    if (transport == "shm") return std::make_unique<ShmServer>(address, std::move(handler), capacity);
     throw Error("transport '" + transport + "' is not generated: implement a remote::Server");
 }
 

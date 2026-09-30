@@ -39,6 +39,7 @@ partials:
   - _generated_transport.liquid
   - _address.liquid
   - _address_variable.liquid
+  - _settings.liquid
   - _py_banner.liquid
   - _py_id.liquid
   - _py_type.liquid

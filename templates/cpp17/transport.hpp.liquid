@@ -40,13 +40,17 @@ bool supported(const std::string& transport);
 /// The value of environment variable `variable`, else `fallback`.
 std::string address(const char* variable, const std::string& fallback);
 
-/// Channel to the server of link `link` at `address` (`host:port`, or a name for shm); connects on
-/// the first call, and again on the next call after a failure.
-std::unique_ptr<Channel> connect(const std::string& transport, const std::string& address, const std::string& link);
+/// Channel to the server at `address` (`host:port`, or a name for shm); `path`: request path of http
+/// and websocket. Connects on the first call, and again on the next call after a failure.
+std::unique_ptr<Channel> connect(const std::string& transport, const std::string& address,
+                                 const std::string& path = "/");
 
-/// Server of link `link` at `address`, calling `handler` for each call received.
-std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, const std::string& link,
-                              Handler handler);
+/// Bytes of each ring of shm, by default.
+constexpr std::uint32_t ringCapacity = 1u << 20;
+
+/// Server at `address`, calling `handler` for each call received; `capacity`: bytes of each ring of shm.
+std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, Handler handler,
+                              std::uint32_t capacity = ringCapacity);
 
 /// Blocks until SIGINT or SIGTERM.
 void waitForStop();

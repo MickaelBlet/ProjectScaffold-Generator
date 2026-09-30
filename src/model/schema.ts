@@ -208,6 +208,38 @@ const Dependency = z
     "Another project this one uses: its types and interfaces share the namespace of the project's own ones, which reference them by name, and links may reach its modules"
   )
 
+const Host = z.string().min(1)
+const NetPort = z.int().min(1).max(65535)
+const HostPort = z.object({ host: Host.optional(), port: NetPort.optional() })
+
+const TransportSettings = z
+  .object({
+    client: HostPort.optional().describe('where the caller connects (tcp, udp, http, websocket, grpc)'),
+    server: HostPort.optional().describe('where the callee listens (tcp, udp, http, websocket, grpc)'),
+    path: z.string().min(1).optional().describe('request path (http, websocket; default /<link>)'),
+    name: z.string().min(1).optional().describe('shared memory segment (shm; default <project>_<link>)'),
+    capacity: z.int().positive().optional().describe('bytes of each ring (shm; default 1048576)'),
+    socket: z.string().min(1).optional().describe('unix socket path (ipc)'),
+    broker: HostPort.optional().describe('broker (mqtt)'),
+    topic: z.string().min(1).optional().describe('topic (mqtt)'),
+    interface: z.string().min(1).optional().describe('network interface (can)'),
+    id: z.int().nonnegative().optional().describe('frame id (can)'),
+    device: z.string().min(1).optional().describe('device path (serial)'),
+    baud: z.int().positive().optional().describe('baud rate (serial)'),
+    options: z.record(z.string(), z.string()).optional().describe('free settings, for any transport')
+  })
+  .meta({ id: 'TransportSettings' })
+
+const RemoteDefaults = z
+  .object({
+    client: z.object({ host: Host.optional() }).optional().describe('host the callers connect to'),
+    server: z.object({ host: Host.optional() }).optional().describe('host the callees listen on'),
+    basePort: NetPort.optional().describe(
+      'port of the first remote link, the next ones following (default 47000)'
+    )
+  })
+  .describe('defaults of the addresses of the remote links (default host 127.0.0.1)')
+
 const LinkConstraints = z.object({
   direction: z.enum(['unidirectional', 'bidirectional']),
   ack: z.object({ required: z.boolean(), timeoutMs: z.number().positive().optional() }),
@@ -216,7 +248,13 @@ const LinkConstraints = z.object({
     maxLatencyMs: z.number().positive().optional(),
     rateHz: z.number().positive().optional()
   }),
-  remote: z.object({ enabled: z.boolean(), transport: z.string().optional() })
+  remote: z.object({
+    enabled: z.boolean(),
+    transport: z.string().optional(),
+    settings: TransportSettings.optional().describe(
+      'settings of the transport; the fields that apply depend on it'
+    )
+  })
 })
 
 const Link = z.object({
@@ -320,6 +358,7 @@ export const FileProjectSchema = z
       .array(z.string().min(1))
       .optional()
       .describe('custom transports offered for remote links, besides the built-in ones'),
+    remoteDefaults: RemoteDefaults.optional(),
     binaries: z
       .array(Binary)
       .optional()
