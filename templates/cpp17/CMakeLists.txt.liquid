@@ -13,14 +13,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 {% assign sources = 0 %}
 {% for f in files %}
-{% if f contains '.cpp' and f != 'src/main.cpp' %}
+{% if f contains '.cpp' %}
 {% assign sources = sources | plus: 1 %}
 {% endif %}
 {% endfor %}
 {% if sources > 0 %}
 add_library({{ ns }}
 {% for f in files %}
-{% if f contains '.cpp' and f != 'src/main.cpp' %}
+{% if f contains '.cpp' %}
     {{ f }}
 {% endif %}
 {% endfor %}
@@ -47,9 +47,16 @@ endif()
 {% endfor %}
 {% enduser %}
 {% if modules.size > 0 %}
+{% for system in systems %}
+{% if system.binary %}
+{% assign exe = ns | append: '_' | append: system.binary.name | snake %}
+{% else %}
+{% assign exe = ns | append: '_app' %}
+{% endif %}
 
-add_executable({{ ns }}_app src/main.cpp)
-target_link_libraries({{ ns }}_app PRIVATE {{ ns }})
+add_executable({{ exe }} src/{% render '_main', system: system %})
+target_link_libraries({{ exe }} PRIVATE {{ ns }})
+{% endfor %}
 {% endif %}
 
 {% user 'end' %}

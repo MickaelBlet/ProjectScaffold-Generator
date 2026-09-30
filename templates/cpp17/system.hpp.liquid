@@ -2,13 +2,32 @@
 #pragma once
 
 {% render '_includes', e: system %}
+{%- liquid
+  assign remote = ''
+  for r in system.proxies
+    assign remote = remote | append: r.interface.name | append: 'Proxy,'
+  endfor
+  for r in system.stubs
+    assign remote = remote | append: r.interface.name | append: 'Stub,'
+  endfor
+  assign remote = remote | split: ',' | uniq | sort
+-%}
+{% for r in remote %}
+#include <{{ project.ident | snake }}/remote/{{ r }}.hpp>
+{% endfor %}
 {% user 'includes' %}
 {% enduser %}
 
 namespace {% render '_ns', e: system %} {
 
 {{ project.description | doc_comment }}
+{% if system.binary %}
+{{ system.binary.description | doc_comment }}
+/// The top-level modules of binary {{ system.binary.name }} of {{ project.name }}, wired together and to
+/// the other binaries.
+{% else %}
 /// The top-level modules of {{ project.name }}, wired together.
+{% endif %}
 class {{ system.name }} {
 public:
     {{ system.name }}();
@@ -30,6 +49,12 @@ private:
 {% else %}
     {% render '_qualified', e: c %} {% render '_accessor', name: c.name %}_;
 {% endif %}
+{% endfor %}
+{% for r in system.proxies %}
+    remote::{{ r.interface.name }}Proxy {{ r.link.name | camel }}Proxy_; // {{ r.link.name }}, to binary {{ r.peer.binary }}
+{% endfor %}
+{% for r in system.stubs %}
+    remote::{{ r.interface.name }}Stub {{ r.link.name | camel }}Stub_; // {{ r.link.name }}, from binary {{ r.peer.binary }}
 {% endfor %}
     {% user 'private' %}
     {% enduser %}

@@ -34,6 +34,7 @@ partials:
   - _params.liquid
   - _args.liquid
   - _endpoint.liquid
+  - _main.liquid
   - _value.liquid
 outputs:
   - template: ports.hpp.liquid
@@ -55,15 +56,28 @@ outputs:
     each: modules
     when: item.kind != 'interface'
     path: "src/{% render '_source', e: item %}"
+  - template: proxy.hpp.liquid
+    each: remoteInterfaces
+    path: include/{{ project.ident | snake }}/remote/{{ item.name }}Proxy.hpp
+  - template: stub.hpp.liquid
+    each: remoteInterfaces
+    path: include/{{ project.ident | snake }}/remote/{{ item.name }}Stub.hpp
+  # One system (and main) per binary of the project, or one for the whole project.
   - template: system.hpp.liquid
+    each: systems
+    as: system
     path: "include/{% render '_header', e: system %}"
     when: modules.size > 0
   - template: system.cpp.liquid
+    each: systems
+    as: system
     path: "src/{% render '_source', e: system %}"
     when: modules.size > 0
   - template: CMakeLists.txt.liquid
     path: CMakeLists.txt
     comment: '#'
   - template: main.cpp.liquid
-    path: src/main.cpp
+    each: systems
+    as: system
+    path: "src/{% render '_main', system: system %}"
     when: modules.size > 0

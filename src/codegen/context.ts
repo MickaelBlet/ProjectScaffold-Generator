@@ -172,15 +172,45 @@ export interface GenModule {
   connections: GenConnection[]
 }
 
-/** The top level: holds the top-level modules and wires the links between them. */
+/** An executable of the project, holding some of its top-level modules. */
+export interface GenBinary {
+  name: string
+  description: string
+  color: string | null
+  /** Its top-level modules. */
+  modules: GenModule[]
+}
+
+/** End in this binary of a link to another binary of the project: wired through a transport. */
+export interface GenRemote {
+  link: GenLink
+  /** End in this binary, from its system. */
+  local: GenEndpoint
+  /** Interface of the ports: a proxy of it sends the calls, a stub receives them. */
+  interface: GenInterface
+  /** End in the other binary. */
+  peer: { binary: string; module: string; port: string }
+}
+
+/**
+ * The top level of the project, or of one of its binaries: holds the top-level modules and wires
+ * the links between them.
+ */
 export interface GenSystem {
   entity: 'system'
+  /** `System`, or `<Binary>System`. */
   name: string
+  /** Binary it is the top level of; null when the project has no binaries. */
+  binary: GenBinary | null
   children: GenModule[]
   /** See GenModule.instances. */
   instances: GenModule[]
   connections: GenConnection[]
   external: GenExternal[]
+  /** Links calling another binary: through a proxy of their interface. */
+  proxies: GenRemote[]
+  /** Links called from another binary: through a stub of their interface. */
+  stubs: GenRemote[]
   /** Nothing: there for templates treating modules and the system alike. */
   uses: GenUses
 }
@@ -207,7 +237,13 @@ export interface GenContext {
   interfaces: GenInterface[]
   /** Every module, depth first. */
   modules: GenModule[]
-  system: GenSystem
+  binaries: GenBinary[]
+  /** One per binary, or the only one when the project has no binaries. */
+  systems: GenSystem[]
+  /** The only system when the project has no binaries, else null. */
+  system: GenSystem | null
+  /** Interfaces of the links between binaries. */
+  remoteInterfaces: GenInterface[]
   links: GenLink[]
   dependencies: GenDependency[]
   /** Own types and those of the dependencies. */
@@ -394,15 +430,41 @@ export function buildContext(file: FileProject): GenContext {
   for (const m of modules)
     m.uses = usesOf([...m.attributes.map((a) => a.type), ...m.methods.flatMap(messageRefs)])
 
-  const system: GenSystem = {
+  // One system per binary, or one for the whole project.
+  const binaries: GenBinary[] = (file.binaries ?? []).map((b) => ({
+    name: b.name,
+    description: b.description ?? '',
+    color: b.color ?? null,
+    modules: []
+  }))
+  const systemOf = (binary: GenBinary | null, children: GenModule[]): GenSystem => ({
     entity: 'system',
-    name: 'System',
-    children: top,
-    instances: top.filter(instantiated),
+    name: binary ? `${binary.name}System` : 'System',
+    binary,
+    children,
+    instances: children.filter(instantiated),
     connections: [],
     external: [],
+    proxies: [],
+    stubs: [],
     uses: noUses()
+  })
+  const binaryOfTop = new Map<string, GenBinary>()
+  for (const [i, m] of file.modules.entries()) {
+    const b = binaries.find((x) => x.name === m.binary)
+    if (b) {
+      b.modules.push(top[i]!)
+      binaryOfTop.set(m.name, b)
+    } else if (binaries.length) warnings.push(`Module '${m.name}' runs in no binary: left out`)
   }
+  const systems = binaries.length ? binaries.map((b) => systemOf(b, b.modules)) : [systemOf(null, top)]
+  /** System of a module path; null for a module of no binary. */
+  const systemAt = (path: string): GenSystem | null => {
+    if (!binaries.length) return systems[0]!
+    const b = binaryOfTop.get(path.split('.')[0]!)
+    return b ? systems[binaries.indexOf(b)]! : null
+  }
+  const remoteInterfaces = new Map<string, GenInterface>()
   const links = file.links.map(genLink)
   const segments = (path: string): string[] => path.split('.')
   /** Children to go through from the module at `scope` (null: the system) to the module at `path`. */
@@ -418,7 +480,7 @@ export function buildContext(file: FileProject): GenContext {
       const local = from.project ? to : from
       const remote = from.project ? from : to
       if (local.project) continue
-      system.external.push({
+      systemAt(local.module)?.external.push({
         link: l,
         local: { via: via(null, local.module), module: local.module, port: local.port },
         side: from.project ? 'to' : 'from',
@@ -459,8 +521,36 @@ export function buildContext(file: FileProject): GenContext {
       from: { via: via(scope, from.module), module: from.module, port: from.port },
       to: { via: via(scope, to.module), module: to.module, port: to.port }
     }
-    if (scope) byPath.get(scope)!.connections.push(connection)
-    else system.connections.push(connection)
+    if (scope) {
+      byPath.get(scope)!.connections.push(connection)
+      continue
+    }
+    const at = systemAt(from.module)
+    const peer = systemAt(to.module)
+    if (!at || !peer) continue
+    if (at === peer) {
+      at.connections.push(connection)
+      continue
+    }
+    // Between binaries: a proxy sends the calls of the `from` end, a stub hands them to the `to` end.
+    const face = port(from.module, from.port)?.interface
+    if (!face) {
+      warnings.push(`Link '${l.name}' between binaries has no interface: left out`)
+      continue
+    }
+    remoteInterfaces.set(face.name, face)
+    at.proxies.push({
+      link: l,
+      local: connection.from,
+      interface: face,
+      peer: { binary: peer.binary!.name, module: to.module, port: to.port }
+    })
+    peer.stubs.push({
+      link: l,
+      local: connection.to,
+      interface: face,
+      peer: { binary: at.binary!.name, module: from.module, port: from.port }
+    })
   }
   for (const m of modules)
     for (const p of m.ports)
@@ -480,7 +570,10 @@ export function buildContext(file: FileProject): GenContext {
     types,
     interfaces,
     modules,
-    system,
+    binaries,
+    systems,
+    system: binaries.length ? null : systems[0]!,
+    remoteInterfaces: [...remoteInterfaces.values()],
     links,
     dependencies,
     allTypes,

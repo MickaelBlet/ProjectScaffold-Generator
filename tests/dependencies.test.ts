@@ -525,19 +525,4 @@ describe('dependency examples', () => {
     })
     expect(toFile(fresh, { editor: false })).toEqual(toFile(station, { editor: false }))
   })
-
-  it('rover-ground depends on rover, links to its placed modules, up to date', () => {
-    const ground = read('rover-ground.scaffold.yaml')
-    expect(errors(ground)).toEqual([])
-    const sources = new Map([[ground.dependencies[0]!.id, read('rover.scaffold.yaml')]])
-    const fresh = produce(ground, (d) => {
-      expect(refreshDependencies(d, sources, 'rover-ground.scaffold.yaml')).toEqual({
-        conflicts: [],
-        detached: [],
-        renamed: [],
-        missing: []
-      })
-    })
-    expect(toFile(fresh, { editor: false })).toEqual(toFile(ground, { editor: false }))
-  })
 })

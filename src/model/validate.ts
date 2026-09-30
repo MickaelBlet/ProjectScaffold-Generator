@@ -4,6 +4,7 @@ import {
   ancestorModules,
   findImported,
   findPort,
+  IDENTIFIER_RE,
   isImportedId,
   linkRoles,
   methodSignature,
@@ -13,6 +14,7 @@ import {
 import { normalizeFile } from './sync'
 import { isReservedTypeName, walkTypeRef } from './typeExpr'
 import { valueErrors } from './defaults'
+import { binariesOf, crosses } from './binaries'
 import {
   INT_RANGES,
   TRANSPORTS,
@@ -199,9 +201,21 @@ export function validate(p: Project): Problem[] {
         parentId ? { kind: 'module', id: parentId } : { kind: 'project' },
         `Duplicate module name '${n}'`
       )
+  // Binaries
+  for (const n of duplicates(p.binaries.map((b) => b.name)))
+    push('error', { kind: 'project' }, `Duplicate binary name '${n}'`)
+  for (const b of p.binaries)
+    if (!IDENTIFIER_RE.test(b.name))
+      push('error', { kind: 'project' }, `Binary '${b.name}': not an identifier`)
+  const binaryNames = new Map(p.binaries.map((b) => [b.id, b.name]))
+  const binaries = binariesOf(p)
+
   for (const m of p.modules) {
     const target = { kind: 'module', id: m.id } as const
     const path = modulePath(p, m.id)
+    if (m.binaryId && !binaryNames.has(m.binaryId)) push('error', target, `${path}: runs in a deleted binary`)
+    else if (p.binaries.length && !m.parentId && !m.binaryId)
+      push('error', target, `${path}: runs in no binary (the project has binaries)`)
     for (const n of duplicates(m.ports.map((pt) => pt.name)))
       push('error', target, `${path}: duplicate port '${n}'`)
     for (const n of duplicates(m.attributes.map((a) => a.name)))
@@ -378,8 +392,21 @@ export function validate(p: Project): Problem[] {
       push('error', target, `Link '${l.name}' is unidirectional but requires an ack`)
     if (!c.ack.required && c.ack.timeoutMs !== undefined)
       push('warning', target, `Link '${l.name}': ack timeout set but ack not required`)
-    if (c.remote.enabled && !c.remote.transport)
+    const binaryFrom = binaries.get(l.from.moduleId)
+    const binaryTo = binaries.get(l.to.moduleId)
+    const between = `binaries ${binaryNames.get(binaryFrom!)} and ${binaryNames.get(binaryTo!)}`
+    if (crosses(binaries, l) && !c.remote.enabled)
+      push('error', target, `Link '${l.name}' joins ${between}: it must be remote`)
+    else if (crosses(binaries, l) && !c.remote.transport)
+      push('error', target, `Link '${l.name}' joins ${between}: it needs a transport`)
+    else if (c.remote.enabled && !c.remote.transport)
       push('warning', target, `Link '${l.name}' is remote but has no transport`)
+    if (c.remote.enabled && binaryFrom && binaryFrom === binaryTo)
+      push(
+        'warning',
+        target,
+        `Link '${l.name}' is remote but both ends run in binary ${binaryNames.get(binaryFrom)}`
+      )
     if (
       c.remote.transport &&
       !(TRANSPORTS as readonly string[]).includes(c.remote.transport) &&

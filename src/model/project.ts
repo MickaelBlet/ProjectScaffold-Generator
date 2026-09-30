@@ -31,6 +31,7 @@ export function emptyProject(): Project {
     description: '',
     metadata: {},
     transports: [],
+    binaries: [],
     types: [],
     interfaces: [],
     modules: [],
@@ -494,6 +495,13 @@ export function transportError(p: Project, name: string, except?: number): strin
   if (!name.trim()) return 'Must not be empty'
   if ((TRANSPORTS as readonly string[]).includes(name)) return 'Built-in transport'
   if (p.transports.some((t, i) => i !== except && t === name)) return 'Name already used'
+  return null
+}
+
+/** Check the name of a binary (`except`: its id when renamed). */
+export function binaryError(p: Project, name: string, except?: Id): string | null {
+  if (!IDENTIFIER_RE.test(name)) return 'Must be an identifier'
+  if (p.binaries.some((b) => b.id !== except && b.name === name)) return 'Name already used'
   return null
 }
 

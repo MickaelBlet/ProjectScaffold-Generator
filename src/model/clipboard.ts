@@ -2,6 +2,7 @@
 // them), notes, types and interfaces. Clips are plain JSON so that they go through the system
 // clipboard, between documents and browser tabs.
 import { mapTypeRef } from './typeExpr'
+import { binarySnapshot, settleBinaries } from './binaries'
 import {
   absolutePosition,
   boundsOf,
@@ -116,6 +117,7 @@ export interface PasteOptions {
 
 /** Paste a clip into a project draft; returns the ids of the pasted top-level entities. */
 export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
+  const before = binarySnapshot(d)
   const pasted: Id[] = []
   const typeIds = new Map<Id, Id>()
 
@@ -264,5 +266,6 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
     })
     pasted.push(id)
   }
+  settleBinaries(d, before)
   return pasted
 }

@@ -194,7 +194,7 @@ describe('generation context', () => {
       ['sensor_to_controller', ['Sensor'], ['Controller']],
       ['sensor_to_logger', ['Sensor'], ['Logger']]
     ])
-    expect(ctx.system.connections.map((c) => c.link.name)).toEqual(['operator_to_core'])
+    expect(ctx.system!.connections.map((c) => c.link.name)).toEqual(['operator_to_core'])
     expect(ctx.types.map((t) => t.name)).toEqual(['Primitive'])
     expect(ctx.allTypes.find((t) => t.name === 'Pose')?.dependency).toBe('Common')
     const controller = ctx.modules.find((m) => m.path === 'Core.Controller')!
@@ -210,12 +210,12 @@ describe('generation context', () => {
       { via: ['Group', 'Filter'], module: 'Plant.Group.Filter', port: 'in' }
     ])
     expect(port('out').delegates).toEqual([{ via: ['Group'], module: 'Plant.Group', port: 'out' }])
-    expect(ctx.system.connections.map((c) => [c.link.name, c.to.via])).toEqual([
+    expect(ctx.system!.connections.map((c) => [c.link.name, c.to.via])).toEqual([
       ['ask_store', ['Plant', 'Store']],
       ['plant_to_client', ['Client']]
     ])
     // Abstract modules without ports are classes only.
-    expect(ctx.system.instances.map((m) => m.name)).toEqual(['Plant', 'Client'])
+    expect(ctx.system!.instances.map((m) => m.name)).toEqual(['Plant', 'Client'])
   })
 })
 
@@ -236,16 +236,36 @@ describe('C++17 generation', () => {
       '::rover::IFrameSink& frames() { return preprocess().in(); }'
     )
     expect(text('src/Perception.cpp')).toContain('detector().out().forward(detections_);')
-    expect(text('src/System.cpp')).toContain('camera().frames().connect(recorder().frames());')
     expect(text('src/Motors.cpp')).toContain('void Motors::onDriveCommand(const ::rover::Command& command)')
   })
 
-  it('generates the rover ground station: links to the rover binary over tcp', () => {
-    const { files, warnings } = generate(exported('examples/rover-ground.scaffold.yaml'), cpp17())
+  it('generates one executable per binary, linked through proxies and stubs', () => {
+    const { files, warnings } = generate(exported('examples/rover.scaffold.yaml'), cpp17())
     expect(warnings).toEqual([])
-    const system = files.find((f) => f.path === 'src/System.cpp')!.text
-    for (const port of ['camera', 'motors', 'perception'])
-      expect(system).toContain(`connect supervisor().${port}() through a transport (tcp)`)
+    const paths = files.map((f) => f.path)
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'include/rover/remote/LifecycleProxy.hpp',
+        'include/rover/remote/LifecycleStub.hpp',
+        'include/rover/remote/HealthQueryProxy.hpp',
+        'include/rover/remote/HealthQueryStub.hpp',
+        'include/rover/OnboardSystem.hpp',
+        'include/rover/GroundSystem.hpp',
+        'src/onboard/main.cpp',
+        'src/ground/main.cpp'
+      ])
+    )
+    expect(paths).not.toContain('src/main.cpp')
+    const text = (path: string): string => files.find((f) => f.path === path)!.text
+    expect(text('src/GroundSystem.cpp')).toContain('supervisor().camera().connect(superviseCameraProxy_);')
+    expect(text('src/OnboardSystem.cpp')).toContain('superviseCameraStub_.bind(camera().lifecycle());')
+    expect(text('src/OnboardSystem.cpp')).toContain('camera().frames().connect(recorder().frames());')
+    expect(text('include/rover/OnboardSystem.hpp')).not.toContain('supervisor')
+    expect(text('include/rover/remote/LifecycleProxy.hpp')).toContain(
+      'class LifecycleProxy final : public ::rover::ILifecycle {'
+    )
+    expect(text('CMakeLists.txt')).toContain('add_executable(rover_onboard src/onboard/main.cpp)')
+    expect(text('CMakeLists.txt')).toContain('add_executable(rover_ground src/ground/main.cpp)')
   })
 
   it('generates types and interfaces of a project without modules', () => {

@@ -40,6 +40,30 @@
             "minLength": 1
           }
         },
+        "binaries": {
+          "description": "executables the top-level modules are split into (each names its own); links between two of them must be remote",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "description": {
+                "type": "string"
+              },
+              "color": {
+                "description": "accent color (CSS color)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "description": "An executable of the project, holding some of its top-level modules"
+          }
+        },
         "types": {
           "type": "array",
           "items": {
@@ -1025,6 +1049,11 @@
         "color": {
           "description": "accent color (CSS color)",
           "type": "string"
+        },
+        "binary": {
+          "description": "name of the binary (`binaries`) it runs in: top-level modules only, inner ones run in their ancestor's",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
         },
         "attributes": {
           "description": "typed properties of the module",

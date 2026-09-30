@@ -219,8 +219,19 @@ export interface Module {
   layout: Rect
   /** Accent color (CSS color). */
   color?: string
+  /** Binary (`Project.binaries`) it runs in: top-level modules only, inner ones run in their ancestor's. */
+  binaryId?: Id
   /** Editor-only: position and size are fixed on the canvas. */
   locked?: boolean
+}
+
+/** An executable of the project: top-level modules run in one each, links between two are remote. */
+export interface Binary {
+  id: Id
+  name: string
+  description: string
+  /** Accent color (CSS color). */
+  color?: string
 }
 
 export const PERFORMANCE_CLASSES = ['realtime', 'low', 'normal', 'bulk'] as const
@@ -361,6 +372,8 @@ export interface Project {
   metadata: Metadata
   /** Transports offered for remote links, besides `TRANSPORTS`. */
   transports: string[]
+  /** Executables the top-level modules are split into; none: one binary holding everything. */
+  binaries: Binary[]
   types: TypeDef[]
   interfaces: Interface[]
   modules: Module[]

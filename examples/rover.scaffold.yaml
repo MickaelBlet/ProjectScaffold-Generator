@@ -1,7 +1,14 @@
 schemaVersion: 1
 project:
   name: Rover
-  description: Autonomous rover whose modules only talk through their ports, typed by interfaces; supervised from another binary (rover-ground.scaffold.yaml)
+  description: Autonomous rover whose modules only talk through their ports, typed by interfaces; split into the rover binary and the ground station supervising it over TCP
+binaries:
+  - name: Onboard
+    description: Runs on the rover
+    color: "#d1733b"
+  - name: Ground
+    description: Runs on the ground station
+    color: "#4f9ed1"
 types:
   - kind: struct
     name: Frame
@@ -125,6 +132,7 @@ modules:
   - name: Camera
     description: Captures frames
     color: "#d6c21f"
+    binary: Onboard
     ports:
       - name: frames
         role: out
@@ -135,6 +143,7 @@ modules:
   - name: Perception
     description: Finds objects in the frames
     color: "#2e9e8f"
+    binary: Onboard
     ports:
       - name: frames
         role: in
@@ -171,6 +180,7 @@ modules:
   - name: Planner
     description: Turns detections into drive commands
     color: "#d14f9e"
+    binary: Onboard
     ports:
       - name: detections
         role: in
@@ -180,6 +190,7 @@ modules:
         interface: Drive
   - name: Motors
     color: "#d1733b"
+    binary: Onboard
     ports:
       - name: drive
         role: in
@@ -190,6 +201,7 @@ modules:
   - name: Recorder
     description: Logs frames and detections
     color: "#6b7f8e"
+    binary: Onboard
     ports:
       - name: frames
         role: in
@@ -197,6 +209,20 @@ modules:
       - name: detections
         role: in
         interface: DetectionSink
+  - name: Supervisor
+    description: Starts, stops and watches the others
+    color: "#4f9ed1"
+    binary: Ground
+    ports:
+      - name: camera
+        role: out
+        interface: Lifecycle
+      - name: motors
+        role: out
+        interface: Lifecycle
+      - name: perception
+        role: out
+        interface: HealthQuery
 links:
   - name: camera_to_perception
     from:
@@ -345,16 +371,67 @@ links:
         rateHz: 50
       remote:
         enabled: false
+  - name: supervise_camera
+    from:
+      module: Supervisor
+      port: camera
+    to:
+      module: Camera
+      port: lifecycle
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: low
+      remote:
+        enabled: true
+        transport: tcp
+  - name: supervise_motors
+    from:
+      module: Supervisor
+      port: motors
+    to:
+      module: Motors
+      port: lifecycle
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: low
+      remote:
+        enabled: true
+        transport: tcp
+  - name: supervise_perception
+    from:
+      module: Supervisor
+      port: perception
+    to:
+      module: Perception
+      port: health
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        maxLatencyMs: 100
+      remote:
+        enabled: true
+        transport: tcp
 editor:
   layout:
     Camera:
       x: 160
-      y: 20
+      y: 220
       width: 200
       height: 100
     Perception:
       x: 120
-      y: 240
+      y: 440
       width: 280
       height: 440
     Perception.Preprocess:
@@ -369,17 +446,22 @@ editor:
       height: 100
     Planner:
       x: 300
-      y: 780
+      y: 980
       width: 200
       height: 100
     Motors:
       x: 160
-      y: 980
+      y: 1180
       width: 200
       height: 100
     Recorder:
       x: 20
-      y: 780
+      y: 980
       width: 200
+      height: 100
+    Supervisor:
+      x: 120
+      y: 20
+      width: 300
       height: 100
   orientation: vertical

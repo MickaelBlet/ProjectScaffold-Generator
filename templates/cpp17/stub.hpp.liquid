@@ -1,0 +1,33 @@
+{% include '_banner' %}
+#pragma once
+
+#include <{% render '_header', e: item %}>
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ project.ident | snake }}::remote {
+
+/// Receives the calls of {% render '_name', e: item %} from another binary: the transport, written in
+/// the user sections, calls the method of each message received, which makes the call on the port
+/// bound.
+class {{ item.name }}Stub {
+public:
+    void bind({% render '_qualified', e: item %}& target) { target_ = &target; }
+{% for msg in item.messages %}
+
+    {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %})
+    {
+        return target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %});
+    }
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+private:
+    {% render '_qualified', e: item %}* target_ = nullptr;
+    {% user 'private' %}
+    {% enduser %}
+};
+
+} // namespace {{ project.ident | snake }}::remote

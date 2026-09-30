@@ -17,6 +17,24 @@ namespace {% render '_ns', e: system %} {
 {% for c in system.connections %}
     {% include '_connection', connection: c %}
 {% endfor %}
+{% for r in system.proxies %}
+{% assign transport = r.link.constraints.remote.transport | default: 'an unset transport' %}
+    // {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ transport }}
+{{ r.link.description | doc_comment: '    // ' }}
+    {% render '_endpoint', x: r.local %}.connect({{ r.link.name | camel }}Proxy_);
+    {% user 'link.' | append: r.link.name %}
+    // Connect {{ r.link.name | camel }}Proxy_ to binary {{ r.peer.binary }} over {{ transport }}.
+    {% enduser %}
+{% endfor %}
+{% for r in system.stubs %}
+{% assign transport = r.link.constraints.remote.transport | default: 'an unset transport' %}
+    // {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ transport }}
+{{ r.link.description | doc_comment: '    // ' }}
+    {{ r.link.name | camel }}Stub_.bind({% render '_endpoint', x: r.local %});
+    {% user 'link.' | append: r.link.name %}
+    // Receive the calls of binary {{ r.peer.binary }} over {{ transport }} into {{ r.link.name | camel }}Stub_.
+    {% enduser %}
+{% endfor %}
 {% for e in system.external %}
     // {{ e.link.name }}: {{ e.link.from.project | default: project.ident }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project | default: project.ident }}.{{ e.link.to.module }}:{{ e.link.to.port }}
     {% user 'external.' | append: e.link.name %}

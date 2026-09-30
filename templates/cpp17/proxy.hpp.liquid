@@ -1,0 +1,40 @@
+{% include '_banner' %}
+#pragma once
+
+#include <{% render '_header', e: item %}>
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ project.ident | snake }}::remote {
+
+/// {% render '_name', e: item %} of another binary: the calls made on it are to be sent over a
+/// transport, written in the user sections.
+class {{ item.name }}Proxy final : public {% render '_qualified', e: item %} {
+public:
+{% for msg in item.messages %}
+{% unless forloop.first %}
+
+{% endunless %}
+    {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %}) override
+    {
+        {% user 'send.' | append: msg.name %}
+        // Send the call{% if msg.params.size > 0 %} and its arguments{% endif %}{% if msg.returns %}, then wait for the result{% endif %}.
+{% for p in msg.params %}
+        (void){% render '_id', name: p.name %};
+{% endfor %}
+{% if msg.returns %}
+        return {};
+{% endif %}
+        {% enduser %}
+    }
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+private:
+    {% user 'private' %}
+    {% enduser %}
+};
+
+} // namespace {{ project.ident | snake }}::remote

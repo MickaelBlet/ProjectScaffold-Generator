@@ -135,6 +135,7 @@ export interface FileModule {
   bases?: string[]
   metadata?: Record<string, string>
   color?: string
+  binary?: string
   attributes?: z.infer<typeof Attribute>[]
   methods?: FileMethod[]
   ports: z.infer<typeof Port>[]
@@ -158,6 +159,9 @@ const Module: z.ZodType<FileModule> = z
         .describe('paths of the modules of this project it derives from, in order'),
       metadata: Metadata,
       color: z.string().optional().describe('accent color (CSS color)'),
+      binary: Identifier.optional().describe(
+        "name of the binary (`binaries`) it runs in: top-level modules only, inner ones run in their ancestor's"
+      ),
       attributes: z.array(Attribute).optional().describe('typed properties of the module'),
       methods: z.array(Method).optional().describe('method prototypes of the module'),
       ports: z.array(Port),
@@ -165,6 +169,14 @@ const Module: z.ZodType<FileModule> = z
     })
   )
   .meta({ id: 'Module' })
+
+const Binary = z
+  .object({
+    name: Identifier,
+    description: Description,
+    color: z.string().optional().describe('accent color (CSS color)')
+  })
+  .describe('An executable of the project, holding some of its top-level modules')
 
 const Endpoint = z.object({
   project: Identifier.optional().describe('name of a dependency: the module belongs to that other project'),
@@ -308,6 +320,12 @@ export const FileProjectSchema = z
       .array(z.string().min(1))
       .optional()
       .describe('custom transports offered for remote links, besides the built-in ones'),
+    binaries: z
+      .array(Binary)
+      .optional()
+      .describe(
+        'executables the top-level modules are split into (each names its own); links between two of them must be remote'
+      ),
     types: z.array(TypeDef),
     interfaces: z.array(Interface),
     modules: z.array(Module),

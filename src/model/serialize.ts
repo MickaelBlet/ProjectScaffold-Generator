@@ -27,6 +27,7 @@ import {
 import {
   METHOD_QUALIFIERS,
   type Attribute,
+  type Binary,
   type Field,
   type Id,
   type Dependency,
@@ -153,6 +154,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     interfaces: p.interfaces.filter((i) => i.dependency === dependency).map(iface)
   })
 
+  const binaryName = new Map(p.binaries.map((b) => [b.id, b.name]))
   const moduleTree = (parentId: Id | null): FileModule[] =>
     childModules(p, parentId).map((m) => {
       const children = moduleTree(m.id)
@@ -163,6 +165,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         bases: m.bases?.length ? m.bases.map((b) => modulePath(p, b)) : undefined,
         metadata: optMeta(m.metadata),
         color: m.color,
+        binary: m.binaryId ? binaryName.get(m.binaryId) : undefined,
         attributes: m.attributes.length ? m.attributes.map(attribute) : undefined,
         methods: m.methods.length ? m.methods.map(method) : undefined,
         ports: m.ports.map((pt) => ({
@@ -193,6 +196,9 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     schemaVersion: SCHEMA_VERSION,
     project: { name: p.name, description: opt(p.description), metadata: optMeta(p.metadata) },
     transports: p.transports.length ? [...p.transports] : undefined,
+    binaries: p.binaries.length
+      ? p.binaries.map((b) => ({ name: b.name, description: opt(b.description), color: b.color }))
+      : undefined,
     ...owned(undefined),
     modules: moduleTree(null),
     links: p.links.map((l) => ({
@@ -310,6 +316,16 @@ export function fromFile(data: unknown, prev?: Project): Project {
       (e) => e.name,
       list.map((e) => e.name)
     )
+
+  const fileBinaries = f.binaries ?? []
+  const prevBinaries = named(prev?.binaries, fileBinaries)
+  const binaryIds = new Map<string, Id>()
+  const binaries: Binary[] = fileBinaries.map((b, i) => {
+    if (binaryIds.has(b.name)) report(`Duplicate binary '${b.name}'`, ['binaries', i, 'name'])
+    const id = idOf(prevBinaries[i], () => `binary:${b.name}`)
+    binaryIds.set(b.name, id)
+    return { id, name: b.name, description: b.description ?? '', ...(b.color ? { color: b.color } : {}) }
+  })
 
   // Types and interfaces share one namespace.
   const typeIds = new Map<string, Id>()
@@ -550,6 +566,13 @@ export function fromFile(data: unknown, prev?: Project): Project {
         }),
         layout: { x: 0, y: 0, width: MODULE_WIDTH, height }
       }
+      if (fm.binary) {
+        const binaryId = binaryIds.get(fm.binary)
+        if (parentId)
+          report(`Module '${path}': only top-level modules name their binary`, [...at, i, 'binary'])
+        else if (!binaryId) report(`Module '${path}': unknown binary '${fm.binary}'`, [...at, i, 'binary'])
+        else mod.binaryId = binaryId
+      }
       modules.push(mod)
       moduleByPath.set(path, mod)
       if (fm.bases?.length) derived.push({ mod, path, bases: fm.bases, at: [...at, i, 'bases'] })
@@ -726,6 +749,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
     description: f.project.description ?? '',
     metadata: { ...(f.project.metadata ?? {}) },
     transports: [...(f.transports ?? [])],
+    binaries,
     types,
     interfaces,
     modules,
