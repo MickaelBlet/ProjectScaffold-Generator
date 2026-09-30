@@ -1,0 +1,23 @@
+{%- comment -%}
+  Namespace of an entity, without leading `::`: the project's (`robot`), a dependency's
+  (`common`), or a module's parents (`robot::core`). Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  assign root = project.ident | snake
+  case e.entity
+  when 'type', 'interface'
+    if e.dependency
+      echo e.dependency | snake
+    else
+      echo root
+    endif
+  when 'module'
+    echo root
+    for parent in e.namespace
+      assign part = parent | snake
+      echo '::' | append: part
+    endfor
+  else
+    echo root
+  endcase
+-%}

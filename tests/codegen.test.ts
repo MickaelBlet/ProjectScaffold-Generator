@@ -3,8 +3,7 @@ import { join } from 'node:path'
 import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { buildContext } from '@/codegen/context'
-import { cppFilters } from '@/codegen/cpp'
-import { generate, outputPath, trimTagLines } from '@/codegen/generate'
+import { createEngine, generate, outputPath, trimTagLines } from '@/codegen/generate'
 import { generateInto, generationInput, RECORD, type OutputDir } from '@/codegen/run'
 import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '@/codegen/sections'
 import { parseManifest, type TemplateSet } from '@/codegen/templateSet'
@@ -132,23 +131,36 @@ describe('templates', () => {
   })
 })
 
-describe('C++ filters', () => {
+describe('C++17 partials', () => {
   const plant = exported('tests/fixtures/plant.scaffold.yaml')
   const ctx = buildContext(plant)
-  const f = cppFilters(ctx) as Record<string, (...a: unknown[]) => unknown>
+  const set = cpp17()
+  const liquid = createEngine(
+    Object.fromEntries(Object.entries(set.files).map(([k, v]) => [k, trimTagLines(v)])),
+    { ...ctx, files: [], generator: { name: set.manifest.name, reserved: set.manifest.reserved } }
+  )
+  const render = (partial: string, params: Record<string, unknown>): string =>
+    String(
+      liquid.parseAndRenderSync(
+        `{% render '${partial}', ${Object.keys(params)
+          .map((k) => `${k}: ${k}`)
+          .join(', ')} %}`,
+        params
+      )
+    )
   const reading = ctx.types.find((t) => t.name === 'Reading')!
   if (reading.kind !== 'struct') throw new Error()
   const field = (n: string) => reading.fields.find((x) => x.name === n)!
 
-  it('spells types', () => {
-    expect(f.cpp_type!(field('tags').type)).toBe('std::map<std::string, std::int32_t>')
-    expect(f.cpp_type!(field('note').type)).toBe('std::optional<std::string>')
-    expect(f.cpp_type!(field('state').type)).toBe('::plant_demo::State')
-    expect(f.cpp_type!(null)).toBe('void')
+  it('spell types', () => {
+    expect(render('_type', { t: field('tags').type })).toBe('std::map<std::string, std::int32_t>')
+    expect(render('_type', { t: field('note').type })).toBe('std::optional<std::string>')
+    expect(render('_type', { t: field('state').type })).toBe('::plant_demo::State')
+    expect(render('_type', { t: null })).toBe('void')
   })
 
-  it('writes default values as literals', () => {
-    const v = (n: string) => f.cpp_value!(field(n).default, field(n).type)
+  it('write default values as literals', () => {
+    const v = (n: string) => render('_value', { v: field(n).default, t: field(n).type })
     expect(v('value')).toBe('1.5')
     expect(v('state')).toBe('::plant_demo::State::On')
     expect(v('tags')).toBe('{{"a", 1}}')
@@ -157,14 +169,20 @@ describe('C++ filters', () => {
     expect(v('count')).toBe('7ULL')
     const sensor = ctx.modules.find((m) => m.path === 'Plant.Sensor')!
     const history = sensor.attributes.find((a) => a.name === 'history')!
-    expect(f.cpp_value!(history.default, history.type)).toBe(
+    expect(render('_value', { v: history.default, t: history.type })).toBe(
       '{::plant_demo::Reading{2.0, ::plant_demo::State::On, {{"a", 1}}, std::nullopt, "say \\"hi\\"", 7ULL}}'
     )
   })
 
-  it('passes scalars by value and the rest by reference', () => {
+  it('pass scalars by value and the rest by reference', () => {
     const get = ctx.interfaces.find((i) => i.name === 'Query')!.messages[0]!
-    expect(f.cpp_params!(get.params)).toBe('const std::string& key, double& value')
+    expect(render('_params', { params: get.params })).toBe('const std::string& key, double& value')
+  })
+
+  it('rename reserved words', () => {
+    expect(render('_id', { name: 'operator' })).toBe('operator_')
+    expect(render('_accessor', { name: 'Operator' })).toBe('operatorModule')
+    expect(render('_member', { name: 'delete' })).toBe('deleteMember_')
   })
 })
 
@@ -179,6 +197,9 @@ describe('generation context', () => {
     expect(ctx.system.connections.map((c) => c.link.name)).toEqual(['operator_to_core'])
     expect(ctx.types.map((t) => t.name)).toEqual(['Primitive'])
     expect(ctx.allTypes.find((t) => t.name === 'Pose')?.dependency).toBe('Common')
+    const controller = ctx.modules.find((m) => m.path === 'Core.Controller')!
+    expect(controller.uses.types.map((t) => t.name)).toEqual(['Mode'])
+    expect(controller.uses.builtins).toEqual(['bool', 'uint32'])
   })
 
   it('finds delegations through containers', () => {
@@ -204,7 +225,7 @@ describe('C++17 generation', () => {
     expect(files.map((f) => f.path)).toMatchSnapshot()
     expect(files.find((f) => f.path === 'include/robot/core/Controller.hpp')?.text).toMatchSnapshot()
     expect(files.find((f) => f.path === 'src/Core.cpp')?.text).toMatchSnapshot()
-    expect(warnings).toEqual(["Operator: 'operator' is a C++ keyword, renamed in the generated code"])
+    expect(warnings).toEqual([])
   })
 
   it('generates the rover: modules wired by their ports only', () => {

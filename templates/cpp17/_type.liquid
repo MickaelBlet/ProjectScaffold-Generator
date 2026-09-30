@@ -1,0 +1,37 @@
+{%- comment -%}
+  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`; `void` for none.
+  Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  if t == nil
+    echo 'void'
+  else
+    case t.kind
+    when 'primitive'
+      render '_primitive', name: t.name
+    when 'ref'
+      echo '::'
+      if t.dependency
+        echo t.dependency | snake
+      else
+        echo project.ident | snake
+      endif
+      echo '::'
+      render '_id', name: t.name
+    when 'array'
+      echo 'std::array<'
+      render '_type', t: t.of
+      echo ', ' | append: t.size | append: '>'
+    when 'map'
+      echo 'std::map<'
+      render '_type', t: t.key
+      echo ', '
+      render '_type', t: t.value
+      echo '>'
+    else
+      echo 'std::' | append: t.kind | append: '<'
+      render '_type', t: t.of
+      echo '>'
+    endcase
+  endif
+-%}

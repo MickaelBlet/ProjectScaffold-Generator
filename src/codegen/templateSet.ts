@@ -22,14 +22,22 @@ const Output = z.object({
 export const ManifestSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
-  language: z.string().optional().describe('`cpp`: warns about names that are C++ keywords'),
+  reserved: z
+    .union([z.array(z.string()), z.string().transform((s) => s.split(/\s+/).filter(Boolean))])
+    .default([])
+    .describe(
+      'reserved words of the target language (a list, or words separated by spaces): names of the project among them are warned about'
+    ),
   comment: z.string().default('//').describe('line comment starting the user section markers'),
   trimTagLines: z
     .boolean()
     .default(true)
     .describe('lines holding only a `{% tag %}` (other than `user`) leave no line nor indentation'),
   squeezeBlankLines: z.boolean().default(true).describe('collapse runs of blank lines into one'),
-  partials: z.array(z.string()).optional().describe('templates only used by `render` / `include`'),
+  partials: z
+    .array(z.string())
+    .optional()
+    .describe('templates only used by `render` / `include`, which name them without `.liquid`'),
   outputs: z.array(Output)
 })
 

@@ -1,38 +1,35 @@
-{% include '_banner.liquid' %}
+{% include '_banner' %}
 #pragma once
 
-{% assign includes = item | cpp_includes %}
-{% for inc in includes %}
-#include {{ inc }}
-{% endfor %}
+{% render '_includes', e: item %}
 {% user 'includes' %}
 {% enduser %}
 
-namespace {{ item | cpp_namespace }} {
+namespace {% render '_ns', e: item %} {
 
 {{ item.description | doc_comment }}
 {% case item.kind %}
 {% when 'struct' %}
-struct {{ item | cpp_name }} {
+struct {% render '_name', e: item %} {
 {% for f in item.fields %}
 {{ f.description | doc_comment: '    /// ' }}
-    {{ f.type | cpp_type }} {{ f.name | cpp_id }}{% if f.hasDefault %} = {{ f.default | cpp_value: f.type }}{% else %}{}{% endif %};
+    {% render '_type', t: f.type %} {% render '_id', name: f.name %}{% if f.hasDefault %} = {% render '_value', v: f.default, t: f.type %}{% else %}{}{% endif %};
 {% endfor %}
     {% user 'members' %}
     {% enduser %}
 };
 {% when 'enum' %}
-enum class {{ item | cpp_name }} : {{ item.underlying | cpp_primitive }} {
+enum class {% render '_name', e: item %} : {% render '_primitive', name: item.underlying %} {
 {% for v in item.values %}
-    {{ v.name | cpp_id }} = {{ v.value }},
+    {% render '_id', name: v.name %} = {{ v.value }},
 {% endfor %}
 };
 {% when 'alias' %}
-using {{ item | cpp_name }} = {{ item.type | cpp_type }};
+using {% render '_name', e: item %} = {% render '_type', t: item.type %};
 {% when 'primitive' %}
 {% user 'definition' %}
-using {{ item | cpp_name }} = void*; // TODO: native type of {{ item.name }}
+using {% render '_name', e: item %} = void*; // TODO: native type of {{ item.name }}
 {% enduser %}
 {% endcase %}
 
-} // namespace {{ item | cpp_namespace }}
+} // namespace {% render '_ns', e: item %}

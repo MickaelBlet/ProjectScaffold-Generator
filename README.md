@@ -201,27 +201,29 @@ bool Controller::setMode(const ::common::Mode mode)
 | links                                    | `from.connect(to)` in the constructor of the innermost module holding both ends, or of `robot::System` (the top-level modules, created by `src/main.cpp`); remote links in a user section, to replace by a transport; links to other projects: a user section in `System`            |
 | container port linked inside             | `in`: the accessor returns the inner port; `out`: the inner port forwards to it                                                                                                                                                                                                      |
 
-Names that are C++ keywords get a trailing `_` (a warning tells). The types and interfaces of dependencies are included from their own generated code (`<common/types/Pose.hpp>`, namespace `common`).
+Names that are C++ keywords get a trailing `_` (a warning tells; the keywords are the manifest's `reserved`). The types and interfaces of dependencies are included from their own generated code (`<common/types/Pose.hpp>`, namespace `common`).
 
 ### Writing templates
+
+A template set is plain files, editable at will: everything specific to the target language lives in its templates, the generator only gives them the project and a few language-neutral helpers. In `templates/cpp17`, the `_*.liquid` partials spell the C++ of the model (`_type`: type references, `_value`: default values as literals, `_params`, `_input`, `_scalar`: parameter passing, `_name`, `_id`, `_accessor`, `_member`: names, `_ns`, `_qualified`, `_header`, `_source`: namespaces and files, `_includes`, `_endpoint`: wiring expressions); the other templates use them with `{% render '_type', t: field.type %}`.
 
 A template set is a directory with a `manifest.yaml`:
 
 ```yaml
 name: cpp17
-language: cpp # warns about names that are C++ keywords
 comment: '//' # starts the user section markers
-partials: [_banner.liquid] # used by {% include %} only
+reserved: alignas alignof and … # names of the model among them are warned about (`generator.reserved`)
+partials: [_banner.liquid, _type.liquid] # used by {% render %} / {% include %} only, named without `.liquid`
 outputs:
   - template: module.hpp.liquid
     each: modules # one file per item, bound to `item` (`as:` renames it)
     when: item.kind != 'interface' # optional condition
-    path: include/{{ item | cpp_header }}
+    path: "include/{% render '_header', e: item %}"
   - template: CMakeLists.txt.liquid
     path: CMakeLists.txt
     comment: '#'
 ```
 
-- `{% user 'id' %}default{% enduser %}` writes a user section (`id`: any Liquid expression, unique in the file); its markers take the indentation of the tag's line. A line holding only a tag (`{% if %}`, `{% for %}`…) leaves no line (`trimTagLines: false` keeps them); runs of blank lines are collapsed (`squeezeBlankLines: false`).
-- Variables (every value is present: templates run with strict variables): `project` (`name`, `ident`, `description`, `metadata`), `types` and `interfaces` (the project's own), `allTypes`, `allInterfaces` (with the dependencies'), `modules` (all, depth first: `name`, `path`, `namespace`, `parent`, `kind`, `abstract`, `bases`, `isBase`, `attributes`, `methods`, `ports` with their `interface` and `delegates`, `children`, `instances`, `connections`, `metadata`), `system` (`instances`, `connections`, `external` links to other projects), `links`, `dependencies`, `files` (paths generated so far) and `generator`. Type references carry `typeKind` and `dependency`. See [`codegen/context.ts`](src/renderer/src/codegen/context.ts).
-- Filters: `snake`, `camel`, `pascal`, `kebab`, `constant`, `ucfirst`, `lcfirst`, `doc_comment: '/// '` (no line for an empty text), and for C++ `cpp_type`, `cpp_value: type` (literal of a default value), `cpp_param(s)`, `cpp_args`, `cpp_input`, `cpp_name`, `cpp_id`, `cpp_namespace`, `cpp_qualified`, `cpp_header`, `cpp_source`, `cpp_includes`, `cpp_endpoint`, `cpp_accessor`, `cpp_member`, `cpp_primitive` ([`codegen/cpp.ts`](src/renderer/src/codegen/cpp.ts)).
+- `{% user 'id' %}default{% enduser %}` writes a user section (`id`: any Liquid expression, unique in the file); its markers take the indentation of the tag's line. A line holding only a tag (`{% if %}`, `{% for %}`, `{% render %}`…) leaves no line (`trimTagLines: false` keeps them); runs of blank lines are collapsed (`squeezeBlankLines: false`). Logic reads best in a `{%- liquid … -%}` block (one tag per line, `echo` to write).
+- Variables, in every template and partial (every value is present: templates run with strict variables): `project` (`name`, `ident`, `description`, `metadata`), `types` and `interfaces` (the project's own), `allTypes`, `allInterfaces` (with the dependencies'), `modules` (all, depth first: `name`, `path`, `namespace`, `parent`, `kind`, `abstract`, `bases`, `isBase`, `attributes`, `methods`, `ports` with their `interface` and `delegates`, `children`, `instances`, `connections`, `metadata`), `system` (`instances`, `connections`, `external` links to other projects), `links`, `dependencies`, `files` (paths generated so far) and `generator` (`name`, `reserved`). Type references carry `typeKind` and `dependency`; types, interfaces and modules have `uses` (`types`: the user types they name, `builtins`: the primitives and containers). See [`codegen/context.ts`](src/renderer/src/codegen/context.ts).
+- Filters besides Liquid's: `snake`, `camel`, `pascal`, `kebab`, `constant`, `ucfirst`, `lcfirst` and `doc_comment: '/// '` (each line of a text after the prefix; no line at all for an empty text).

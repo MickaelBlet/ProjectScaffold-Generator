@@ -2,7 +2,6 @@
 // user sections. Pure: merging with the files on disk is done by run.ts.
 import { Liquid } from 'liquidjs'
 import { buildContext, type GenContext } from './context'
-import { cppFilters, cppWarnings } from './cpp'
 import { caseFilters } from './filters'
 import { placeMarkers, UserTag } from './sections'
 import type { TemplateSet } from './templateSet'
@@ -44,26 +43,64 @@ const DROP = '\uE002'
 const dropLines = (text: string): string =>
   text.replace(new RegExp(`^[ \\t]*${DROP}[ \\t]*\\r?\\n`, 'gm'), '').replaceAll(DROP, '')
 
-export function createEngine(set: TemplateSet, ctx: GenContext): Liquid {
-  const templates = set.manifest.trimTagLines
-    ? Object.fromEntries(Object.entries(set.files).map(([k, v]) => [k, trimTagLines(v)]))
-    : set.files
+/**
+ * Liquid engine of a template set. Templates get the generation context as globals (partials too),
+ * and only language-neutral additions: the `user` tag and the case / comment filters.
+ */
+export function createEngine(templates: Record<string, string>, globals: object): Liquid {
   const liquid = new Liquid({
     templates,
+    // `render '_type'` finds `_type.liquid`.
+    extname: '.liquid',
+    globals,
     strictVariables: true,
     strictFilters: true,
     lenientIf: true,
     greedy: false
   })
   liquid.registerTag('user', UserTag)
-  const filters = { ...caseFilters, ...cppFilters(ctx), doc_comment: docComment }
+  const filters: Record<string, (s: string, ...args: string[]) => string> = {
+    ...caseFilters,
+    doc_comment: docComment
+  }
   for (const [name, f] of Object.entries(filters))
-    liquid.registerFilter(name, (...args: unknown[]) => (f as (...a: unknown[]) => unknown)(...args))
+    liquid.registerFilter(name, (s: unknown, ...args: unknown[]) => f(String(s ?? ''), ...args.map(String)))
   return liquid
 }
 
+/** Names of the project that are reserved words of the target language. */
+export function reservedNames(ctx: GenContext, reserved: string[]): string[] {
+  const words = new Set(reserved)
+  const warnings: string[] = []
+  const check = (n: string, where: string): void => {
+    if (words.has(n)) warnings.push(`${where}: '${n}' is a reserved word, renamed in the generated code`)
+  }
+  for (const t of ctx.types) {
+    check(t.name, t.name)
+    if (t.kind === 'struct') for (const f of t.fields) check(f.name, `${t.name}.${f.name}`)
+    if (t.kind === 'enum') for (const v of t.values) check(v.name, `${t.name}.${v.name}`)
+  }
+  for (const i of ctx.interfaces) {
+    check(i.name, i.name)
+    for (const m of i.messages) {
+      check(m.name, `${i.name}.${m.name}`)
+      for (const p of m.params) check(p.name, `${i.name}.${m.name}(${p.name})`)
+    }
+  }
+  for (const m of ctx.modules) {
+    check(m.name, m.path)
+    for (const a of m.attributes) check(a.name, `${m.path}.${a.name}`)
+    for (const x of m.methods) {
+      check(x.name, `${m.path}.${x.name}`)
+      for (const p of x.params) check(p.name, `${m.path}.${x.name}(${p.name})`)
+    }
+    for (const p of m.ports) check(p.name, `${m.path}:${p.name}`)
+  }
+  return warnings
+}
+
 /** Each line of a description after `prefix` (e.g. `  /// `); no line for no description. */
-function docComment(text: string, prefix = '/// '): string {
+function docComment(text: string, prefix: string = '/// '): string {
   if (!text) return DROP
   return text
     .split(/\r?\n/)
@@ -76,11 +113,18 @@ const squeeze = (text: string): string => text.replace(/\n[ \t]*(?:\n[ \t]*)+\n/
 /** Renders a template set over an exported project (editor data left out). */
 export function generate(file: FileProject, set: TemplateSet): Generation {
   const ctx = buildContext(file)
-  const liquid = createEngine(set, ctx)
   const { manifest } = set
   const files: GeneratedFile[] = []
   const paths = new Set<string>()
-  const scope: Record<string, unknown> = { ...ctx, files: [] as string[], generator: { name: manifest.name } }
+  const scope: Record<string, unknown> = {
+    ...ctx,
+    files: [] as string[],
+    generator: { name: manifest.name, reserved: manifest.reserved }
+  }
+  const templates = manifest.trimTagLines
+    ? Object.fromEntries(Object.entries(set.files).map(([k, v]) => [k, trimTagLines(v)]))
+    : set.files
+  const liquid = createEngine(templates, scope)
 
   for (const out of manifest.outputs) {
     const where = (item?: unknown): string =>
@@ -96,7 +140,7 @@ export function generate(file: FileProject, set: TemplateSet): Generation {
       }
     }
     if (!(out.template in set.files)) fail(new Error('template not found'))
-    const template = attempt(() => liquid.parseFileSync(out.template))
+    const template = attempt(() => liquid.parse(templates[out.template]!, out.template))
     const list = out.each ? attempt(() => liquid.evalValueSync(out.each!, scope) as unknown) : [undefined]
     if (!Array.isArray(list)) fail(new Error(`'each: ${out.each}' is not a list`))
     const items = list as unknown[]
@@ -120,7 +164,7 @@ export function generate(file: FileProject, set: TemplateSet): Generation {
       }
     }
   }
-  return { files, warnings: [...ctx.warnings, ...(manifest.language === 'cpp' ? cppWarnings(ctx) : [])] }
+  return { files, warnings: [...ctx.warnings, ...reservedNames(ctx, manifest.reserved)] }
 }
 
 /** Liquid truthiness: only false and nil are false. */

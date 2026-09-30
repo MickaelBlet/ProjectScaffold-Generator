@@ -411,42 +411,43 @@ links:
 editor:
   layout:
     Camera:
-      x: 336
-      y: 103
+      x: 160
+      y: 220
       width: 200
-      height: 72
+      height: 100
     Perception:
-      x: 652
-      y: 58
-      width: 844
-      height: 162
+      x: 120
+      y: 440
+      width: 280
+      height: 440
     Perception.Preprocess:
-      x: 144
-      y: 58
+      x: 40
+      y: 80
       width: 200
-      height: 72
+      height: 100
     Perception.Detector:
-      x: 460
-      y: 46
+      x: 40
+      y: 280
       width: 200
-      height: 96
+      height: 100
     Planner:
-      x: 1612
-      y: 186
+      x: 300
+      y: 980
       width: 200
-      height: 72
+      height: 100
     Motors:
-      x: 1928
-      y: 91
+      x: 160
+      y: 1180
       width: 200
-      height: 96
+      height: 100
     Recorder:
-      x: 1612
-      y: 20
-      width: 200
-      height: 96
-    Supervisor:
       x: 20
-      y: 79
+      y: 980
       width: 200
-      height: 120
+      height: 100
+    Supervisor:
+      x: 120
+      y: 20
+      width: 300
+      height: 100
+  orientation: vertical

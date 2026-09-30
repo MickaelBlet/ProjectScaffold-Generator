@@ -1,22 +1,19 @@
-{% include '_banner.liquid' %}
+{% include '_banner' %}
 #pragma once
 
-{% assign includes = item | cpp_includes %}
-{% for inc in includes %}
-#include {{ inc }}
-{% endfor %}
+{% render '_includes', e: item %}
 
-namespace {{ item | cpp_namespace }} {
+namespace {% render '_ns', e: item %} {
 
 {{ item.description | doc_comment }}
-class {{ item | cpp_name }} {
+class {% render '_name', e: item %} {
 public:
-    virtual ~{{ item | cpp_name }}() = default;
+    virtual ~{% render '_name', e: item %}() = default;
 {% for msg in item.messages %}
 
 {{ msg.description | doc_comment: '    /// ' }}
-    virtual {{ msg.returns | cpp_type }} {{ msg.name | cpp_id }}({{ msg.params | cpp_params }}) = 0;
+    virtual {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %}) = 0;
 {% endfor %}
 };
 
-} // namespace {{ item | cpp_namespace }}
+} // namespace {% render '_ns', e: item %}

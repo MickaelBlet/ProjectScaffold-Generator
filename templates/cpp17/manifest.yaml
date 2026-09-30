@@ -1,37 +1,65 @@
 # C++17 template set of ProjectScaffold: `npm run generate -- <project file> -o <dir>`.
-# Paths, `each` and `when` are Liquid; templates see the generation context (see README).
+# Everything C++ lives in these files: the `_*.liquid` partials spell types, values, names, paths
+# and includes; edit them freely. Paths, `each` and `when` are Liquid; templates see the generation
+# context (see README, "Writing templates").
 name: cpp17
 description: C++17 skeleton - types, interfaces, modules wired through their ports, CMake project
-language: cpp
 comment: '//'
+# Names of the model that are C++ keywords (separated by spaces) are warned about, and renamed by
+# _id / _accessor / _member.
+reserved: >-
+  alignas alignof and and_eq asm auto bitand bitor bool break case catch char char16_t char32_t
+  class compl const constexpr const_cast continue decltype default delete do double dynamic_cast
+  else enum explicit export extern false float for friend goto if inline int long mutable namespace
+  new noexcept not not_eq nullptr operator or or_eq private protected public register
+  reinterpret_cast return short signed sizeof static static_assert static_cast struct switch
+  template this thread_local throw true try typedef typeid typename union unsigned using virtual
+  void volatile wchar_t while xor xor_eq
 partials:
   - _banner.liquid
   - _connection.liquid
+  - _includes.liquid
+  - _id.liquid
+  - _accessor.liquid
+  - _member.liquid
+  - _name.liquid
+  - _ns.liquid
+  - _qualified.liquid
+  - _header.liquid
+  - _source.liquid
+  - _primitive.liquid
+  - _type.liquid
+  - _scalar.liquid
+  - _input.liquid
+  - _params.liquid
+  - _args.liquid
+  - _endpoint.liquid
+  - _value.liquid
 outputs:
   - template: ports.hpp.liquid
     path: include/{{ project.ident | snake }}/ports.hpp
     when: modules.size > 0
   - template: type.hpp.liquid
     each: types
-    path: include/{{ item | cpp_header }}
+    path: "include/{% render '_header', e: item %}"
   - template: types.hpp.liquid
     path: include/{{ project.ident | snake }}/types.hpp
     when: types.size > 0
   - template: interface.hpp.liquid
     each: interfaces
-    path: include/{{ item | cpp_header }}
+    path: "include/{% render '_header', e: item %}"
   - template: module.hpp.liquid
     each: modules
-    path: include/{{ item | cpp_header }}
+    path: "include/{% render '_header', e: item %}"
   - template: module.cpp.liquid
     each: modules
     when: item.kind != 'interface'
-    path: src/{{ item | cpp_source }}
+    path: "src/{% render '_source', e: item %}"
   - template: system.hpp.liquid
-    path: include/{{ system | cpp_header }}
+    path: "include/{% render '_header', e: system %}"
     when: modules.size > 0
   - template: system.cpp.liquid
-    path: src/{{ system | cpp_source }}
+    path: "src/{% render '_source', e: system %}"
     when: modules.size > 0
   - template: CMakeLists.txt.liquid
     path: CMakeLists.txt

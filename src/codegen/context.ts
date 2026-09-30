@@ -2,7 +2,7 @@
 // only, every optional value present (templates run with strict variables), modules flattened
 // with their links sorted into wiring at the right level.
 import { dependencyName } from '../model/dependencies'
-import { mapTypeRef } from '../model/typeExpr'
+import { mapTypeRef, walkTypeRef } from '../model/typeExpr'
 import type {
   FileInterface,
   FileLink,
@@ -23,6 +23,14 @@ interface Owned {
   dependency: string | null
 }
 
+/** What the type references of an entity use, e.g. to know what to include or import. */
+export interface GenUses {
+  /** User types named, without the types those use in turn; by name. */
+  types: GenType[]
+  /** Primitive type names and container kinds (`int32`, `string`, `vector`, `map`...), sorted. */
+  builtins: string[]
+}
+
 export interface GenField {
   name: string
   type: GenTypeRef
@@ -35,6 +43,7 @@ export type GenType = Owned & {
   entity: 'type'
   name: string
   description: string
+  uses: GenUses
 } & (
     | { kind: 'struct'; fields: GenField[] }
     | { kind: 'enum'; underlying: string; values: { name: string; value: number }[] }
@@ -62,6 +71,7 @@ export interface GenInterface extends Owned {
   name: string
   description: string
   messages: GenMessage[]
+  uses: GenUses
 }
 
 export interface GenMethod extends GenMessage {
@@ -149,6 +159,8 @@ export interface GenModule {
   color: string | null
   attributes: GenAttribute[]
   methods: GenMethod[]
+  /** By its attributes and methods (the interfaces of its ports use their own). */
+  uses: GenUses
   ports: GenPort[]
   children: GenModule[]
   /**
@@ -169,6 +181,8 @@ export interface GenSystem {
   instances: GenModule[]
   connections: GenConnection[]
   external: GenExternal[]
+  /** Nothing: there for templates treating modules and the system alike. */
+  uses: GenUses
 }
 
 export interface GenDependency {
@@ -236,7 +250,13 @@ export function buildContext(file: FileProject): GenContext {
   })
 
   const typeDef = (t: FileTypeDef, dependency: string | null): GenType => {
-    const base = { entity: 'type' as const, name: t.name, description: t.description ?? '', dependency }
+    const base = {
+      entity: 'type' as const,
+      name: t.name,
+      description: t.description ?? '',
+      dependency,
+      uses: noUses()
+    }
     switch (t.kind) {
       case 'struct':
         return { ...base, kind: 'struct', fields: t.fields.map(field) }
@@ -267,7 +287,8 @@ export function buildContext(file: FileProject): GenContext {
     name: i.name,
     description: i.description ?? '',
     dependency,
-    messages: i.messages.map(message)
+    messages: i.messages.map(message),
+    uses: noUses()
   })
 
   const types = file.types.map((t) => typeDef(t, null))
@@ -305,6 +326,7 @@ export function buildContext(file: FileProject): GenContext {
       metadata: { ...(m.metadata ?? {}) },
       color: m.color ?? null,
       attributes: (m.attributes ?? []).map((a) => ({ ...field(a), static: !!a.static, const: !!a.const })),
+      uses: noUses(),
       methods: (m.methods ?? []).map((x) => ({
         ...message(x),
         static: !!x.static,
@@ -339,13 +361,47 @@ export function buildContext(file: FileProject): GenContext {
       return base ? [base] : []
     })
 
+  // What each entity uses, now that every type exists.
+  const typeByName = new Map<string, GenType>()
+  for (const t of allTypes) if (!typeByName.has(t.name)) typeByName.set(t.name, t)
+  const usesOf = (refs: GenTypeRef[], builtins: string[] = []): GenUses => {
+    const types = new Map<string, GenType>()
+    const names = new Set(builtins)
+    for (const r of refs)
+      walkTypeRef(r, (n) => {
+        if (n.kind === 'ref') {
+          const t = typeByName.get(n.name)
+          if (t) types.set(t.name, t)
+        } else names.add(n.kind === 'primitive' ? n.name : n.kind)
+      })
+    return {
+      types: [...types.values()].sort((a, b) => (a.name < b.name ? -1 : 1)),
+      builtins: [...names].sort()
+    }
+  }
+  const messageRefs = (m: GenMessage): GenTypeRef[] => [
+    ...m.params.map((p) => p.type),
+    ...(m.returns ? [m.returns] : [])
+  ]
+  for (const t of allTypes)
+    t.uses =
+      t.kind === 'struct'
+        ? usesOf(t.fields.map((f) => f.type))
+        : t.kind === 'alias'
+          ? usesOf([t.type])
+          : usesOf([], t.kind === 'enum' ? [t.underlying] : [])
+  for (const i of allInterfaces) i.uses = usesOf(i.messages.flatMap(messageRefs))
+  for (const m of modules)
+    m.uses = usesOf([...m.attributes.map((a) => a.type), ...m.methods.flatMap(messageRefs)])
+
   const system: GenSystem = {
     entity: 'system',
     name: 'System',
     children: top,
     instances: top.filter(instantiated),
     connections: [],
-    external: []
+    external: [],
+    uses: noUses()
   }
   const links = file.links.map(genLink)
   const segments = (path: string): string[] => path.split('.')
@@ -432,6 +488,8 @@ export function buildContext(file: FileProject): GenContext {
     warnings
   }
 }
+
+const noUses = (): GenUses => ({ types: [], builtins: [] })
 
 const instantiated = (m: GenModule): boolean => !m.abstract || m.ports.length > 0
 

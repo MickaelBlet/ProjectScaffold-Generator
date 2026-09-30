@@ -1,0 +1,19 @@
+{%- comment -%}
+  `true` for a type cheap to copy (passed and returned by value): numbers, bool, char, enums,
+  aliases of those. Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    unless t.name == 'string' or t.name == 'bytes'
+      echo 'true'
+    endunless
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    if def.kind == 'enum'
+      echo 'true'
+    elsif def.kind == 'alias'
+      render '_scalar', t: def.type
+    endif
+  endcase
+-%}

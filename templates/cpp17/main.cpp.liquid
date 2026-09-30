@@ -1,11 +1,11 @@
-{% include '_banner.liquid' %}
-#include <{{ system | cpp_header }}>
+{% include '_banner' %}
+#include <{% render '_header', e: system %}>
 {% user 'includes' %}
 {% enduser %}
 
 int main(int argc, char** argv)
 {
-    {{ system | cpp_qualified }} system;
+    {% render '_qualified', e: system %} system;
     {% user 'main' %}
     (void)argc;
     (void)argv;

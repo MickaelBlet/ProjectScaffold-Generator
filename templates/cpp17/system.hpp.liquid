@@ -1,14 +1,11 @@
-{% include '_banner.liquid' %}
+{% include '_banner' %}
 #pragma once
 
-{% assign includes = system | cpp_includes %}
-{% for inc in includes %}
-#include {{ inc }}
-{% endfor %}
+{% render '_includes', e: system %}
 {% user 'includes' %}
 {% enduser %}
 
-namespace {{ system | cpp_namespace }} {
+namespace {% render '_ns', e: system %} {
 
 {{ project.description | doc_comment }}
 /// The top-level modules of {{ project.name }}, wired together.
@@ -20,7 +17,7 @@ public:
     {{ system.name }}& operator=(const {{ system.name }}&) = delete;
 
 {% for c in system.instances %}
-    {{ c | cpp_qualified }}& {{ c.name | cpp_accessor }}() { return {% if c.abstract %}*{% endif %}{{ c.name | cpp_accessor }}_; }
+    {% render '_qualified', e: c %}& {% render '_accessor', name: c.name %}() { return {% if c.abstract %}*{% endif %}{% render '_accessor', name: c.name %}_; }
 {% endfor %}
 
     {% user 'public' %}
@@ -29,13 +26,13 @@ public:
 private:
 {% for c in system.instances %}
 {% if c.abstract %}
-    std::unique_ptr<{{ c | cpp_qualified }}> {{ c.name | cpp_accessor }}_; // abstract: created in the constructor
+    std::unique_ptr<{% render '_qualified', e: c %}> {% render '_accessor', name: c.name %}_; // abstract: created in the constructor
 {% else %}
-    {{ c | cpp_qualified }} {{ c.name | cpp_accessor }}_;
+    {% render '_qualified', e: c %} {% render '_accessor', name: c.name %}_;
 {% endif %}
 {% endfor %}
     {% user 'private' %}
     {% enduser %}
 };
 
-} // namespace {{ system | cpp_namespace }}
+} // namespace {% render '_ns', e: system %}

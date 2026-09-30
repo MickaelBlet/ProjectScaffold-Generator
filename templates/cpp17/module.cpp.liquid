@@ -1,28 +1,32 @@
-{% include '_banner.liquid' %}
-{% assign m = item %}
-{% assign class = m | cpp_name %}
-#include <{{ m | cpp_header }}>
+{% include '_banner' %}
+{%- liquid
+  assign m = item
+  capture class
+    render '_name', e: m
+  endcapture
+-%}
+#include <{% render '_header', e: m %}>
 {% user 'includes' %}
 {% enduser %}
 
-namespace {{ m | cpp_namespace }} {
+namespace {% render '_ns', e: m %} {
 
 {{ class }}::{{ class }}()
 {
 {% for c in m.instances %}
 {% if c.abstract %}
     {% user 'create.' | append: c.name %}
-    // {{ c.name | cpp_accessor }}_ = std::make_unique<ConcreteClass>();
+    // {% render '_accessor', name: c.name %}_ = std::make_unique<ConcreteClass>();
     {% enduser %}
 {% endif %}
 {% endfor %}
 {% for c in m.connections %}
-    {% include '_connection.liquid', connection: c %}
+    {% include '_connection', connection: c %}
 {% endfor %}
 {% for p in m.ports %}
 {% if p.role == 'out' and p.interface %}
 {% for d in p.delegates %}
-    {{ d | cpp_endpoint }}.forward({{ p.name | cpp_member }});
+    {% render '_endpoint', x: d %}.forward({% render '_member', name: p.name %});
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -38,7 +42,7 @@ namespace {{ m | cpp_namespace }} {
 {% for x in m.methods %}
 {% unless x.pure %}
 
-{{ x.returns | cpp_type }} {{ class }}::{{ x.name | cpp_id }}({{ x.params | cpp_params }}){% if x.const %} const{% endif %}
+{% render '_type', t: x.returns %} {{ class }}::{% render '_id', name: x.name %}({% render '_params', params: x.params %}){% if x.const %} const{% endif %}
 {
     {% user 'method.' | append: x.name %}
 {% if x.returns %}
@@ -52,7 +56,7 @@ namespace {{ m | cpp_namespace }} {
 {% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
 {% for msg in p.interface.messages %}
 
-{{ msg.returns | cpp_type }} {{ class }}::on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({{ msg.params | cpp_params }})
+{% render '_type', t: msg.returns %} {{ class }}::on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_params', params: msg.params %})
 {
     {% user 'on.' | append: p.name | append: '.' | append: msg.name %}
 {% if msg.returns %}
@@ -67,4 +71,4 @@ namespace {{ m | cpp_namespace }} {
 {% user 'end' %}
 {% enduser %}
 
-} // namespace {{ m | cpp_namespace }}
+} // namespace {% render '_ns', e: m %}
