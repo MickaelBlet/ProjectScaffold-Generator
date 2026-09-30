@@ -1,7 +1,7 @@
 schemaVersion: 1
 project:
   name: Rover
-  description: Autonomous rover whose modules only talk through their ports, typed by interfaces
+  description: Autonomous rover whose modules only talk through their ports, typed by interfaces; supervised from another binary (rover-ground.scaffold.yaml)
 types:
   - kind: struct
     name: Frame
@@ -197,19 +197,6 @@ modules:
       - name: detections
         role: in
         interface: DetectionSink
-  - name: Supervisor
-    description: Starts, stops and watches the others
-    color: "#4f9ed1"
-    ports:
-      - name: camera
-        role: out
-        interface: Lifecycle
-      - name: motors
-        role: out
-        interface: Lifecycle
-      - name: perception
-        role: out
-        interface: HealthQuery
 links:
   - name: camera_to_perception
     from:
@@ -358,66 +345,16 @@ links:
         rateHz: 50
       remote:
         enabled: false
-  - name: supervise_camera
-    from:
-      module: Supervisor
-      port: camera
-    to:
-      module: Camera
-      port: lifecycle
-    constraints:
-      direction: bidirectional
-      ack:
-        required: true
-        timeoutMs: 500
-      performance:
-        class: low
-      remote:
-        enabled: false
-  - name: supervise_motors
-    from:
-      module: Supervisor
-      port: motors
-    to:
-      module: Motors
-      port: lifecycle
-    constraints:
-      direction: bidirectional
-      ack:
-        required: true
-        timeoutMs: 500
-      performance:
-        class: low
-      remote:
-        enabled: false
-  - name: supervise_perception
-    description: The supervisor runs on the ground station
-    from:
-      module: Supervisor
-      port: perception
-    to:
-      module: Perception
-      port: health
-    constraints:
-      direction: bidirectional
-      ack:
-        required: false
-      performance:
-        class: normal
-        maxLatencyMs: 100
-      remote:
-        enabled: true
-        transport: tcp
 editor:
   layout:
     Camera:
       x: 160
-      y: 220
+      y: 20
       width: 200
       height: 100
     Perception:
       x: 120
-      y: 440
+      y: 240
       width: 280
       height: 440
     Perception.Preprocess:
@@ -432,22 +369,17 @@ editor:
       height: 100
     Planner:
       x: 300
-      y: 980
+      y: 780
       width: 200
       height: 100
     Motors:
       x: 160
-      y: 1180
+      y: 980
       width: 200
       height: 100
     Recorder:
       x: 20
-      y: 980
+      y: 780
       width: 200
-      height: 100
-    Supervisor:
-      x: 120
-      y: 20
-      width: 300
       height: 100
   orientation: vertical

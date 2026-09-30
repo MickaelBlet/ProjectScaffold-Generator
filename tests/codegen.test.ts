@@ -240,6 +240,14 @@ describe('C++17 generation', () => {
     expect(text('src/Motors.cpp')).toContain('void Motors::onDriveCommand(const ::rover::Command& command)')
   })
 
+  it('generates the rover ground station: links to the rover binary over tcp', () => {
+    const { files, warnings } = generate(exported('examples/rover-ground.scaffold.yaml'), cpp17())
+    expect(warnings).toEqual([])
+    const system = files.find((f) => f.path === 'src/System.cpp')!.text
+    for (const port of ['camera', 'motors', 'perception'])
+      expect(system).toContain(`connect supervisor().${port}() through a transport (tcp)`)
+  })
+
   it('generates types and interfaces of a project without modules', () => {
     const { files } = generate(exported('examples/common.scaffold.yaml'), cpp17())
     expect(files.map((f) => f.path)).toContain('include/common/interfaces/ITelemetry.hpp')

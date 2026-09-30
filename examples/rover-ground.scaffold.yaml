@@ -1,0 +1,252 @@
+schemaVersion: 1
+project:
+  name: RoverGround
+  description: Ground station binary supervising the rover over TCP
+types: []
+interfaces: []
+modules:
+  - name: Supervisor
+    description: Starts, stops and watches the rover modules
+    color: "#4f9ed1"
+    ports:
+      - name: camera
+        role: out
+        interface: Lifecycle
+      - name: motors
+        role: out
+        interface: Lifecycle
+      - name: perception
+        role: out
+        interface: HealthQuery
+links:
+  - name: supervise_camera
+    from:
+      module: Supervisor
+      port: camera
+    to:
+      project: Rover
+      module: Camera
+      port: lifecycle
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: low
+      remote:
+        enabled: true
+        transport: tcp
+  - name: supervise_motors
+    from:
+      module: Supervisor
+      port: motors
+    to:
+      project: Rover
+      module: Motors
+      port: lifecycle
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 500
+      performance:
+        class: low
+      remote:
+        enabled: true
+        transport: tcp
+  - name: supervise_perception
+    from:
+      module: Supervisor
+      port: perception
+    to:
+      project: Rover
+      module: Perception
+      port: health
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        maxLatencyMs: 100
+      remote:
+        enabled: true
+        transport: tcp
+dependencies:
+  - name: Rover
+    file: rover.scaffold.yaml
+    types:
+      - kind: struct
+        name: Frame
+        description: Camera image
+        fields:
+          - name: id
+            type:
+              kind: primitive
+              name: uint64
+          - name: width
+            type:
+              kind: primitive
+              name: uint16
+            default: 640
+          - name: height
+            type:
+              kind: primitive
+              name: uint16
+            default: 480
+          - name: pixels
+            type:
+              kind: primitive
+              name: bytes
+      - kind: struct
+        name: Detection
+        fields:
+          - name: label
+            type:
+              kind: primitive
+              name: string
+          - name: score
+            type:
+              kind: primitive
+              name: float32
+          - name: box
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float32
+              size: 4
+            description: x, y, width, height in pixels
+      - kind: alias
+        name: Detections
+        type:
+          kind: vector
+          of:
+            kind: ref
+            name: Detection
+      - kind: struct
+        name: Command
+        fields:
+          - name: speed
+            type:
+              kind: primitive
+              name: float32
+            description: m/s
+          - name: turn
+            type:
+              kind: primitive
+              name: float32
+            description: rad/s
+      - kind: enum
+        name: Health
+        underlying: uint8
+        values:
+          - name: Ok
+            value: 0
+          - name: Degraded
+            value: 1
+          - name: Failed
+            value: 2
+    interfaces:
+      - name: FrameSink
+        description: Receives camera frames
+        messages:
+          - name: push
+            params:
+              - name: frame
+                type:
+                  kind: ref
+                  name: Frame
+            returns: null
+      - name: DetectionSink
+        description: Receives the objects seen in a frame
+        messages:
+          - name: publish
+            params:
+              - name: detections
+                type:
+                  kind: ref
+                  name: Detections
+            returns: null
+      - name: Drive
+        messages:
+          - name: command
+            params:
+              - name: command
+                type:
+                  kind: ref
+                  name: Command
+            returns: null
+      - name: Lifecycle
+        messages:
+          - name: start
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: stop
+            params: []
+            returns: null
+      - name: HealthQuery
+        messages:
+          - name: health
+            params: []
+            returns:
+              kind: ref
+              name: Health
+    modules:
+      - module: Camera
+        ports:
+          - name: frames
+            role: out
+            interface: FrameSink
+          - name: lifecycle
+            role: in
+            interface: Lifecycle
+      - module: Perception
+        ports:
+          - name: frames
+            role: in
+            interface: FrameSink
+          - name: health
+            role: in
+            interface: HealthQuery
+          - name: detections
+            role: out
+            interface: DetectionSink
+      - module: Motors
+        ports:
+          - name: drive
+            role: in
+            interface: Drive
+          - name: lifecycle
+            role: in
+            interface: Lifecycle
+editor:
+  layout:
+    Supervisor:
+      x: 240
+      y: 20
+      width: 300
+      height: 100
+  dependencies:
+    Rover:
+      Camera:
+        x: 20
+        y: 220
+      Perception:
+        x: 290
+        y: 220
+      Motors:
+        x: 560
+        y: 220
+  orientation: vertical
+  notes:
+    - kind: note
+      text: "Camera, Perception and Motors belong to the Rover project, another binary (dashed): the supervisor reaches them over TCP. Double-click one to open its project."
+      x: 840
+      y: 20
+      width: 300
+      height: 130
+      color: "#fff3b0"
