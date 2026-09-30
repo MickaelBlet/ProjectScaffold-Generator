@@ -2,30 +2,69 @@
 #pragma once
 
 #include <{% render '_header', e: item %}>
+#include <{{ project.ident | snake }}/remote/codec.hpp>
+#include <{{ project.ident | snake }}/remote/transport.hpp>
 {% user 'includes' %}
 {% enduser %}
 
 namespace {{ project.ident | snake }}::remote {
 
-/// Receives the calls of {% render '_name', e: item %} from another binary: the transport, written in
-/// the user sections, calls the method of each message received, which makes the call on the port
-/// bound.
+/// Receives the calls of {% render '_name', e: item %} from another binary and makes them on the
+/// port bound. The calls come on the threads of the transport: several at once over tcp, http and
+/// websocket (one per connection).
 class {{ item.name }}Stub {
 public:
-    void bind({% render '_qualified', e: item %}& target) { target_ = &target; }
-{% for msg in item.messages %}
+    {{ item.name }}Stub() = default;
+    {{ item.name }}Stub(const {{ item.name }}Stub&) = delete;
+    {{ item.name }}Stub& operator=(const {{ item.name }}Stub&) = delete;
+    ~{{ item.name }}Stub() { server_.reset(); }
 
-    {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %})
+    void bind({% render '_qualified', e: item %}& target) { target_ = &target; }
+
+    /// Receives the calls of link `link` over `transport`, at `address`.
+    void serve(const std::string& transport, const std::string& address, const std::string& link)
     {
-        return target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %});
+        server_ = remote::serve(transport, address, link, [this](const Bytes& frame) { return dispatch(frame); });
     }
+
+    /// Makes the call of a frame: the reply frame, or nothing when the call wants none.
+    std::optional<Bytes> dispatch(const Bytes& frame)
+    {
+        return respond(frame, [this](std::uint16_t message_, Reader& reader_, [[maybe_unused]] Writer& writer_) {
+            if (!target_) throw Error("{{ item.name }}Stub not bound");
+            switch (message_) {
+{% for msg in item.messages %}
+            case {{ forloop.index0 }}: {
+{% for p in msg.params %}
+                {% render '_type', t: p.type %} {% render '_id', name: p.name %}{};
 {% endfor %}
+{% for p in msg.inputs %}
+                decode(reader_, {% render '_id', name: p.name %});
+{% endfor %}
+                reader_.end();
+{% if msg.returns %}
+                encode(writer_, target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %}));
+{% else %}
+                target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %});
+{% endif %}
+{% for p in msg.outputs %}
+                encode(writer_, {% render '_id', name: p.name %});
+{% endfor %}
+                return true;
+            }
+{% endfor %}
+            default:
+                return false;
+            }
+        });
+    }
 
     {% user 'public' %}
     {% enduser %}
 
 private:
     {% render '_qualified', e: item %}* target_ = nullptr;
+    std::unique_ptr<Server> server_;
     {% user 'private' %}
     {% enduser %}
 };

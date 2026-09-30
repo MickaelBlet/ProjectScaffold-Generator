@@ -1,0 +1,96 @@
+{% include '_py_banner' %}
+"""Types of the calls between the binaries of {{ project.name }}, with their encoding (wire.py)."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field as _field
+from enum import IntEnum
+from typing import Any, Dict, List, Optional, Set
+
+from .wire import Reader, Writer, enum
+{% user 'imports' %}
+{% enduser %}
+{% for t in remoteTypes %}
+{% case t.kind %}
+{% when 'enum' %}
+
+
+class {% render '_py_id', name: t.name %}(IntEnum):
+{{ t.description | doc_comment: '    # ' }}
+{% for v in t.values %}
+    {% render '_py_id', name: v.name %} = {{ v.value }}
+{% else %}
+    pass
+{% endfor %}
+{% when 'struct' %}
+
+
+@dataclass
+class {% render '_py_id', name: t.name %}:
+{{ t.description | doc_comment: '    # ' }}
+{% for f in t.fields %}
+{{ f.description | doc_comment: '    # ' }}
+    {% render '_py_id', name: f.name %}: {% render '_py_type', t: f.type, prefix: '' %} = _field(default_factory=lambda: {% if f.hasDefault %}{% render '_py_value', v: f.default, t: f.type, prefix: '' %}{% else %}{% render '_py_zero', t: f.type, prefix: '' %}{% endif %})
+{% else %}
+    pass
+{% endfor %}
+{% endcase %}
+{% endfor %}
+{% for t in remoteTypes %}
+{% case t.kind %}
+{% when 'enum' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: int) -> None:
+    w.{{ t.underlying }}(int(v))
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    return enum({% render '_py_id', name: t.name %}, r.{{ t.underlying }}())
+{% when 'struct' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {% render '_py_id', name: t.name %}) -> None:
+{% for f in t.fields %}
+{% capture value %}
+v.{% render '_py_id', name: f.name -%}
+{% endcapture %}
+{% capture statement %}
+{% render '_py_encode', t: f.type, v: value, w: 'w', prefix: '' %}
+{% endcapture %}
+    {{ statement }}
+{% else %}
+    pass
+{% endfor %}
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    return {% render '_py_id', name: t.name %}(
+{% for f in t.fields %}
+        {% render '_py_id', name: f.name %}={% render '_py_decode', t: f.type, r: 'r', prefix: '' %},
+{% endfor %}
+    )
+{% when 'alias' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {% render '_py_type', t: t.type, prefix: '' %}) -> None:
+{% capture statement %}
+{% render '_py_encode', t: t.type, v: 'v', w: 'w', prefix: '' %}
+{% endcapture %}
+    {{ statement }}
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_type', t: t.type, prefix: '' %}:
+    return {% render '_py_decode', t: t.type, r: 'r', prefix: '' %}
+{% when 'primitive' %}
+
+
+{% user 'codec.' | append: t.name %}
+def encode_{{ t.name }}(w: Writer, v: Any) -> None:
+    raise NotImplementedError('{{ t.name }} is a custom type: encode it as its C++ peer does (codec.hpp)')
+
+
+def decode_{{ t.name }}(r: Reader) -> Any:
+    raise NotImplementedError('{{ t.name }} is a custom type: decode it as its C++ peer does (codec.hpp)')
+{% enduser %}
+{% endcase %}
+{% endfor %}

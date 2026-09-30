@@ -1,0 +1,12 @@
+{%- comment -%}
+  Default address of a link between binaries (C++ and Python alike): `127.0.0.1:<47000 + index>`,
+  or the name of the shared memory `<project>_<link>`. Parameter: r (with `index` and `link`).
+{%- endcomment -%}
+{%- liquid
+  if r.link.constraints.remote.transport == 'shm'
+    echo project.ident | snake | append: '_' | append: r.link.name | snake
+  else
+    assign port = 47000 | plus: r.index
+    echo '127.0.0.1:' | append: port
+  endif
+-%}

@@ -584,7 +584,7 @@ modules:
           kind: ref
           name: Timestamp
         description: Custom primitive
-        default: 1970-01-01T00:00:00Z
+        default: "{}"
       - name: rallyPoints
         type:
           kind: ref
@@ -1280,6 +1280,12 @@ dependencies:
               name: Meters
             description: Altitude above mean sea level
             default: 0
+      - kind: alias
+        name: Degrees
+        description: Angle in decimal degrees
+        type:
+          kind: primitive
+          name: float64
     interfaces:
       - name: Clock
         description: Time source
@@ -1289,105 +1295,6 @@ dependencies:
             returns:
               kind: ref
               name: Timestamp
-  - name: Ground
-    file: ground.scaffold.yaml
-    uses:
-      - Weather
-    types:
-      - kind: struct
-        name: Alert
-        fields:
-          - name: event
-            type:
-              kind: ref
-              name: Event
-          - name: acknowledged
-            type:
-              kind: primitive
-              name: bool
-            default: false
-          - name: forecast
-            type:
-              kind: optional
-              of:
-                kind: ref
-                name: Forecast
-            default: null
-    interfaces:
-      - name: Operator
-        description: Actions of the human operator
-        messages:
-          - name: approve
-            params:
-              - name: missionId
-                type:
-                  kind: primitive
-                  name: uint32
-            returns:
-              kind: primitive
-              name: bool
-          - name: abort
-            params: []
-            returns: null
-  - name: Weather
-    file: weather.scaffold.yaml
-    indirect: true
-    types:
-      - kind: alias
-        name: Degrees
-        description: Angle in decimal degrees
-        type:
-          kind: primitive
-          name: float64
-      - kind: struct
-        name: Wind
-        fields:
-          - name: direction
-            type:
-              kind: ref
-              name: Degrees
-          - name: speedMps
-            type:
-              kind: primitive
-              name: float32
-          - name: gustMps
-            type:
-              kind: optional
-              of:
-                kind: primitive
-                name: float32
-            default: null
-      - kind: struct
-        name: Forecast
-        fields:
-          - name: zone
-            type:
-              kind: primitive
-              name: string
-          - name: wind
-            type:
-              kind: ref
-              name: Wind
-          - name: visibilityKm
-            type:
-              kind: primitive
-              name: float32
-            default: 10
-          - name: flyable
-            type:
-              kind: primitive
-              name: bool
-            default: true
-    interfaces:
-      - name: WeatherFeed
-        messages:
-          - name: forecast
-            params:
-              - name: forecast
-                type:
-                  kind: ref
-                  name: Forecast
-            returns: null
 editor:
   layout:
     HAL:

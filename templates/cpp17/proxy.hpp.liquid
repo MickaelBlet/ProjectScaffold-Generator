@@ -2,30 +2,48 @@
 #pragma once
 
 #include <{% render '_header', e: item %}>
+#include <{{ project.ident | snake }}/remote/codec.hpp>
+#include <{{ project.ident | snake }}/remote/transport.hpp>
 {% user 'includes' %}
 {% enduser %}
 
 namespace {{ project.ident | snake }}::remote {
 
-/// {% render '_name', e: item %} of another binary: the calls made on it are to be sent over a
-/// transport, written in the user sections.
+/// {% render '_name', e: item %} of another binary: each call is encoded and sent over the channel
+/// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
 class {{ item.name }}Proxy final : public {% render '_qualified', e: item %} {
 public:
+    /// Sends the calls over `channel`; `ack`: every call waits for its reply, within `timeout`.
+    void open(std::unique_ptr<Channel> channel, bool ack = false,
+              std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+    {
+        caller_.open(std::move(channel), ack, timeout);
+    }
 {% for msg in item.messages %}
-{% unless forloop.first %}
 
-{% endunless %}
     {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %}) override
     {
-        {% user 'send.' | append: msg.name %}
-        // Send the call{% if msg.params.size > 0 %} and its arguments{% endif %}{% if msg.returns %}, then wait for the result{% endif %}.
-{% for p in msg.params %}
-        (void){% render '_id', name: p.name %};
+        Writer request_;
+{% for p in msg.inputs %}
+        encode(request_, {% render '_id', name: p.name %});
 {% endfor %}
+{% if msg.returns or msg.outputs.size > 0 %}
+        const Bytes reply_ = caller_.call({{ forloop.index0 }}, request_.bytes(), true);
+        Reader reader_(reply_);
 {% if msg.returns %}
-        return {};
+        {% render '_type', t: msg.returns %} result_{};
+        decode(reader_, result_);
 {% endif %}
-        {% enduser %}
+{% for p in msg.outputs %}
+        decode(reader_, {% render '_id', name: p.name %});
+{% endfor %}
+        reader_.end();
+{% if msg.returns %}
+        return result_;
+{% endif %}
+{% else %}
+        caller_.call({{ forloop.index0 }}, request_.bytes(), false);
+{% endif %}
     }
 {% endfor %}
 
@@ -33,6 +51,7 @@ public:
     {% enduser %}
 
 private:
+    Caller caller_;
     {% user 'private' %}
     {% enduser %}
 };

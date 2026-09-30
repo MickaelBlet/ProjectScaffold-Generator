@@ -63,6 +63,10 @@ export interface GenMessage {
   name: string
   description: string
   params: GenParam[]
+  /** Parameters passed in: `in` and `inout`. */
+  inputs: GenParam[]
+  /** Parameters passed back: `out` and `inout`. */
+  outputs: GenParam[]
   returns: GenTypeRef | null
 }
 
@@ -183,6 +187,8 @@ export interface GenBinary {
 
 /** End in this binary of a link to another binary of the project: wired through a transport. */
 export interface GenRemote {
+  /** Position of the link in `remoteLinks`. */
+  index: number
   link: GenLink
   /** End in this binary, from its system. */
   local: GenEndpoint
@@ -190,6 +196,15 @@ export interface GenRemote {
   interface: GenInterface
   /** End in the other binary. */
   peer: { binary: string; module: string; port: string }
+}
+
+/** Link between two binaries: `from` calls through a proxy, `to` receives through a stub. */
+export interface GenRemoteLink {
+  index: number
+  link: GenLink
+  interface: GenInterface
+  from: { binary: string; module: string; port: string }
+  to: { binary: string; module: string; port: string }
 }
 
 /**
@@ -244,6 +259,10 @@ export interface GenContext {
   system: GenSystem | null
   /** Interfaces of the links between binaries. */
   remoteInterfaces: GenInterface[]
+  /** Links between binaries, in the order of `links`. */
+  remoteLinks: GenRemoteLink[]
+  /** Types the remote interfaces use, directly or through other types (dependencies' included), by name. */
+  remoteTypes: GenType[]
   links: GenLink[]
   dependencies: GenDependency[]
   /** Own types and those of the dependencies. */
@@ -305,18 +324,23 @@ export function buildContext(file: FileProject): GenContext {
     }
   }
 
-  const message = (m: FileInterface['messages'][number] | FileMethod): GenMessage => ({
-    name: m.name,
-    description: m.description ?? '',
-    params: m.params.map((p) => ({
+  const message = (m: FileInterface['messages'][number] | FileMethod): GenMessage => {
+    const params = m.params.map((p) => ({
       name: p.name,
       type: ref(p.type),
       description: p.description ?? '',
       direction: p.direction ?? 'in',
       const: 'const' in p ? !!p.const : false
-    })),
-    returns: m.returns ? ref(m.returns) : null
-  })
+    }))
+    return {
+      name: m.name,
+      description: m.description ?? '',
+      params,
+      inputs: params.filter((p) => p.direction !== 'out'),
+      outputs: params.filter((p) => p.direction !== 'in'),
+      returns: m.returns ? ref(m.returns) : null
+    }
+  }
 
   const iface = (i: FileInterface, dependency: string | null): GenInterface => ({
     entity: 'interface',
@@ -465,6 +489,7 @@ export function buildContext(file: FileProject): GenContext {
     return b ? systems[binaries.indexOf(b)]! : null
   }
   const remoteInterfaces = new Map<string, GenInterface>()
+  const remoteLinks: GenRemoteLink[] = []
   const links = file.links.map(genLink)
   const segments = (path: string): string[] => path.split('.')
   /** Children to go through from the module at `scope` (null: the system) to the module at `path`. */
@@ -539,19 +564,36 @@ export function buildContext(file: FileProject): GenContext {
       continue
     }
     remoteInterfaces.set(face.name, face)
+    const index = remoteLinks.length
+    remoteLinks.push({
+      index,
+      link: l,
+      interface: face,
+      from: { binary: at.binary!.name, module: from.module, port: from.port },
+      to: { binary: peer.binary!.name, module: to.module, port: to.port }
+    })
     at.proxies.push({
+      index,
       link: l,
       local: connection.from,
       interface: face,
       peer: { binary: peer.binary!.name, module: to.module, port: to.port }
     })
     peer.stubs.push({
+      index,
       link: l,
       local: connection.to,
       interface: face,
       peer: { binary: at.binary!.name, module: from.module, port: from.port }
     })
   }
+  const remoteTypes = new Map<string, GenType>()
+  const reach = (t: GenType): void => {
+    if (remoteTypes.has(t.name)) return
+    remoteTypes.set(t.name, t)
+    t.uses.types.forEach(reach)
+  }
+  for (const i of remoteInterfaces.values()) i.uses.types.forEach(reach)
   for (const m of modules)
     for (const p of m.ports)
       if (p.role === 'in' && p.delegates.length > 1)
@@ -574,6 +616,8 @@ export function buildContext(file: FileProject): GenContext {
     systems,
     system: binaries.length ? null : systems[0]!,
     remoteInterfaces: [...remoteInterfaces.values()],
+    remoteLinks,
+    remoteTypes: [...remoteTypes.values()].sort((a, b) => (a.name < b.name ? -1 : 1)),
     links,
     dependencies,
     allTypes,

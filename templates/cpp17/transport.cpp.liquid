@@ -1,0 +1,1006 @@
+{% include '_banner' %}
+#include <{{ project.ident | snake }}/remote/transport.hpp>
+
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cctype>
+#include <cerrno>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <random>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace {{ project.ident | snake }}::remote {
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+const Clock::time_point forever = Clock::time_point::max();
+
+#ifdef MSG_NOSIGNAL
+constexpr int sendFlags = MSG_NOSIGNAL;
+#else
+constexpr int sendFlags = 0;
+#endif
+
+/// Largest datagram payload.
+constexpr std::size_t maxDatagram = 65507;
+
+/// End of a stream, closed by the peer.
+class Closed : public Error {
+public:
+    Closed() : Error("connection closed") {}
+};
+
+[[noreturn]] void fail(const std::string& what) { throw Error(what + ": " + std::strerror(errno)); }
+
+/// File descriptor, closed on destruction.
+class Fd {
+public:
+    Fd() = default;
+    explicit Fd(int fd) : fd_(fd) {}
+    Fd(Fd&& other) noexcept : fd_(std::exchange(other.fd_, -1)) {}
+    Fd& operator=(Fd&& other) noexcept
+    {
+        if (this != &other) {
+            reset();
+            fd_ = std::exchange(other.fd_, -1);
+        }
+        return *this;
+    }
+    Fd(const Fd&) = delete;
+    Fd& operator=(const Fd&) = delete;
+    ~Fd() { reset(); }
+
+    int get() const { return fd_; }
+    explicit operator bool() const { return fd_ >= 0; }
+    void reset()
+    {
+        if (fd_ >= 0) ::close(fd_);
+        fd_ = -1;
+    }
+
+private:
+    int fd_ = -1;
+};
+
+struct HostPort {
+    std::string host;
+    std::string port;
+};
+
+HostPort split(const std::string& address)
+{
+    const std::size_t colon = address.rfind(':');
+    if (colon == std::string::npos) throw Error("address '" + address + "' is not host:port");
+    return {address.substr(0, colon), address.substr(colon + 1)};
+}
+
+void configure(int fd, int type)
+{
+    const int one = 1;
+    if (type == SOCK_STREAM) ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+#ifdef SO_NOSIGPIPE
+    ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
+}
+
+/// Socket connected to `address`, or bound to it (and listening for a stream) when `bind`.
+Fd openSocket(const std::string& address, int type, bool bind)
+{
+    const HostPort at = split(address);
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = type;
+    if (bind) hints.ai_flags = AI_PASSIVE;
+    addrinfo* found = nullptr;
+    const int rc = ::getaddrinfo(at.host.empty() ? nullptr : at.host.c_str(), at.port.c_str(), &hints, &found);
+    if (rc != 0) throw Error("cannot resolve '" + address + "': " + ::gai_strerror(rc));
+    const std::unique_ptr<addrinfo, void (*)(addrinfo*)> list(found, ::freeaddrinfo);
+    for (const addrinfo* a = found; a; a = a->ai_next) {
+        Fd fd(::socket(a->ai_family, a->ai_socktype, a->ai_protocol));
+        if (!fd) continue;
+        ::fcntl(fd.get(), F_SETFD, FD_CLOEXEC);
+        configure(fd.get(), type);
+        if (bind) {
+            const int one = 1;
+            ::setsockopt(fd.get(), SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+            if (::bind(fd.get(), a->ai_addr, a->ai_addrlen) != 0) continue;
+            if (type == SOCK_STREAM && ::listen(fd.get(), 16) != 0) continue;
+            return fd;
+        }
+        if (::connect(fd.get(), a->ai_addr, a->ai_addrlen) == 0) return fd;
+    }
+    fail((bind ? "cannot listen on " : "cannot connect to ") + address);
+}
+
+/// Waits until `fd` has input: false at `deadline`, or when `stop` is set.
+bool await(int fd, Clock::time_point deadline, const std::atomic<bool>* stop)
+{
+    for (;;) {
+        if (stop && *stop) return false;
+        const Clock::time_point now = Clock::now();
+        if (now >= deadline) return false;
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count() + 1;
+        pollfd p{fd, POLLIN, 0};
+        const int rc = ::poll(&p, 1, static_cast<int>(std::min<long long>(left, 100)));
+        if (rc > 0) return true;
+        if (rc < 0 && errno != EINTR) fail("poll");
+    }
+}
+
+void sendAll(int fd, const void* data, std::size_t size)
+{
+    const auto* p = static_cast<const char*>(data);
+    while (size) {
+        const ssize_t n = ::send(fd, p, size, sendFlags);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            fail("send");
+        }
+        p += n;
+        size -= static_cast<std::size_t>(n);
+    }
+}
+
+void sendAll(int fd, const std::string& text) { sendAll(fd, text.data(), text.size()); }
+
+/// Buffered input of a stream socket.
+class Input {
+public:
+    explicit Input(int fd) : fd_(fd) {}
+
+    /// The next `size` bytes: false at `deadline` or on `stop`; throws Closed at the end of the stream.
+    bool take(std::size_t size, std::string& out, Clock::time_point deadline, const std::atomic<bool>* stop)
+    {
+        while (data_.size() < size)
+            if (!fill(deadline, stop)) return false;
+        out.assign(data_, 0, size);
+        data_.erase(0, size);
+        return true;
+    }
+
+    /// The bytes up to `delimiter` included, at most `limit` of them.
+    bool until(const std::string& delimiter, std::string& out, std::size_t limit, Clock::time_point deadline,
+               const std::atomic<bool>* stop)
+    {
+        std::size_t at;
+        while ((at = data_.find(delimiter)) == std::string::npos) {
+            if (data_.size() > limit) throw Error("header too long");
+            if (!fill(deadline, stop)) return false;
+        }
+        return take(at + delimiter.size(), out, deadline, stop);
+    }
+
+private:
+    bool fill(Clock::time_point deadline, const std::atomic<bool>* stop)
+    {
+        if (!await(fd_, deadline, stop)) return false;
+        char chunk[8192];
+        ssize_t n;
+        do {
+            n = ::recv(fd_, chunk, sizeof chunk, 0);
+        } while (n < 0 && errno == EINTR);
+        if (n < 0) fail("recv");
+        if (n == 0) throw Closed();
+        data_.append(chunk, static_cast<std::size_t>(n));
+        return true;
+    }
+
+    int fd_;
+    std::string data_;
+};
+
+Bytes toBytes(const std::string& s) { return Bytes(s.begin(), s.end()); }
+
+/// A frame read from a stream: false at `deadline` or on `stop`.
+bool readFrame(Input& in, Bytes& frame, Clock::time_point deadline, const std::atomic<bool>* stop)
+{
+    std::string head;
+    if (!in.take(Header::size, head, deadline, stop)) return false;
+    const Header h = header(reinterpret_cast<const std::uint8_t*>(head.data()), head.size());
+    std::string body;
+    if (!in.take(h.length, body, deadline, stop)) return false;
+    frame = toBytes(head + body);
+    return true;
+}
+
+std::string lower(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+/// Value of header `name` (lower case) in an HTTP head.
+std::optional<std::string> headerValue(const std::string& head, const std::string& name)
+{
+    std::size_t start = head.find("\r\n");
+    while (start != std::string::npos) {
+        start += 2;
+        const std::size_t end = head.find("\r\n", start);
+        if (end == std::string::npos) break;
+        const std::string line = head.substr(start, end - start);
+        const std::size_t colon = line.find(':');
+        if (colon != std::string::npos && lower(line.substr(0, colon)) == name) {
+            const std::size_t first = line.find_first_not_of(" \t", colon + 1);
+            const std::size_t last = line.find_last_not_of(" \t");
+            return first == std::string::npos ? std::string() : line.substr(first, last - first + 1);
+        }
+        start = end;
+    }
+    return std::nullopt;
+}
+
+std::size_t contentLength(const std::string& head)
+{
+    const std::optional<std::string> value = headerValue(head, "content-length");
+    if (!value) return 0;
+    char* end = nullptr;
+    const unsigned long long n = std::strtoull(value->c_str(), &end, 10);
+    if (end == value->c_str() || *end || n > Header::size + Header::maxLength) throw Error("bad Content-Length");
+    return static_cast<std::size_t>(n);
+}
+
+// WebSocket handshake: base64(SHA-1(key + GUID)).
+
+std::array<std::uint8_t, 20> sha1(const std::string& text)
+{
+    std::uint32_t h[5] = {0x67452301u, 0xEFCDAB89u, 0x98BADCFEu, 0x10325476u, 0xC3D2E1F0u};
+    std::string m = text;
+    const std::uint64_t bits = static_cast<std::uint64_t>(text.size()) * 8;
+    m += static_cast<char>(0x80);
+    while (m.size() % 64 != 56) m += '\0';
+    for (int i = 7; i >= 0; --i) m += static_cast<char>((bits >> (8 * i)) & 0xff);
+    const auto rol = [](std::uint32_t x, int n) { return (x << n) | (x >> (32 - n)); };
+    for (std::size_t c = 0; c < m.size(); c += 64) {
+        std::uint32_t w[80];
+        for (std::size_t i = 0; i < 16; ++i) {
+            const auto byte = [&](std::size_t k) { return static_cast<std::uint32_t>(static_cast<std::uint8_t>(m[c + 4 * i + k])); };
+            w[i] = byte(0) << 24 | byte(1) << 16 | byte(2) << 8 | byte(3);
+        }
+        for (std::size_t i = 16; i < 80; ++i) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+        std::uint32_t a = h[0], b = h[1], x = h[2], d = h[3], e = h[4];
+        for (std::size_t i = 0; i < 80; ++i) {
+            std::uint32_t f, k;
+            if (i < 20) {
+                f = (b & x) | (~b & d);
+                k = 0x5A827999u;
+            } else if (i < 40) {
+                f = b ^ x ^ d;
+                k = 0x6ED9EBA1u;
+            } else if (i < 60) {
+                f = (b & x) | (b & d) | (x & d);
+                k = 0x8F1BBCDCu;
+            } else {
+                f = b ^ x ^ d;
+                k = 0xCA62C1D6u;
+            }
+            const std::uint32_t t = rol(a, 5) + f + e + k + w[i];
+            e = d;
+            d = x;
+            x = rol(b, 30);
+            b = a;
+            a = t;
+        }
+        h[0] += a;
+        h[1] += b;
+        h[2] += x;
+        h[3] += d;
+        h[4] += e;
+    }
+    std::array<std::uint8_t, 20> out{};
+    for (std::size_t i = 0; i < 20; ++i) out[i] = static_cast<std::uint8_t>(h[i / 4] >> (24 - 8 * (i % 4)));
+    return out;
+}
+
+std::string base64(const std::uint8_t* p, std::size_t n)
+{
+    static const char* abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    for (std::size_t i = 0; i < n; i += 3) {
+        const std::uint32_t v = static_cast<std::uint32_t>(p[i]) << 16 |
+                                (i + 1 < n ? static_cast<std::uint32_t>(p[i + 1]) << 8 : 0) |
+                                (i + 2 < n ? static_cast<std::uint32_t>(p[i + 2]) : 0);
+        out += abc[(v >> 18) & 63];
+        out += abc[(v >> 12) & 63];
+        out += i + 1 < n ? abc[(v >> 6) & 63] : '=';
+        out += i + 2 < n ? abc[v & 63] : '=';
+    }
+    return out;
+}
+
+std::string acceptKey(const std::string& key)
+{
+    const std::array<std::uint8_t, 20> digest = sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    return base64(digest.data(), digest.size());
+}
+
+enum Opcode : std::uint8_t { continuation = 0x0, text = 0x1, binary = 0x2, close = 0x8, ping = 0x9, pong = 0xA };
+
+/// A WebSocket frame; clients mask theirs with `mask` (the key comes from it).
+std::string wsFrame(std::uint8_t opcode, const std::uint8_t* data, std::size_t size, std::mt19937* mask)
+{
+    std::string out;
+    out += static_cast<char>(0x80 | opcode);
+    const std::uint8_t masked = mask ? 0x80 : 0;
+    if (size < 126) {
+        out += static_cast<char>(masked | size);
+    } else if (size <= 0xffff) {
+        out += static_cast<char>(masked | 126);
+        out += static_cast<char>(size >> 8);
+        out += static_cast<char>(size & 0xff);
+    } else {
+        out += static_cast<char>(masked | 127);
+        for (int i = 7; i >= 0; --i) out += static_cast<char>((static_cast<std::uint64_t>(size) >> (8 * i)) & 0xff);
+    }
+    if (!mask) {
+        out.append(reinterpret_cast<const char*>(data), size);
+        return out;
+    }
+    std::uint8_t key[4];
+    for (std::uint8_t& k : key) k = static_cast<std::uint8_t>((*mask)() & 0xff);
+    out.append(reinterpret_cast<const char*>(key), 4);
+    for (std::size_t i = 0; i < size; ++i) out += static_cast<char>(data[i] ^ key[i % 4]);
+    return out;
+}
+
+/// The next WebSocket message (fragments joined), answering pings: false at `deadline` or on
+/// `stop`; throws Closed on a close frame.
+bool wsRead(int fd, Input& in, Bytes& message, std::mt19937* mask, Clock::time_point deadline,
+            const std::atomic<bool>* stop)
+{
+    message.clear();
+    for (;;) {
+        std::string head;
+        if (!in.take(2, head, deadline, stop)) return false;
+        const auto b0 = static_cast<std::uint8_t>(head[0]);
+        const auto b1 = static_cast<std::uint8_t>(head[1]);
+        std::uint64_t size = b1 & 0x7f;
+        std::string more;
+        if (size >= 126) {
+            const std::size_t k = size == 126 ? 2 : 8;
+            if (!in.take(k, more, deadline, stop)) return false;
+            size = 0;
+            for (const char c : more) size = size << 8 | static_cast<std::uint8_t>(c);
+        }
+        if (size > Header::size + Header::maxLength) throw Error("WebSocket message too large");
+        std::string key;
+        if ((b1 & 0x80) && !in.take(4, key, deadline, stop)) return false;
+        std::string data;
+        if (!in.take(static_cast<std::size_t>(size), data, deadline, stop)) return false;
+        if (!key.empty())
+            for (std::size_t i = 0; i < data.size(); ++i) data[i] = static_cast<char>(data[i] ^ key[i % 4]);
+        switch (b0 & 0x0f) {
+        case close:
+            throw Closed();
+        case ping: {
+            const std::string reply =
+                wsFrame(pong, reinterpret_cast<const std::uint8_t*>(data.data()), data.size(), mask);
+            sendAll(fd, reply);
+            break;
+        }
+        case pong:
+            break;
+        case continuation:
+        case text:
+        case binary:
+            message.insert(message.end(), data.begin(), data.end());
+            if (b0 & 0x80) return true;
+            break;
+        default:
+            throw Error("bad WebSocket opcode");
+        }
+    }
+}
+
+// Shared memory: a header, then two rings (calls, replies) of messages (u32 length + bytes),
+// each with its head (bytes written) and tail (bytes read) counters.
+
+constexpr std::uint32_t shmMagic = 0x314D4353; // "SCM1"
+constexpr std::uint32_t ringCapacity = 1u << 20;
+constexpr std::size_t ringHeader = 64;
+constexpr std::size_t shmSize(std::uint32_t capacity) { return ringHeader + 2 * (ringHeader + capacity); }
+
+std::uint32_t load(const std::uint8_t* p) { return __atomic_load_n(reinterpret_cast<const std::uint32_t*>(p), __ATOMIC_ACQUIRE); }
+void store(std::uint8_t* p, std::uint32_t v) { __atomic_store_n(reinterpret_cast<std::uint32_t*>(p), v, __ATOMIC_RELEASE); }
+
+/// One ring, written by one process and read by another.
+class Ring {
+public:
+    Ring(std::uint8_t* base, std::uint32_t capacity) : base_(base), data_(base + ringHeader), capacity_(capacity) {}
+
+    /// Writes a message: false when there is no room for it yet.
+    bool push(const Bytes& message)
+    {
+        if (message.size() + 4 > capacity_) throw Error("frame larger than the shared memory ring");
+        const std::uint32_t head = load(base_);
+        const std::uint32_t tail = load(base_ + 4);
+        const auto size = static_cast<std::uint32_t>(message.size());
+        if (capacity_ - (head - tail) < size + 4) return false;
+        Writer w;
+        w.number(size);
+        copyIn(head, w.bytes().data(), 4);
+        copyIn(head + 4, message.data(), size);
+        store(base_, head + 4 + size);
+        return true;
+    }
+
+    /// Reads a message: false when there is none.
+    bool pop(Bytes& message)
+    {
+        const std::uint32_t tail = load(base_ + 4);
+        const std::uint32_t head = load(base_);
+        if (head - tail < 4) return false;
+        std::uint8_t length[4];
+        copyOut(tail, length, 4);
+        const std::uint32_t size = Reader(length, 4).number<std::uint32_t>();
+        if (size > capacity_ || head - tail < 4 + size) throw Error("corrupt shared memory ring");
+        message.resize(size);
+        copyOut(tail + 4, message.data(), size);
+        store(base_ + 4, tail + 4 + size);
+        return true;
+    }
+
+private:
+    void copyIn(std::uint32_t at, const std::uint8_t* p, std::size_t n)
+    {
+        const std::size_t offset = at % capacity_;
+        const std::size_t first = std::min<std::size_t>(n, capacity_ - offset);
+        std::memcpy(data_ + offset, p, first);
+        std::memcpy(data_, p + first, n - first);
+    }
+    void copyOut(std::uint32_t at, std::uint8_t* p, std::size_t n) const
+    {
+        const std::size_t offset = at % capacity_;
+        const std::size_t first = std::min<std::size_t>(n, capacity_ - offset);
+        std::memcpy(p, data_ + offset, first);
+        std::memcpy(p + first, data_, n - first);
+    }
+
+    std::uint8_t* base_;
+    std::uint8_t* data_;
+    std::uint32_t capacity_;
+};
+
+/// Calls `ready` until it holds (true), `deadline` or `stop` (false), pausing longer each time.
+template <class Ready>
+bool waitFor(Ready&& ready, Clock::time_point deadline, const std::atomic<bool>* stop)
+{
+    std::chrono::microseconds pause(0);
+    for (;;) {
+        if (ready()) return true;
+        if ((stop && *stop) || Clock::now() >= deadline) return false;
+        if (pause.count())
+            std::this_thread::sleep_for(pause);
+        else
+            std::this_thread::yield();
+        pause = std::min(pause + std::chrono::microseconds(50), std::chrono::microseconds(1000));
+    }
+}
+
+std::string shmName(const std::string& address) { return address.rfind('/', 0) == 0 ? address : "/" + address; }
+
+/// Shared memory mapped in this process.
+class Mapping {
+public:
+    Mapping(void* data, std::size_t size) : data_(static_cast<std::uint8_t*>(data)), size_(size) {}
+    Mapping(const Mapping&) = delete;
+    Mapping& operator=(const Mapping&) = delete;
+    ~Mapping() { ::munmap(data_, size_); }
+
+    std::uint8_t* data() const { return data_; }
+    std::uint32_t capacity() const { return load(data_ + 4); }
+    Ring ring(int k) const { return Ring(data_ + ringHeader + k * (ringHeader + capacity()), capacity()); }
+
+private:
+    std::uint8_t* data_;
+    std::size_t size_;
+};
+
+std::unique_ptr<Mapping> map(int fd, std::size_t size)
+{
+    void* p = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (p == MAP_FAILED) fail("mmap");
+    return std::make_unique<Mapping>(p, size);
+}
+
+// Clients.
+
+/// Client exchanging whole frames; drops its connection on any failure.
+class FrameChannel : public Channel {
+public:
+    Bytes exchange(const Bytes& frame, bool wait, std::chrono::milliseconds timeout) override
+    {
+        const Clock::time_point deadline = Clock::now() + timeout;
+        try {
+            open(deadline);
+            send(frame, deadline);
+            if (!wait) return {};
+            const std::uint32_t id = header(frame).id;
+            Bytes reply;
+            for (;;) {
+                if (!receive(reply, deadline))
+                    throw Error("no reply within " + std::to_string(timeout.count()) + " ms");
+                // Replies of calls given up on are skipped.
+                if (header(reply).id == id) return reply;
+            }
+        } catch (...) {
+            drop();
+            throw;
+        }
+    }
+
+protected:
+    virtual void open(Clock::time_point deadline) = 0;
+    virtual void send(const Bytes& frame, Clock::time_point deadline) = 0;
+    virtual bool receive(Bytes& frame, Clock::time_point deadline) = 0;
+    virtual void drop() = 0;
+};
+
+class TcpChannel final : public FrameChannel {
+public:
+    explicit TcpChannel(std::string address) : address_(std::move(address)) {}
+
+private:
+    void open(Clock::time_point) override
+    {
+        if (fd_) return;
+        fd_ = openSocket(address_, SOCK_STREAM, false);
+        in_ = std::make_unique<Input>(fd_.get());
+    }
+    void send(const Bytes& frame, Clock::time_point) override { sendAll(fd_.get(), frame.data(), frame.size()); }
+    bool receive(Bytes& frame, Clock::time_point deadline) override { return readFrame(*in_, frame, deadline, nullptr); }
+    void drop() override
+    {
+        in_.reset();
+        fd_.reset();
+    }
+
+    std::string address_;
+    Fd fd_;
+    std::unique_ptr<Input> in_;
+};
+
+class UdpChannel final : public FrameChannel {
+public:
+    explicit UdpChannel(std::string address) : address_(std::move(address)) {}
+
+private:
+    void open(Clock::time_point) override
+    {
+        if (!fd_) fd_ = openSocket(address_, SOCK_DGRAM, false);
+    }
+    void send(const Bytes& frame, Clock::time_point) override
+    {
+        if (frame.size() > maxDatagram) throw Error("frame too large for a datagram");
+        if (::send(fd_.get(), frame.data(), frame.size(), sendFlags) < 0) fail("send");
+    }
+    bool receive(Bytes& frame, Clock::time_point deadline) override
+    {
+        if (!await(fd_.get(), deadline, nullptr)) return false;
+        frame.resize(65536);
+        const ssize_t n = ::recv(fd_.get(), frame.data(), frame.size(), 0);
+        if (n < 0) fail("recv");
+        frame.resize(static_cast<std::size_t>(n));
+        return true;
+    }
+    void drop() override { fd_.reset(); }
+
+    std::string address_;
+    Fd fd_;
+};
+
+/// One POST per call, on a connection of its own.
+class HttpChannel final : public FrameChannel {
+public:
+    HttpChannel(std::string address, std::string link) : address_(std::move(address)), link_(std::move(link)) {}
+
+private:
+    void open(Clock::time_point) override {}
+    void send(const Bytes& frame, Clock::time_point deadline) override
+    {
+        reply_.reset();
+        Fd fd = openSocket(address_, SOCK_STREAM, false);
+        sendAll(fd.get(), "POST /" + link_ + " HTTP/1.1\r\nHost: " + split(address_).host +
+                              "\r\nContent-Type: application/octet-stream\r\nContent-Length: " +
+                              std::to_string(frame.size()) + "\r\nConnection: close\r\n\r\n");
+        sendAll(fd.get(), frame.data(), frame.size());
+        Input in(fd.get());
+        std::string head;
+        if (!in.until("\r\n\r\n", head, 16384, deadline, nullptr)) throw Error("no HTTP response in time");
+        const std::string status = head.size() > 12 ? head.substr(9, 3) : "";
+        std::string body;
+        if (!in.take(contentLength(head), body, deadline, nullptr)) throw Error("no HTTP response in time");
+        if (status == "200")
+            reply_ = toBytes(body);
+        else if (status != "204")
+            throw Error("HTTP " + status + " " + body);
+    }
+    bool receive(Bytes& frame, Clock::time_point) override
+    {
+        if (!reply_) return false;
+        frame = std::move(*reply_);
+        reply_.reset();
+        return true;
+    }
+    void drop() override { reply_.reset(); }
+
+    std::string address_;
+    std::string link_;
+    std::optional<Bytes> reply_;
+};
+
+class WebSocketChannel final : public FrameChannel {
+public:
+    WebSocketChannel(std::string address, std::string link)
+        : address_(std::move(address)), link_(std::move(link)), random_(std::random_device()())
+    {
+    }
+
+private:
+    void open(Clock::time_point deadline) override
+    {
+        if (fd_) return;
+        fd_ = openSocket(address_, SOCK_STREAM, false);
+        in_ = std::make_unique<Input>(fd_.get());
+        std::uint8_t nonce[16];
+        for (std::uint8_t& b : nonce) b = static_cast<std::uint8_t>(random_() & 0xff);
+        const std::string key = base64(nonce, sizeof nonce);
+        sendAll(fd_.get(), "GET /" + link_ + " HTTP/1.1\r\nHost: " + split(address_).host +
+                               "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + key +
+                               "\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        std::string head;
+        if (!in_->until("\r\n\r\n", head, 16384, deadline, nullptr)) throw Error("no WebSocket handshake in time");
+        if (head.compare(0, 12, "HTTP/1.1 101") != 0 || headerValue(head, "sec-websocket-accept") != acceptKey(key))
+            throw Error("WebSocket handshake refused");
+    }
+    void send(const Bytes& frame, Clock::time_point) override
+    {
+        sendAll(fd_.get(), wsFrame(binary, frame.data(), frame.size(), &random_));
+    }
+    bool receive(Bytes& frame, Clock::time_point deadline) override
+    {
+        return wsRead(fd_.get(), *in_, frame, &random_, deadline, nullptr);
+    }
+    void drop() override
+    {
+        in_.reset();
+        fd_.reset();
+    }
+
+    std::string address_;
+    std::string link_;
+    std::mt19937 random_;
+    Fd fd_;
+    std::unique_ptr<Input> in_;
+};
+
+/// Opens the segment made by the server (waiting for it), writes the calls ring, reads the replies ring.
+class ShmChannel final : public FrameChannel {
+public:
+    explicit ShmChannel(const std::string& address) : name_(shmName(address)) {}
+
+private:
+    void open(Clock::time_point deadline) override
+    {
+        if (!mapping_ && !waitFor([this] { return attach(); }, deadline, nullptr))
+            throw Error("no shared memory " + name_);
+    }
+    bool attach()
+    {
+        const Fd fd(::shm_open(name_.c_str(), O_RDWR, 0));
+        struct stat st {};
+        if (!fd || ::fstat(fd.get(), &st) != 0 || static_cast<std::size_t>(st.st_size) < shmSize(0)) return false;
+        std::unique_ptr<Mapping> m = map(fd.get(), static_cast<std::size_t>(st.st_size));
+        if (load(m->data()) != shmMagic || shmSize(m->capacity()) != static_cast<std::size_t>(st.st_size)) return false;
+        mapping_ = std::move(m);
+        return true;
+    }
+    void send(const Bytes& frame, Clock::time_point deadline) override
+    {
+        Ring calls = mapping_->ring(0);
+        if (!waitFor([&] { return calls.push(frame); }, deadline, nullptr)) throw Error("shared memory ring full");
+    }
+    bool receive(Bytes& frame, Clock::time_point deadline) override
+    {
+        Ring replies = mapping_->ring(1);
+        return waitFor([&] { return replies.pop(frame); }, deadline, nullptr);
+    }
+    void drop() override { mapping_.reset(); }
+
+    std::string name_;
+    std::unique_ptr<Mapping> mapping_;
+};
+
+// Servers.
+
+/// Threads of a server, stopped and joined by halt().
+class Threads : public Server {
+protected:
+    void spawn(std::function<void()> run)
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        for (auto it = tasks_.begin(); it != tasks_.end();) {
+            if (*it->done) {
+                it->thread.join();
+                it = tasks_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        auto done = std::make_shared<std::atomic<bool>>(false);
+        std::thread thread([run = std::move(run), done] {
+            try {
+                run();
+            } catch (const std::exception& e) {
+                std::cerr << "remote server: " << e.what() << '\n';
+            }
+            *done = true;
+        });
+        tasks_.push_back({std::move(thread), done});
+    }
+
+    /// Stops the threads: first thing each server's destructor does.
+    void halt()
+    {
+        stop_ = true;
+        for (;;) {
+            std::vector<Task> tasks;
+            {
+                const std::lock_guard<std::mutex> lock(mutex_);
+                tasks.swap(tasks_);
+            }
+            if (tasks.empty()) return;
+            for (Task& t : tasks) t.thread.join();
+        }
+    }
+
+    std::atomic<bool> stop_{false};
+
+private:
+    struct Task {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+    std::mutex mutex_;
+    std::vector<Task> tasks_;
+};
+
+/// Handles the connections of a stream socket, one thread each.
+using Session = void (*)(int fd, const Handler& handler, const std::atomic<bool>& stop);
+
+class StreamServer final : public Threads {
+public:
+    StreamServer(const std::string& address, Handler handler, Session session)
+        : listener_(openSocket(address, SOCK_STREAM, true)), handler_(std::move(handler)), session_(session)
+    {
+        spawn([this] { accept(); });
+    }
+    ~StreamServer() override { halt(); }
+
+private:
+    void accept()
+    {
+        while (await(listener_.get(), forever, &stop_)) {
+            auto fd = std::make_shared<Fd>(::accept(listener_.get(), nullptr, nullptr));
+            if (!*fd) continue;
+            configure(fd->get(), SOCK_STREAM);
+            spawn([this, fd] {
+                try {
+                    session_(fd->get(), handler_, stop_);
+                } catch (const Error&) {
+                    // Connection closed or broken.
+                }
+            });
+        }
+    }
+
+    Fd listener_;
+    Handler handler_;
+    Session session_;
+};
+
+void tcpSession(int fd, const Handler& handler, const std::atomic<bool>& stop)
+{
+    Input in(fd);
+    Bytes frame;
+    while (readFrame(in, frame, forever, &stop))
+        if (const std::optional<Bytes> reply = handler(frame)) sendAll(fd, reply->data(), reply->size());
+}
+
+std::string httpResponse(const std::string& status, const std::string& body, const std::string& type)
+{
+    return "HTTP/1.1 " + status + "\r\nContent-Type: " + type + "\r\nContent-Length: " + std::to_string(body.size()) +
+           "\r\n\r\n" + body;
+}
+
+void httpSession(int fd, const Handler& handler, const std::atomic<bool>& stop)
+{
+    Input in(fd);
+    for (;;) {
+        std::string head;
+        if (!in.until("\r\n\r\n", head, 16384, forever, &stop)) return;
+        std::string body;
+        if (!in.take(contentLength(head), body, forever, &stop)) return;
+        std::string response;
+        if (head.compare(0, 5, "POST ") != 0) {
+            response = httpResponse("405 Method Not Allowed", "", "text/plain");
+        } else {
+            try {
+                const std::optional<Bytes> reply = handler(toBytes(body));
+                response = reply ? httpResponse("200 OK", std::string(reply->begin(), reply->end()), "application/octet-stream")
+                                 : httpResponse("204 No Content", "", "text/plain");
+            } catch (const std::exception& e) {
+                response = httpResponse("400 Bad Request", e.what(), "text/plain");
+            }
+        }
+        sendAll(fd, response);
+        if (lower(headerValue(head, "connection").value_or("")) == "close") return;
+    }
+}
+
+void webSocketSession(int fd, const Handler& handler, const std::atomic<bool>& stop)
+{
+    Input in(fd);
+    std::string head;
+    if (!in.until("\r\n\r\n", head, 16384, forever, &stop)) return;
+    const std::optional<std::string> key = headerValue(head, "sec-websocket-key");
+    if (!key || head.compare(0, 4, "GET ") != 0) {
+        sendAll(fd, httpResponse("400 Bad Request", "WebSocket only", "text/plain"));
+        return;
+    }
+    sendAll(fd, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " +
+                    acceptKey(*key) + "\r\n\r\n");
+    Bytes message;
+    while (wsRead(fd, in, message, nullptr, forever, &stop))
+        if (const std::optional<Bytes> reply = handler(message))
+            sendAll(fd, wsFrame(binary, reply->data(), reply->size(), nullptr));
+}
+
+class UdpServer final : public Threads {
+public:
+    UdpServer(const std::string& address, Handler handler)
+        : socket_(openSocket(address, SOCK_DGRAM, true)), handler_(std::move(handler))
+    {
+        spawn([this] { run(); });
+    }
+    ~UdpServer() override { halt(); }
+
+private:
+    void run()
+    {
+        Bytes buffer(65536);
+        while (await(socket_.get(), forever, &stop_)) {
+            sockaddr_storage from{};
+            socklen_t size = sizeof from;
+            const ssize_t n =
+                ::recvfrom(socket_.get(), buffer.data(), buffer.size(), 0, reinterpret_cast<sockaddr*>(&from), &size);
+            if (n < 0) continue;
+            try {
+                const Bytes frame(buffer.begin(), buffer.begin() + n);
+                std::optional<Bytes> reply = handler_(frame);
+                if (!reply) continue;
+                if (reply->size() > maxDatagram) reply = errorFrame(header(frame).id, "reply too large for a datagram");
+                ::sendto(socket_.get(), reply->data(), reply->size(), sendFlags, reinterpret_cast<sockaddr*>(&from), size);
+            } catch (const Error&) {
+                // Not a frame.
+            }
+        }
+    }
+
+    Fd socket_;
+    Handler handler_;
+};
+
+/// Makes the segment (replacing a stale one), reads the calls ring, writes the replies ring.
+class ShmServer final : public Threads {
+public:
+    ShmServer(const std::string& address, Handler handler) : name_(shmName(address)), handler_(std::move(handler))
+    {
+        ::shm_unlink(name_.c_str());
+        const Fd fd(::shm_open(name_.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600));
+        if (!fd) fail("cannot create shared memory " + name_);
+        const std::size_t size = shmSize(ringCapacity);
+        if (::ftruncate(fd.get(), static_cast<off_t>(size)) != 0) fail("ftruncate");
+        mapping_ = map(fd.get(), size);
+        store(mapping_->data() + 4, ringCapacity);
+        store(mapping_->data(), shmMagic);
+        spawn([this] { run(); });
+    }
+    ~ShmServer() override
+    {
+        halt();
+        mapping_.reset();
+        ::shm_unlink(name_.c_str());
+    }
+
+private:
+    void run()
+    {
+        Ring calls = mapping_->ring(0);
+        Ring replies = mapping_->ring(1);
+        Bytes frame;
+        while (waitFor([&] { return calls.pop(frame); }, forever, &stop_)) {
+            std::optional<Bytes> reply;
+            try {
+                reply = handler_(frame);
+            } catch (const Error&) {
+                continue;
+            }
+            // A reply finding no room within a second is lost: the client gave up on it.
+            if (reply) waitFor([&] { return replies.push(*reply); }, Clock::now() + std::chrono::seconds(1), &stop_);
+        }
+    }
+
+    std::string name_;
+    Handler handler_;
+    std::unique_ptr<Mapping> mapping_;
+};
+
+volatile std::sig_atomic_t stopSignal = 0;
+
+void onStop(int) { stopSignal = 1; }
+
+} // namespace
+
+bool supported(const std::string& transport)
+{
+    return transport == "tcp" || transport == "udp" || transport == "http" || transport == "websocket" ||
+           transport == "shm";
+}
+
+std::string address(const char* variable, const std::string& fallback)
+{
+    const char* value = std::getenv(variable);
+    return value && *value ? value : fallback;
+}
+
+std::unique_ptr<Channel> connect(const std::string& transport, const std::string& address, const std::string& link)
+{
+    if (transport == "tcp") return std::make_unique<TcpChannel>(address);
+    if (transport == "udp") return std::make_unique<UdpChannel>(address);
+    if (transport == "http") return std::make_unique<HttpChannel>(address, link);
+    if (transport == "websocket") return std::make_unique<WebSocketChannel>(address, link);
+    if (transport == "shm") return std::make_unique<ShmChannel>(address);
+    throw Error("transport '" + transport + "' is not generated: implement a remote::Channel");
+}
+
+std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, const std::string& link,
+                              Handler handler)
+{
+    (void)link;
+    if (transport == "tcp") return std::make_unique<StreamServer>(address, std::move(handler), tcpSession);
+    if (transport == "udp") return std::make_unique<UdpServer>(address, std::move(handler));
+    if (transport == "http") return std::make_unique<StreamServer>(address, std::move(handler), httpSession);
+    if (transport == "websocket") return std::make_unique<StreamServer>(address, std::move(handler), webSocketSession);
+    if (transport == "shm") return std::make_unique<ShmServer>(address, std::move(handler));
+    throw Error("transport '" + transport + "' is not generated: implement a remote::Server");
+}
+
+void waitForStop()
+{
+    stopSignal = 0;
+    const auto previousInt = std::signal(SIGINT, onStop);
+    const auto previousTerm = std::signal(SIGTERM, onStop);
+    while (!stopSignal) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::signal(SIGINT, previousInt);
+    std::signal(SIGTERM, previousTerm);
+}
+
+} // namespace {{ project.ident | snake }}::remote

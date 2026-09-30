@@ -100,13 +100,16 @@ modules:
       - name: telemetry
         role: in
         interface: Telemetry
+      - name: display
+        role: in
+        interface: Telemetry
       - name: weather
         role: in
         interface: WeatherFeed
       - name: alerts
         role: in
         interface: Events
-      - name: operator
+      - name: console
         role: in
         interface: Operator
       - name: orders
@@ -161,7 +164,7 @@ modules:
           - name: weather
             role: in
             interface: WeatherFeed
-          - name: operator
+          - name: console
             role: in
             interface: Operator
           - name: orders
@@ -188,7 +191,7 @@ modules:
           - name: alerts
             role: in
             interface: Events
-          - name: operator
+          - name: console
             role: out
             interface: Operator
   - name: VideoWall
@@ -304,6 +307,23 @@ links:
       remote:
         enabled: true
         transport: websocket
+  - name: datalink_display
+    from:
+      module: Datalink
+      port: telemetry
+    to:
+      module: MissionControl
+      port: display
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+        rateHz: 10
+      remote:
+        enabled: true
+        transport: websocket
   - name: datalink_alerts
     from:
       module: Datalink
@@ -372,7 +392,7 @@ links:
   - name: mc_telemetry_dashboard
     from:
       module: MissionControl
-      port: telemetry
+      port: display
     to:
       module: MissionControl.Dashboard
       port: telemetry
@@ -415,13 +435,13 @@ links:
         class: normal
       remote:
         enabled: false
-  - name: dashboard_operator
+  - name: dashboard_console
     from:
       module: MissionControl.Dashboard
-      port: operator
+      port: console
     to:
       module: MissionControl.Planner
-      port: operator
+      port: console
     constraints:
       direction: bidirectional
       ack:

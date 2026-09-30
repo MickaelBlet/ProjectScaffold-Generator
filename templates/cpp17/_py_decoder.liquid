@@ -1,0 +1,15 @@
+{%- comment -%}
+  Python function `(reader) -> value` decoding a type: `Reader.int32`, `data.decode_Pose`, a lambda.
+  Parameters: t, prefix.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    echo 'Reader.' | append: t.name
+  when 'ref'
+    echo prefix | append: 'decode_' | append: t.name
+  else
+    echo 'lambda r: '
+    render '_py_decode', t: t, r: 'r', prefix: prefix
+  endcase
+-%}

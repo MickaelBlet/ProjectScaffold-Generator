@@ -1,0 +1,380 @@
+{% include '_banner' %}
+#pragma once
+
+// Wire format of the calls between binaries, shared with the Python peers (python/*/wire.py).
+// Little-endian; bool and char: 1 byte; string, bytes: u32 length + bytes; vector, list, set:
+// u32 count + items; array: its items; optional: u8 flag + value; map: u32 count + key, value;
+// struct: its fields in order; enum: its underlying type.
+// Frame: 16-byte header (magic "SCF1", u8 kind, u8 flags, u16 message, u32 call id, u32 payload
+// length), then the payload: the inputs of a call, or the result then the outputs of a reply.
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <iostream>
+#include <list>
+#include <map>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace {{ project.ident | snake }}::remote {
+
+/// Failure of a remote call: transport, timeout, malformed frame, or error sent back by the peer.
+class Error : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+using Bytes = std::vector<std::uint8_t>;
+
+inline bool littleEndian()
+{
+    const std::uint16_t one = 1;
+    std::uint8_t first = 0;
+    std::memcpy(&first, &one, 1);
+    return first == 1;
+}
+
+class Writer {
+public:
+    void raw(const void* data, std::size_t size)
+    {
+        const auto* p = static_cast<const std::uint8_t*>(data);
+        bytes_.insert(bytes_.end(), p, p + size);
+    }
+
+    template <class T>
+    void number(T value)
+    {
+        static_assert(std::is_arithmetic_v<T>, "numbers only");
+        std::uint8_t b[sizeof(T)];
+        std::memcpy(b, &value, sizeof(T));
+        if (!littleEndian()) std::reverse(b, b + sizeof(T));
+        raw(b, sizeof(T));
+    }
+
+    void count(std::size_t n)
+    {
+        if (n > 0xffffffffu) throw Error("too many items to encode");
+        number(static_cast<std::uint32_t>(n));
+    }
+
+    const Bytes& bytes() const { return bytes_; }
+
+private:
+    Bytes bytes_;
+};
+
+class Reader {
+public:
+    Reader(const std::uint8_t* data, std::size_t size) : data_(data), size_(size) {}
+    explicit Reader(const Bytes& bytes) : Reader(bytes.data(), bytes.size()) {}
+
+    void raw(void* out, std::size_t size)
+    {
+        if (size > remaining()) throw Error("truncated frame");
+        if (size) std::memcpy(out, data_ + pos_, size);
+        pos_ += size;
+    }
+
+    template <class T>
+    T number()
+    {
+        static_assert(std::is_arithmetic_v<T>, "numbers only");
+        std::uint8_t b[sizeof(T)];
+        raw(b, sizeof(T));
+        if (!littleEndian()) std::reverse(b, b + sizeof(T));
+        T value;
+        std::memcpy(&value, b, sizeof(T));
+        return value;
+    }
+
+    std::size_t count() { return number<std::uint32_t>(); }
+
+    std::size_t remaining() const { return size_ - pos_; }
+
+    /// Throws unless everything was read.
+    void end() const
+    {
+        if (pos_ != size_) throw Error("unexpected bytes at the end of a frame");
+    }
+
+private:
+    const std::uint8_t* data_;
+    std::size_t size_;
+    std::size_t pos_ = 0;
+};
+
+// encode(Writer&, const T&) and decode(Reader&, T&) for each type; those of the types of the
+// project are in codec.hpp.
+
+inline void encode(Writer& w, bool v) { w.number<std::uint8_t>(v ? 1 : 0); }
+inline void decode(Reader& r, bool& v) { v = r.number<std::uint8_t>() != 0; }
+
+inline void encode(Writer& w, char v) { w.number(static_cast<std::uint8_t>(v)); }
+inline void decode(Reader& r, char& v) { v = static_cast<char>(r.number<std::uint8_t>()); }
+
+template <class T>
+using IsNumber = std::enable_if_t<std::is_arithmetic_v<T> && !std::is_same_v<T, bool> && !std::is_same_v<T, char>, int>;
+
+template <class T, IsNumber<T> = 0>
+void encode(Writer& w, T v)
+{
+    w.number(v);
+}
+template <class T, IsNumber<T> = 0>
+void decode(Reader& r, T& v)
+{
+    v = r.number<T>();
+}
+
+template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
+void encode(Writer& w, E v)
+{
+    w.number(static_cast<std::underlying_type_t<E>>(v));
+}
+template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
+void decode(Reader& r, E& v)
+{
+    v = static_cast<E>(r.number<std::underlying_type_t<E>>());
+}
+
+inline void encode(Writer& w, const std::string& v)
+{
+    w.count(v.size());
+    w.raw(v.data(), v.size());
+}
+inline void decode(Reader& r, std::string& v)
+{
+    const std::size_t n = r.count();
+    if (n > r.remaining()) throw Error("truncated frame");
+    v.resize(n);
+    r.raw(v.data(), n);
+}
+
+inline void encode(Writer& w, const Bytes& v)
+{
+    w.count(v.size());
+    w.raw(v.data(), v.size());
+}
+inline void decode(Reader& r, Bytes& v)
+{
+    const std::size_t n = r.count();
+    if (n > r.remaining()) throw Error("truncated frame");
+    v.resize(n);
+    r.raw(v.data(), n);
+}
+
+template <class T>
+void encode(Writer& w, const std::vector<T>& v)
+{
+    w.count(v.size());
+    for (const T& x : v) encode(w, x);
+}
+template <class T>
+void decode(Reader& r, std::vector<T>& v)
+{
+    const std::size_t n = r.count();
+    v.clear();
+    v.reserve(std::min(n, r.remaining()));
+    for (std::size_t i = 0; i < n; ++i) {
+        T x{};
+        decode(r, x);
+        v.push_back(std::move(x));
+    }
+}
+
+template <class T>
+void encode(Writer& w, const std::list<T>& v)
+{
+    w.count(v.size());
+    for (const T& x : v) encode(w, x);
+}
+template <class T>
+void decode(Reader& r, std::list<T>& v)
+{
+    const std::size_t n = r.count();
+    v.clear();
+    for (std::size_t i = 0; i < n; ++i) {
+        T x{};
+        decode(r, x);
+        v.push_back(std::move(x));
+    }
+}
+
+template <class T>
+void encode(Writer& w, const std::set<T>& v)
+{
+    w.count(v.size());
+    for (const T& x : v) encode(w, x);
+}
+template <class T>
+void decode(Reader& r, std::set<T>& v)
+{
+    const std::size_t n = r.count();
+    v.clear();
+    for (std::size_t i = 0; i < n; ++i) {
+        T x{};
+        decode(r, x);
+        v.insert(std::move(x));
+    }
+}
+
+template <class T, std::size_t N>
+void encode(Writer& w, const std::array<T, N>& v)
+{
+    for (const T& x : v) encode(w, x);
+}
+template <class T, std::size_t N>
+void decode(Reader& r, std::array<T, N>& v)
+{
+    for (T& x : v) decode(r, x);
+}
+
+template <class T>
+void encode(Writer& w, const std::optional<T>& v)
+{
+    w.number<std::uint8_t>(v ? 1 : 0);
+    if (v) encode(w, *v);
+}
+template <class T>
+void decode(Reader& r, std::optional<T>& v)
+{
+    if (r.number<std::uint8_t>()) {
+        T x{};
+        decode(r, x);
+        v = std::move(x);
+    } else {
+        v.reset();
+    }
+}
+
+template <class K, class V>
+void encode(Writer& w, const std::map<K, V>& v)
+{
+    w.count(v.size());
+    for (const auto& [key, value] : v) {
+        encode(w, key);
+        encode(w, value);
+    }
+}
+template <class K, class V>
+void decode(Reader& r, std::map<K, V>& v)
+{
+    const std::size_t n = r.count();
+    v.clear();
+    for (std::size_t i = 0; i < n; ++i) {
+        K key{};
+        V value{};
+        decode(r, key);
+        decode(r, value);
+        v.emplace(std::move(key), std::move(value));
+    }
+}
+
+/// Frame header.
+struct Header {
+    static constexpr std::size_t size = 16;
+    /// Largest payload accepted.
+    static constexpr std::uint32_t maxLength = 64u << 20;
+    enum Kind : std::uint8_t { call = 1, reply = 2, error = 3 };
+    /// Flag of a call waiting for its reply.
+    static constexpr std::uint8_t wantReply = 1;
+
+    std::uint8_t kind = call;
+    std::uint8_t flags = 0;
+    std::uint16_t message = 0;
+    std::uint32_t id = 0;
+    std::uint32_t length = 0;
+};
+
+inline Bytes frame(Header h, const Bytes& payload)
+{
+    if (payload.size() > Header::maxLength) throw Error("frame too large");
+    h.length = static_cast<std::uint32_t>(payload.size());
+    Writer w;
+    w.raw("SCF1", 4);
+    w.number(h.kind);
+    w.number(h.flags);
+    w.number(h.message);
+    w.number(h.id);
+    w.number(h.length);
+    w.raw(payload.data(), payload.size());
+    return w.bytes();
+}
+
+/// Header of a frame; `size` may hold the header only.
+inline Header header(const std::uint8_t* data, std::size_t size)
+{
+    if (size < Header::size || std::memcmp(data, "SCF1", 4) != 0) throw Error("not a frame");
+    Reader r(data + 4, Header::size - 4);
+    Header h;
+    h.kind = r.number<std::uint8_t>();
+    h.flags = r.number<std::uint8_t>();
+    h.message = r.number<std::uint16_t>();
+    h.id = r.number<std::uint32_t>();
+    h.length = r.number<std::uint32_t>();
+    if (h.length > Header::maxLength) throw Error("frame too large");
+    return h;
+}
+
+inline Header header(const Bytes& frame) { return header(frame.data(), frame.size()); }
+
+/// The payload of a whole frame.
+inline Bytes payload(const Bytes& frame)
+{
+    const Header h = header(frame);
+    if (frame.size() != Header::size + h.length) throw Error("frame of the wrong size");
+    return Bytes(frame.begin() + Header::size, frame.end());
+}
+
+inline Bytes errorFrame(std::uint32_t id, const std::string& message)
+{
+    Writer w;
+    encode(w, message);
+    Header h;
+    h.kind = Header::error;
+    h.id = id;
+    return frame(h, w.bytes());
+}
+
+/// Answers a call frame through `handle(message, reader, writer) -> bool` (false: unknown message):
+/// the reply frame, or nothing when the call wants none. Failures are sent back as error frames,
+/// or written to std::cerr when no reply is wanted.
+template <class Handle>
+std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
+{
+    const Header h = header(call);
+    const bool wanted = (h.flags & Header::wantReply) != 0;
+    std::string failure;
+    try {
+        if (h.kind != Header::call) throw Error("not a call");
+        const Bytes in = payload(call);
+        Reader reader(in);
+        Writer writer;
+        if (!handle(h.message, reader, writer)) throw Error("unknown message " + std::to_string(h.message));
+        if (!wanted) return std::nullopt;
+        Header r;
+        r.kind = Header::reply;
+        r.message = h.message;
+        r.id = h.id;
+        return frame(r, writer.bytes());
+    } catch (const std::exception& e) {
+        failure = e.what();
+    } catch (...) {
+        failure = "unknown exception";
+    }
+    if (wanted) return errorFrame(h.id, failure);
+    std::cerr << "remote call " << h.message << " failed: " << failure << '\n';
+    return std::nullopt;
+}
+
+} // namespace {{ project.ident | snake }}::remote

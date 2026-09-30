@@ -1,0 +1,36 @@
+{% include '_py_banner' %}
+"""Links between the binaries of {{ project.name }}. The address of a link is the value of its environment
+variable, else its default (as in C++)."""
+from __future__ import annotations
+
+import os
+from typing import List, NamedTuple
+
+
+class Link(NamedTuple):
+    name: str
+    index: int
+    interface: str
+    transport: str
+    variable: str
+    default: str
+    # Every call waits for its reply.
+    ack: bool
+    # Seconds to wait for a reply.
+    timeout: float
+    # Binary calling through a proxy.
+    caller: str
+    # Binary receiving the calls through a stub.
+    callee: str
+
+    @property
+    def address(self) -> str:
+        return os.environ.get(self.variable) or self.default
+
+{% for r in remoteLinks %}
+
+{{ r.link.description | doc_comment: '# ' }}
+{{ r.link.name | constant }} = Link('{{ r.link.name }}', {{ r.index }}, '{{ r.interface.name }}', '{{ r.link.constraints.remote.transport }}', '{% render '_address_variable', r: r %}', '{% render '_address', r: r %}', {% if r.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ r.link.constraints.ack.timeoutMs | default: 5000 | divided_by: 1000.0 }}, '{{ r.from.binary }}', '{{ r.to.binary }}')
+{% endfor %}
+
+LINKS: List[Link] = [{% for r in remoteLinks %}{{ r.link.name | constant }}{% unless forloop.last %}, {% endunless %}{% endfor %}]

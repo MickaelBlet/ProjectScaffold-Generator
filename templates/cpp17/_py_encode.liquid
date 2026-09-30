@@ -1,0 +1,30 @@
+{%- comment -%}
+  Python statement encoding value `v` of type `t` with writer `w`: `w.seq(v.path, data.encode_Vec3)`.
+  Parameters: t, v, w, prefix (`data.` outside data.py, else '').
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    echo w | append: '.' | append: t.name | append: '(' | append: v | append: ')'
+  when 'ref'
+    echo prefix | append: 'encode_' | append: t.name | append: '(' | append: w | append: ', ' | append: v | append: ')'
+  when 'array'
+    echo w | append: '.array(' | append: v | append: ', ' | append: t.size | append: ', '
+    render '_py_encoder', t: t.of, prefix: prefix
+    echo ')'
+  when 'optional'
+    echo w | append: '.optional(' | append: v | append: ', '
+    render '_py_encoder', t: t.of, prefix: prefix
+    echo ')'
+  when 'map'
+    echo w | append: '.map(' | append: v | append: ', '
+    render '_py_encoder', t: t.key, prefix: prefix
+    echo ', '
+    render '_py_encoder', t: t.value, prefix: prefix
+    echo ')'
+  else
+    echo w | append: '.seq(' | append: v | append: ', '
+    render '_py_encoder', t: t.of, prefix: prefix
+    echo ')'
+  endcase
+-%}

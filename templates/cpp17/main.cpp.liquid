@@ -9,6 +9,10 @@ int main(int argc, char** argv)
     {% user 'main' %}
     (void)argc;
     (void)argv;
+{% if system.stubs.size > 0 %}
+    // Serves the calls of the other binaries until SIGINT / SIGTERM.
+    {{ project.ident | snake }}::remote::waitForStop();
+{% endif %}
     (void)system;
     {% enduser %}
     return 0;

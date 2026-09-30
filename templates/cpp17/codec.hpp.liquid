@@ -1,0 +1,52 @@
+{% include '_banner' %}
+#pragma once
+
+#include <{{ project.ident | snake }}/remote/wire.hpp>
+{% for t in remoteTypes %}
+#include <{% render '_header', e: t %}>
+{% endfor %}
+{% user 'includes' %}
+{% enduser %}
+
+// Encoding of the types of the calls between binaries (enums and aliases need none: see wire.hpp).
+namespace {{ project.ident | snake }}::remote {
+
+{% for t in remoteTypes %}
+{% if t.kind == 'struct' %}
+inline void encode(Writer& w, const {% render '_qualified', e: t %}& v);
+inline void decode(Reader& r, {% render '_qualified', e: t %}& v);
+{% endif %}
+{% endfor %}
+{% for t in remoteTypes %}
+{% case t.kind %}
+{% when 'struct' %}
+
+inline void encode(Writer& w, const {% render '_qualified', e: t %}& v)
+{
+{% for f in t.fields %}
+    encode(w, v.{% render '_id', name: f.name %});
+{% else %}
+    (void)w;
+    (void)v;
+{% endfor %}
+}
+
+inline void decode(Reader& r, {% render '_qualified', e: t %}& v)
+{
+{% for f in t.fields %}
+    decode(r, v.{% render '_id', name: f.name %});
+{% else %}
+    (void)r;
+    (void)v;
+{% endfor %}
+}
+{% when 'primitive' %}
+
+{% user 'codec.' | append: t.name %}
+// {{ t.name }} is a custom type: write encode(Writer&, const {% render '_qualified', e: t %}&) and
+// decode(Reader&, {% render '_qualified', e: t %}&) here, as its Python peer does (data.py).
+{% enduser %}
+{% endcase %}
+{% endfor %}
+
+} // namespace {{ project.ident | snake }}::remote

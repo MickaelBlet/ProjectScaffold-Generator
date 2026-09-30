@@ -1,0 +1,220 @@
+{% include '_py_banner' %}
+"""Wire format of the calls between binaries, as include/{{ project.ident | snake }}/remote/wire.hpp.
+
+Little-endian; bool and char: 1 byte; string, bytes: u32 length + bytes; vector, list, set:
+u32 count + items; array: its items; optional: u8 flag + value; map: u32 count + key, value;
+struct: its fields in order; enum: its underlying type.
+Frame: 16-byte header (magic "SCF1", u8 kind, u8 flags, u16 message, u32 call id, u32 payload
+length), then the payload: the inputs of a call, or the result then the outputs of a reply.
+"""
+from __future__ import annotations
+
+import logging
+import struct
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+MAGIC = b'SCF1'
+HEADER = struct.Struct('<4sBBHII')
+CALL, REPLY, ERROR = 1, 2, 3
+WANT_REPLY = 1
+MAX_LENGTH = 64 << 20
+
+_log = logging.getLogger(__name__)
+
+
+class RemoteError(Exception):
+    """Failure of a remote call: transport, timeout, malformed frame, or error sent back by the peer."""
+
+
+_FORMATS = {
+    'int8': 'b', 'uint8': 'B', 'int16': 'h', 'uint16': 'H', 'int32': 'i', 'uint32': 'I',
+    'int64': 'q', 'uint64': 'Q', 'float32': 'f', 'float64': 'd',
+}
+_STRUCTS = {name: struct.Struct('<' + f) for name, f in _FORMATS.items()}
+
+
+class Writer:
+    """Encodes values: one method per primitive of the model, and the containers."""
+
+    def __init__(self) -> None:
+        self.data = bytearray()
+
+    def _number(self, kind: str, value: Any) -> None:
+        try:
+            self.data += _STRUCTS[kind].pack(value)
+        except struct.error as e:
+            raise RemoteError(f'{kind} {value!r}: {e}') from None
+
+    def bool(self, value: bool) -> None:
+        self.data.append(1 if value else 0)
+
+    def char(self, value: str) -> None:
+        self.data += value.encode('latin-1')[:1] if value else b'\0'
+
+    def int8(self, value: int) -> None: self._number('int8', value)
+    def uint8(self, value: int) -> None: self._number('uint8', value)
+    def int16(self, value: int) -> None: self._number('int16', value)
+    def uint16(self, value: int) -> None: self._number('uint16', value)
+    def int32(self, value: int) -> None: self._number('int32', value)
+    def uint32(self, value: int) -> None: self._number('uint32', value)
+    def int64(self, value: int) -> None: self._number('int64', value)
+    def uint64(self, value: int) -> None: self._number('uint64', value)
+    def float32(self, value: float) -> None: self._number('float32', value)
+    def float64(self, value: float) -> None: self._number('float64', value)
+
+    def string(self, value: str) -> None:
+        self.bytes(value.encode('utf-8'))
+
+    def bytes(self, value: bytes) -> None:
+        self.uint32(len(value))
+        self.data += value
+
+    def seq(self, items: Any, encode: Callable[[Writer, Any], None]) -> None:
+        """vector, list, set: count, then the items."""
+        self.uint32(len(items))
+        for x in items:
+            encode(self, x)
+
+    def array(self, items: Any, size: int, encode: Callable[[Writer, Any], None]) -> None:
+        if len(items) != size:
+            raise RemoteError(f'array of {size} items given {len(items)}')
+        for x in items:
+            encode(self, x)
+
+    def optional(self, value: Any, encode: Callable[[Writer, Any], None]) -> None:
+        if value is None:
+            self.data.append(0)
+        else:
+            self.data.append(1)
+            encode(self, value)
+
+    def map(self, value: Dict[Any, Any], key: Callable[[Writer, Any], None], item: Callable[[Writer, Any], None]) -> None:
+        self.uint32(len(value))
+        for k, v in value.items():
+            key(self, k)
+            item(self, v)
+
+
+class Reader:
+    """Decodes values, as Writer encodes them."""
+
+    def __init__(self, data: Any) -> None:
+        self._data = bytes(data)
+        self._pos = 0
+
+    def _take(self, size: int) -> bytes:
+        if size > len(self._data) - self._pos:
+            raise RemoteError('truncated frame')
+        out = self._data[self._pos:self._pos + size]
+        self._pos += size
+        return out
+
+    def _number(self, kind: str) -> Any:
+        s = _STRUCTS[kind]
+        return s.unpack(self._take(s.size))[0]
+
+    def bool(self) -> bool:
+        return self._take(1) != b'\0'
+
+    def char(self) -> str:
+        return self._take(1).decode('latin-1')
+
+    def int8(self) -> int: return self._number('int8')
+    def uint8(self) -> int: return self._number('uint8')
+    def int16(self) -> int: return self._number('int16')
+    def uint16(self) -> int: return self._number('uint16')
+    def int32(self) -> int: return self._number('int32')
+    def uint32(self) -> int: return self._number('uint32')
+    def int64(self) -> int: return self._number('int64')
+    def uint64(self) -> int: return self._number('uint64')
+    def float32(self) -> float: return self._number('float32')
+    def float64(self) -> float: return self._number('float64')
+
+    def string(self) -> str:
+        return self.bytes().decode('utf-8')
+
+    def bytes(self) -> bytes:
+        return self._take(self.uint32())
+
+    def seq(self, decode: Callable[[Reader], Any]) -> List[Any]:
+        return [decode(self) for _ in range(self.uint32())]
+
+    def set(self, decode: Callable[[Reader], Any]) -> Set[Any]:
+        return {decode(self) for _ in range(self.uint32())}
+
+    def array(self, size: int, decode: Callable[[Reader], Any]) -> List[Any]:
+        return [decode(self) for _ in range(size)]
+
+    def optional(self, decode: Callable[[Reader], Any]) -> Any:
+        return decode(self) if self._take(1) != b'\0' else None
+
+    def map(self, key: Callable[[Reader], Any], item: Callable[[Reader], Any]) -> Dict[Any, Any]:
+        out = {}
+        for _ in range(self.uint32()):
+            k = key(self)
+            out[k] = item(self)
+        return out
+
+    def end(self) -> None:
+        """Raises unless everything was read."""
+        if self._pos != len(self._data):
+            raise RemoteError('unexpected bytes at the end of a frame')
+
+
+def enum(cls: Any, value: int) -> Any:
+    """The member of enum `cls` of that value, else the number itself."""
+    try:
+        return cls(value)
+    except ValueError:
+        return value
+
+
+def frame(kind: int, flags: int, message: int, call_id: int, payload: bytes) -> bytes:
+    if len(payload) > MAX_LENGTH:
+        raise RemoteError('frame too large')
+    return HEADER.pack(MAGIC, kind, flags, message, call_id, len(payload)) + bytes(payload)
+
+
+def header(data: bytes) -> Tuple[int, int, int, int, int]:
+    """(kind, flags, message, call id, payload length) of a frame; `data` may hold the header only."""
+    if len(data) < HEADER.size:
+        raise RemoteError('not a frame')
+    magic, kind, flags, message, call_id, length = HEADER.unpack_from(data)
+    if magic != MAGIC:
+        raise RemoteError('not a frame')
+    if length > MAX_LENGTH:
+        raise RemoteError('frame too large')
+    return kind, flags, message, call_id, length
+
+
+def payload(data: bytes) -> bytes:
+    """The payload of a whole frame."""
+    if len(data) != HEADER.size + header(data)[4]:
+        raise RemoteError('frame of the wrong size')
+    return bytes(data[HEADER.size:])
+
+
+def error_frame(call_id: int, text: str) -> bytes:
+    w = Writer()
+    w.string(text)
+    return frame(ERROR, 0, 0, call_id, bytes(w.data))
+
+
+def respond(call: bytes, handle: Callable[[int, Reader, Writer], bool]) -> Optional[bytes]:
+    """Answers a call frame through `handle(message, reader, writer)` (False: unknown message): the
+    reply frame, or None when the call wants none. Failures are sent back as error frames, or logged
+    when no reply is wanted."""
+    kind, flags, message, call_id, _ = header(call)
+    wanted = bool(flags & WANT_REPLY)
+    try:
+        if kind != CALL:
+            raise RemoteError('not a call')
+        w = Writer()
+        if not handle(message, Reader(payload(call)), w):
+            raise RemoteError(f'unknown message {message}')
+        return frame(REPLY, 0, message, call_id, bytes(w.data)) if wanted else None
+    except Exception as e:  # noqa: BLE001 - sent back to the caller
+        if wanted:
+            return error_frame(call_id, str(e) or type(e).__name__)
+        _log.error('remote call %d failed: %s', message, e)
+        return None

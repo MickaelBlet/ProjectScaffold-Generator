@@ -1,0 +1,10 @@
+schemaVersion: 1
+workspace:
+  name: Fleet
+  description: Drones and their ground station, with the projects they share
+projects:
+  - ground.scaffold.yaml
+  - drone.scaffold.yaml
+  - weather.scaffold.yaml
+  - fleet.scaffold.yaml
+  - units.scaffold.yaml

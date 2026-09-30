@@ -1,7 +1,13 @@
 import { writeFileSync } from 'node:fs'
 import { z } from 'zod'
 import { FileProjectSchema } from '../src/renderer/src/model/schema'
+import { FileWorkspaceSchema } from '../src/renderer/src/model/workspace'
 
-const schema = z.toJSONSchema(FileProjectSchema, { target: 'draft-2020-12', io: 'input' })
-writeFileSync('schema/scaffold.schema.json', JSON.stringify(schema, null, 2) + '\n')
-console.log('wrote schema/scaffold.schema.json')
+for (const [file, schema] of [
+  ['schema/scaffold.schema.json', FileProjectSchema],
+  ['schema/scaffold-workspace.schema.json', FileWorkspaceSchema]
+] as const) {
+  const json = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input' })
+  writeFileSync(file, JSON.stringify(json, null, 2) + '\n')
+  console.log(`wrote ${file}`)
+}

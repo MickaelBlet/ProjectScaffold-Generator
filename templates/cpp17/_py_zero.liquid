@@ -1,0 +1,60 @@
+{%- comment -%}
+  Python expression of the default value of a type (what C++ value-initializes to; an enum gets its
+  first value). Parameters: t, prefix.
+{%- endcomment -%}
+{%- liquid
+  if t == nil
+    echo 'None'
+  else
+    case t.kind
+    when 'primitive'
+      case t.name
+      when 'bool'
+        echo 'False'
+      when 'char'
+        echo "'\\0'"
+      when 'string'
+        echo "''"
+      when 'bytes'
+        echo "b''"
+      when 'float32', 'float64'
+        echo '0.0'
+      else
+        echo '0'
+      endcase
+    when 'ref'
+      assign def = allTypes | where: 'name', t.name | first
+      case def.kind
+      when 'struct'
+        echo prefix
+        render '_py_id', name: t.name
+        echo '()'
+      when 'enum'
+        if def.values.size > 0
+          echo prefix
+          render '_py_id', name: t.name
+          echo '.'
+          render '_py_id', name: def.values[0].name
+        else
+          echo '0'
+        endif
+      when 'alias'
+        render '_py_zero', t: def.type, prefix: prefix
+      else
+        echo 'None'
+      endcase
+    when 'optional'
+      echo 'None'
+    when 'set'
+      echo 'set()'
+    when 'map'
+      echo '{}'
+    when 'array'
+      echo '['
+      render '_py_zero', t: t.of, prefix: prefix
+      echo ' for _ in range(' | append: t.size | append: ')]'
+    else
+      echo '[]'
+    endcase
+  endif
+-%}

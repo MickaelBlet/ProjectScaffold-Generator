@@ -1,0 +1,5 @@
+{%- comment -%}
+  Environment variable overriding the address of a link between binaries: `ROVER_SUPERVISE_CAMERA`.
+  Parameter: r.
+{%- endcomment -%}
+{{- project.ident | constant | append: '_' | append: r.link.name | constant -}}

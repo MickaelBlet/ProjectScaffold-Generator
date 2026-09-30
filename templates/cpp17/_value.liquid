@@ -19,8 +19,17 @@
       assign text = v | replace: '\\', '\\\\' | replace: '"', '\\"' | replace: '\n', '\\n' | replace: '\t', '\\t'
       echo '"' | append: text | append: '"'
     when 'bytes'
-      assign bytes = v | join: ', '
-      echo '{' | append: bytes | append: '}'
+      # The text's characters, one byte each.
+      assign chars = v | split: ''
+      echo '{'
+      for ch in chars
+        assign c = ch | replace: '\\', '\\\\' | replace: "'", "\\'"
+        echo "'" | append: c | append: "'"
+        unless forloop.last
+          echo ', '
+        endunless
+      endfor
+      echo '}'
     when 'float32', 'float64'
       assign number = v | append: ''
       echo number

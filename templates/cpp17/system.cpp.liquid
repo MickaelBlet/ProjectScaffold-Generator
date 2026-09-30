@@ -22,8 +22,17 @@ namespace {% render '_ns', e: system %} {
     // {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ transport }}
 {{ r.link.description | doc_comment: '    // ' }}
     {% render '_endpoint', x: r.local %}.connect({{ r.link.name | camel }}Proxy_);
+{% capture generated %}
+{% render '_generated_transport', transport: r.link.constraints.remote.transport %}
+{% endcapture %}
+{% if generated == 'true' %}
+    {{ r.link.name | camel }}Proxy_.open(remote::connect("{{ transport }}", remote::address("{% render '_address_variable', r: r %}", "{% render '_address', r: r %}"), "{{ r.link.name }}"),
+        {{ r.link.constraints.ack.required }}, std::chrono::milliseconds({{ r.link.constraints.ack.timeoutMs | default: 5000 }}));
+{% endif %}
     {% user 'link.' | append: r.link.name %}
-    // Connect {{ r.link.name | camel }}Proxy_ to binary {{ r.peer.binary }} over {{ transport }}.
+{% unless generated == 'true' %}
+    // Open {{ r.link.name | camel }}Proxy_ with a remote::Channel to binary {{ r.peer.binary }} over {{ transport }}.
+{% endunless %}
     {% enduser %}
 {% endfor %}
 {% for r in system.stubs %}
@@ -31,8 +40,16 @@ namespace {% render '_ns', e: system %} {
     // {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ transport }}
 {{ r.link.description | doc_comment: '    // ' }}
     {{ r.link.name | camel }}Stub_.bind({% render '_endpoint', x: r.local %});
+{% capture generated %}
+{% render '_generated_transport', transport: r.link.constraints.remote.transport %}
+{% endcapture %}
+{% if generated == 'true' %}
+    {{ r.link.name | camel }}Stub_.serve("{{ transport }}", remote::address("{% render '_address_variable', r: r %}", "{% render '_address', r: r %}"), "{{ r.link.name }}");
+{% endif %}
     {% user 'link.' | append: r.link.name %}
-    // Receive the calls of binary {{ r.peer.binary }} over {{ transport }} into {{ r.link.name | camel }}Stub_.
+{% unless generated == 'true' %}
+    // Receive the calls of binary {{ r.peer.binary }} over {{ transport }} into {{ r.link.name | camel }}Stub_.dispatch().
+{% endunless %}
     {% enduser %}
 {% endfor %}
 {% for e in system.external %}

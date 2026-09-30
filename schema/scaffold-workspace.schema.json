@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/ScaffoldWorkspace",
+  "$defs": {
+    "ScaffoldWorkspace": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "workspace": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "project files, relative to the workspace file, opened in this order"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "workspace",
+        "projects"
+      ],
+      "title": "ProjectScaffold workspace file"
+    }
+  }
+}

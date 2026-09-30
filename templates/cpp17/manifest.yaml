@@ -3,7 +3,7 @@
 # and includes; edit them freely. Paths, `each` and `when` are Liquid; templates see the generation
 # context (see README, "Writing templates").
 name: cpp17
-description: C++17 skeleton - types, interfaces, modules wired through their ports, CMake project
+description: C++17 skeleton - types, interfaces, modules wired through their ports, CMake project; links between binaries over generated transports, with Python peers
 comment: '//'
 # Names of the model that are C++ keywords (separated by spaces) are warned about, and renamed by
 # _id / _accessor / _member.
@@ -36,6 +36,19 @@ partials:
   - _endpoint.liquid
   - _main.liquid
   - _value.liquid
+  - _generated_transport.liquid
+  - _address.liquid
+  - _address_variable.liquid
+  - _py_banner.liquid
+  - _py_id.liquid
+  - _py_type.liquid
+  - _py_encode.liquid
+  - _py_encoder.liquid
+  - _py_decode.liquid
+  - _py_decoder.liquid
+  - _py_zero.liquid
+  - _py_value.liquid
+  - _py_results.liquid
 outputs:
   - template: ports.hpp.liquid
     path: include/{{ project.ident | snake }}/ports.hpp
@@ -56,6 +69,19 @@ outputs:
     each: modules
     when: item.kind != 'interface'
     path: "src/{% render '_source', e: item %}"
+  # Calls between binaries: wire format, transports, proxies sending the calls, stubs receiving them.
+  - template: wire.hpp.liquid
+    path: include/{{ project.ident | snake }}/remote/wire.hpp
+    when: remoteLinks.size > 0
+  - template: codec.hpp.liquid
+    path: include/{{ project.ident | snake }}/remote/codec.hpp
+    when: remoteLinks.size > 0
+  - template: transport.hpp.liquid
+    path: include/{{ project.ident | snake }}/remote/transport.hpp
+    when: remoteLinks.size > 0
+  - template: transport.cpp.liquid
+    path: src/remote/transport.cpp
+    when: remoteLinks.size > 0
   - template: proxy.hpp.liquid
     each: remoteInterfaces
     path: include/{{ project.ident | snake }}/remote/{{ item.name }}Proxy.hpp
@@ -81,3 +107,43 @@ outputs:
     as: system
     path: "src/{% render '_main', system: system %}"
     when: modules.size > 0
+  # Python peers of the binaries (python/<project>/), speaking the wire format of remote/wire.hpp:
+  # each stands in for a binary, to test the others.
+  - template: py_init.liquid
+    path: python/{{ project.ident | snake }}/__init__.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_wire.liquid
+    path: python/{{ project.ident | snake }}/wire.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_transport.liquid
+    path: python/{{ project.ident | snake }}/transport.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_links.liquid
+    path: python/{{ project.ident | snake }}/links.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_data.liquid
+    path: python/{{ project.ident | snake }}/data.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_remote_init.liquid
+    path: python/{{ project.ident | snake }}/remote/__init__.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_remote.liquid
+    each: remoteInterfaces
+    path: "python/{{ project.ident | snake }}/remote/{% capture module %}{{ item.name | snake }}{% endcapture %}{% render '_py_id', name: module %}.py"
+    comment: '#'
+  - template: py_peers_init.liquid
+    path: python/{{ project.ident | snake }}/peers/__init__.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_peer.liquid
+    each: systems
+    as: system
+    when: system.proxies.size > 0 or system.stubs.size > 0
+    path: python/{{ project.ident | snake }}/peers/{{ system.binary.name | snake }}.py
+    comment: '#'

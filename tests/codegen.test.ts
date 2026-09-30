@@ -217,6 +217,28 @@ describe('generation context', () => {
     // Abstract modules without ports are classes only.
     expect(ctx.system!.instances.map((m) => m.name)).toEqual(['Plant', 'Client'])
   })
+
+  it('lists the links between binaries, and the types their calls use', () => {
+    const ctx = buildContext(exported('tests/fixtures/relay.scaffold.yaml'))
+    expect(ctx.remoteLinks.map((r) => [r.index, r.link.name, r.from.binary, r.to.binary])).toEqual([
+      [0, 'echo_tcp', 'Client', 'Server'],
+      [1, 'echo_udp', 'Client', 'Server'],
+      [2, 'echo_http', 'Client', 'Server'],
+      [3, 'echo_websocket', 'Client', 'Server'],
+      [4, 'echo_shm', 'Client', 'Server'],
+      [5, 'echo_mqtt', 'Client', 'Server'],
+      [6, 'status', 'Server', 'Client']
+    ])
+    const client = ctx.systems.find((s) => s.binary?.name === 'Client')!
+    expect(client.proxies.map((r) => r.index)).toEqual([0, 1, 2, 3, 4, 5])
+    expect(client.stubs.map((r) => [r.index, r.interface.name])).toEqual([[6, 'Status']])
+    // Through the fields of Sample and Tree, sorted by name.
+    expect(ctx.remoteTypes.map((t) => t.name)).toEqual(['Mode', 'Numbers', 'Sample', 'Samples', 'Tree', 'Vec3'])
+    const scale = ctx.interfaces.find((i) => i.name === 'Echo')!.messages.find((m) => m.name === 'scale')!
+    expect(scale.inputs.map((p) => p.name)).toEqual(['v', 'factor'])
+    expect(scale.outputs.map((p) => p.name)).toEqual(['v'])
+    expect(buildContext(exported('tests/fixtures/plant.scaffold.yaml')).remoteLinks).toEqual([])
+  })
 })
 
 describe('C++17 generation', () => {
@@ -266,6 +288,59 @@ describe('C++17 generation', () => {
     )
     expect(text('CMakeLists.txt')).toContain('add_executable(rover_onboard src/onboard/main.cpp)')
     expect(text('CMakeLists.txt')).toContain('add_executable(rover_ground src/ground/main.cpp)')
+  })
+
+  it('generates the transports of the links between binaries, and Python peers', () => {
+    const { files, warnings } = generate(exported('tests/fixtures/relay.scaffold.yaml'), cpp17())
+    expect(warnings).toEqual([])
+    const paths = files.map((f) => f.path)
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'include/relay/remote/wire.hpp',
+        'include/relay/remote/codec.hpp',
+        'include/relay/remote/transport.hpp',
+        'src/remote/transport.cpp',
+        'python/relay/wire.py',
+        'python/relay/transport.py',
+        'python/relay/links.py',
+        'python/relay/data.py',
+        'python/relay/remote/echo.py',
+        'python/relay/remote/status.py',
+        'python/relay/peers/client.py',
+        'python/relay/peers/server.py'
+      ])
+    )
+    const text = (path: string): string => files.find((f) => f.path === path)!.text
+    const client = text('src/ClientSystem.cpp')
+    expect(client).toContain(
+      'echoUdpProxy_.open(remote::connect("udp", remote::address("RELAY_ECHO_UDP", "127.0.0.1:47001"), "echo_udp"),\n' +
+        '        false, std::chrono::milliseconds(5000));'
+    )
+    expect(client).toContain('remote::address("RELAY_ECHO_SHM", "relay_echo_shm")')
+    // No transport generated for mqtt: left to a user section.
+    expect(client).not.toContain('remote::connect("mqtt"')
+    expect(client).toContain('// Open echoMqttProxy_ with a remote::Channel to binary Server over mqtt.')
+    expect(client).toContain('statusStub_.serve("tcp", remote::address("RELAY_STATUS", "127.0.0.1:47006"), "status");')
+    expect(text('src/server/main.cpp')).toContain('relay::remote::waitForStop();')
+    expect(text('CMakeLists.txt')).toContain('src/remote/transport.cpp')
+    expect(text('CMakeLists.txt')).toContain('target_link_libraries(relay ${SCAFFOLD_SCOPE} Threads::Threads)')
+    const proxy = text('include/relay/remote/EchoProxy.hpp')
+    expect(proxy).toContain('const Bytes reply_ = caller_.call(2, request_.bytes(), true);')
+    expect(proxy).toContain('caller_.call(3, request_.bytes(), false);')
+    expect(text('include/relay/remote/codec.hpp')).toContain('    encode(w, v.children);')
+    expect(text('python/relay/data.py')).toContain('    w.map(v.tags, Writer.string, Writer.int32)')
+    expect(text('python/relay/remote/echo.py')).toContain(
+      '    def scale(self, v: _data.Vec3, factor: float) -> Tuple[bool, _data.Vec3]:'
+    )
+    const peer = text('python/relay/peers/client.py')
+    expect(peer).toContain('self.echo_tcp = EchoProxy.connect(links.ECHO_TCP)')
+    expect(peer).not.toContain('links.ECHO_MQTT')
+    expect(text('python/relay/links.py')).toContain(
+      "ECHO_SHM = Link('echo_shm', 4, 'Echo', 'shm', 'RELAY_ECHO_SHM', 'relay_echo_shm', True, 2, 'Client', 'Server')"
+    )
+    // Without links between binaries: neither transports nor Python.
+    const plain = generate(exported('tests/fixtures/plant.scaffold.yaml'), cpp17()).files.map((f) => f.path)
+    expect(plain.filter((p) => p.includes('remote') || p.startsWith('python/'))).toEqual([])
   })
 
   it('generates types and interfaces of a project without modules', () => {

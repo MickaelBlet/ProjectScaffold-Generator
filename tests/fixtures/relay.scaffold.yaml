@@ -1,0 +1,455 @@
+schemaVersion: 1
+project:
+  name: Relay
+  description: Two binaries calling each other over every generated transport (tests/remote)
+binaries:
+  - name: Client
+    description: Makes the calls
+  - name: Server
+    description: Answers them
+types:
+  - kind: enum
+    name: Mode
+    underlying: uint8
+    values:
+      - name: Idle
+        value: 0
+      - name: Run
+        value: 1
+      - name: Fault
+        value: 7
+  - kind: struct
+    name: Vec3
+    fields:
+      - name: x
+        type:
+          kind: primitive
+          name: float64
+      - name: y
+        type:
+          kind: primitive
+          name: float64
+      - name: z
+        type:
+          kind: primitive
+          name: float64
+  - kind: struct
+    name: Numbers
+    description: One of each number
+    fields:
+      - name: i8
+        type:
+          kind: primitive
+          name: int8
+      - name: u8
+        type:
+          kind: primitive
+          name: uint8
+      - name: i16
+        type:
+          kind: primitive
+          name: int16
+      - name: u16
+        type:
+          kind: primitive
+          name: uint16
+      - name: i32
+        type:
+          kind: primitive
+          name: int32
+      - name: u32
+        type:
+          kind: primitive
+          name: uint32
+      - name: i64
+        type:
+          kind: primitive
+          name: int64
+      - name: u64
+        type:
+          kind: primitive
+          name: uint64
+      - name: f32
+        type:
+          kind: primitive
+          name: float32
+      - name: f64
+        type:
+          kind: primitive
+          name: float64
+  - kind: struct
+    name: Sample
+    description: Every kind of field
+    fields:
+      - name: id
+        type:
+          kind: primitive
+          name: uint64
+      - name: mode
+        type:
+          kind: ref
+          name: Mode
+        default: Run
+      - name: ok
+        type:
+          kind: primitive
+          name: bool
+        default: true
+      - name: letter
+        type:
+          kind: primitive
+          name: char
+        default: a
+      - name: label
+        type:
+          kind: primitive
+          name: string
+        default: none
+      - name: raw
+        type:
+          kind: primitive
+          name: bytes
+      - name: numbers
+        type:
+          kind: ref
+          name: Numbers
+      - name: pos
+        type:
+          kind: ref
+          name: Vec3
+      - name: path
+        type:
+          kind: vector
+          of:
+            kind: ref
+            name: Vec3
+      - name: box
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float32
+          size: 4
+      - name: flags
+        type:
+          kind: set
+          of:
+            kind: primitive
+            name: int16
+      - name: history
+        type:
+          kind: list
+          of:
+            kind: primitive
+            name: int8
+      - name: tags
+        type:
+          kind: map
+          key:
+            kind: primitive
+            name: string
+          value:
+            kind: primitive
+            name: int32
+      - name: note
+        type:
+          kind: optional
+          of:
+            kind: primitive
+            name: string
+  - kind: alias
+    name: Samples
+    type:
+      kind: vector
+      of:
+        kind: ref
+        name: Sample
+  - kind: struct
+    name: Tree
+    description: Recursive type
+    fields:
+      - name: name
+        type:
+          kind: primitive
+          name: string
+      - name: children
+        type:
+          kind: vector
+          of:
+            kind: ref
+            name: Tree
+interfaces:
+  - name: Echo
+    description: Every call sends its arguments back
+    messages:
+      - name: echo
+        params:
+          - name: sample
+            type:
+              kind: ref
+              name: Sample
+        returns:
+          kind: ref
+          name: Sample
+      - name: sum
+        params:
+          - name: values
+            type:
+              kind: vector
+              of:
+                kind: primitive
+                name: int32
+          - name: total
+            type:
+              kind: primitive
+              name: int64
+            direction: out
+        returns: null
+      - name: scale
+        params:
+          - name: v
+            type:
+              kind: ref
+              name: Vec3
+            direction: inout
+          - name: factor
+            type:
+              kind: primitive
+              name: float64
+        returns:
+          kind: primitive
+          name: bool
+      - name: notify
+        params:
+          - name: text
+            type:
+              kind: primitive
+              name: string
+        returns: null
+      - name: last
+        params: []
+        returns:
+          kind: primitive
+          name: string
+      - name: samples
+        params:
+          - name: count
+            type:
+              kind: primitive
+              name: uint8
+        returns:
+          kind: ref
+          name: Samples
+      - name: tree
+        params:
+          - name: t
+            type:
+              kind: ref
+              name: Tree
+        returns:
+          kind: ref
+          name: Tree
+      - name: pick
+        params:
+          - name: m
+            type:
+              kind: map
+              key:
+                kind: ref
+                name: Mode
+              value:
+                kind: optional
+                of:
+                  kind: primitive
+                  name: string
+          - name: key
+            type:
+              kind: ref
+              name: Mode
+        returns:
+          kind: optional
+          of:
+            kind: primitive
+            name: string
+  - name: Status
+    messages:
+      - name: report
+        params:
+          - name: mode
+            type:
+              kind: ref
+              name: Mode
+          - name: from
+            type:
+              kind: primitive
+              name: string
+        returns: null
+modules:
+  - name: Caller
+    description: Calls the service over every transport
+    binary: Client
+    ports:
+      - name: tcp
+        role: out
+        interface: Echo
+      - name: udp
+        role: out
+        interface: Echo
+      - name: http
+        role: out
+        interface: Echo
+      - name: websocket
+        role: out
+        interface: Echo
+      - name: shm
+        role: out
+        interface: Echo
+      - name: mqtt
+        role: out
+        interface: Echo
+      - name: status
+        role: in
+        interface: Status
+  - name: Service
+    description: Answers the calls
+    binary: Server
+    ports:
+      - name: tcp
+        role: in
+        interface: Echo
+      - name: udp
+        role: in
+        interface: Echo
+      - name: http
+        role: in
+        interface: Echo
+      - name: websocket
+        role: in
+        interface: Echo
+      - name: shm
+        role: in
+        interface: Echo
+      - name: mqtt
+        role: in
+        interface: Echo
+      - name: status
+        role: out
+        interface: Status
+links:
+  - name: echo_tcp
+    from:
+      module: Caller
+      port: tcp
+    to:
+      module: Service
+      port: tcp
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: tcp
+  - name: echo_udp
+    from:
+      module: Caller
+      port: udp
+    to:
+      module: Service
+      port: udp
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: udp
+  - name: echo_http
+    from:
+      module: Caller
+      port: http
+    to:
+      module: Service
+      port: http
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: http
+  - name: echo_websocket
+    from:
+      module: Caller
+      port: websocket
+    to:
+      module: Service
+      port: websocket
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: websocket
+  - name: echo_shm
+    from:
+      module: Caller
+      port: shm
+    to:
+      module: Service
+      port: shm
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: shm
+  - name: echo_mqtt
+    from:
+      module: Caller
+      port: mqtt
+    to:
+      module: Service
+      port: mqtt
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: mqtt
+  - name: status
+    from:
+      module: Service
+      port: status
+    to:
+      module: Caller
+      port: status
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: tcp

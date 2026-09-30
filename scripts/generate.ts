@@ -1,4 +1,5 @@
 // Code generation from a project file: npm run generate -- <project file> [options]
+// Also built into a standalone executable by scripts/build-cli.ts.
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -11,11 +12,14 @@ import {
 } from '../src/renderer/src/codegen/run'
 import { loadTemplateSet, type TemplateSet } from '../src/renderer/src/codegen/templateSet'
 import { snake } from '../src/renderer/src/codegen/filters'
+import { readBuiltin } from './builtinTemplates'
 import { dependencyName } from '../src/renderer/src/model/dependencies'
 import { formatFromPath, loadText } from '../src/renderer/src/model/serialize'
 import type { Project } from '../src/renderer/src/model/types'
 
-const USAGE = `Usage: npm run generate -- <project file> [options]
+declare const VERSION: string | undefined // set when bundled
+
+const USAGE = `Usage: scaffold-gen <project file> [options]   (from the sources: npm run generate -- …)
 
 Options:
   -o, --out <dir>        output directory (default: generated/<project> next to the project file)
@@ -24,9 +28,8 @@ Options:
   -f, --force            overwrite files changed outside their user sections
   -p, --prune            delete the files no longer generated (user code kept in .orphans files)
   -n, --dry-run          report only, write nothing
+  -v, --version
   -h, --help`
-
-const BUILTIN = resolve(import.meta.dirname, '../templates/cpp17')
 
 async function readOrNull(path: string): Promise<string | null> {
   try {
@@ -62,9 +65,14 @@ async function main(): Promise<number> {
       force: { type: 'boolean', short: 'f' },
       prune: { type: 'boolean', short: 'p' },
       'dry-run': { type: 'boolean', short: 'n' },
+      version: { type: 'boolean', short: 'v' },
       help: { type: 'boolean', short: 'h' }
     }
   })
+  if (values.version) {
+    console.log(typeof VERSION === 'string' ? VERSION : 'dev')
+    return 0
+  }
   if (values.help || positionals.length !== 1) {
     console.log(USAGE)
     return values.help ? 0 : 2
@@ -93,7 +101,7 @@ async function main(): Promise<number> {
       const dir = nodeDir(outDir)
       const set = values.templates
         ? await templatesFrom(resolve(values.templates))
-        : await templateSetFor(dir, () => templatesFrom(BUILTIN))
+        : await templateSetFor(dir, () => loadTemplateSet(readBuiltin))
       const report = await generateInto(input, set, dir, options)
       console.log(formatReport(report, `${relative(process.cwd(), file)} -> ${dir.label}`))
       if (report.conflicts.length) failed = true
@@ -110,4 +118,11 @@ async function main(): Promise<number> {
   return failed ? 1 : 0
 }
 
-process.exitCode = await main()
+// No top-level await: the executable runs it as CommonJS.
+main().then(
+  (code) => (process.exitCode = code),
+  (e: unknown) => {
+    console.error(e)
+    process.exitCode = 1
+  }
+)

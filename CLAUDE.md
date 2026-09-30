@@ -17,9 +17,12 @@ npm run lint                         # eslint, type-checked rules + react-hooks
 npm run schema                       # regenerate schema/scaffold.schema.json from model/schema.ts
 npm run generate -- <project file> -d   # generate code (templates/cpp17) with its dependencies
 scripts/build_web.sh --check         # lint + test + build
+scripts/build_cli.sh                 # standalone generator dist-cli/scaffold-gen (Node SEA) + .cjs bundle
+scripts/check_remote.sh              # calls between binaries: C++ <-> Python over each transport (cmake, python3)
 npm run build && npm run vscode:compile   # VS Code extension dev build (vscode/out, vscode/media)
 scripts/build_vscode.sh              # .vsix into dist-vscode/
 scripts/build_desktop.sh             # Tauri + Electron in Docker (docker buildx bake)
+scripts/build_all.sh [--check] [web|cli|vscode|desktop]...   # all of the above (default: all)
 ```
 
 - `tests/serialize.test.ts` fails when `schema/scaffold.schema.json` is stale: run `npm run schema` after changing `model/schema.ts`.
@@ -39,8 +42,9 @@ scripts/build_desktop.sh             # Tauri + Electron in Docker (docker buildx
 ### Code generation (`src/renderer/src/codegen/`, pure, no React; `templates/cpp17/`)
 
 - `context.ts` turns the exported `FileProject` into the template context (every value present: Liquid runs with strict variables; links sorted into wiring per container / `system`). `generate.ts` renders a template set (`templateSet.ts`: `manifest.yaml` + Liquid files) with the context as Liquid globals and only language-neutral helpers (case filters in `filters.ts`, `doc_comment`, the `user` tag): target-language logic belongs in the templates (`templates/cpp17/_*.liquid` partials), so users can edit it. `sections.ts`: the `{% user %}` tag and merging of user sections. `run.ts` writes into an `OutputDir` (merge, conflicts, `.orphans`, `.scaffold-gen.json` record).
-- Hosts give the `OutputDir`: `scripts/generate.ts` (CLI, node fs), `webApi.ts` (File System Access directory handle), `vscodeApi.ts` (`outputDir` / `outputFile` messages, `vscode/src/session.ts`). `generateCode.ts` bundles `templates/cpp17` into the web build (`import.meta.glob`).
+- Hosts give the `OutputDir`: `scripts/generate.ts` (CLI, node fs; `scripts/build-cli.ts` bundles it as CommonJS, no top-level await, with the templates embedded in place of `scripts/builtinTemplates.ts`, into a Node single executable), `webApi.ts` (File System Access directory handle), `vscodeApi.ts` (`outputDir` / `outputFile` messages, `vscode/src/session.ts`). `generateCode.ts` bundles `templates/cpp17` into the web build (`import.meta.glob`).
 - Check template changes by building the output: `npm run generate -- tests/fixtures/plant.scaffold.yaml -o /tmp/gen/plant` then CMake with `-Wall -Wextra -Werror`.
+- Links between binaries: `wire.hpp` / `transport.cpp` and `py_wire` / `py_transport` (Python peers under `python/<ns>/`, same template set) implement one protocol and must change together; `scripts/check_remote.sh` checks them against each other. Templates stay flat in `templates/cpp17/` (the web glob and CLI embedding are not recursive).
 
 ### State (`src/renderer/src/store/`)
 

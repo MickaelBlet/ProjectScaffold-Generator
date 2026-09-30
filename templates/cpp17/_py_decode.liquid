@@ -1,0 +1,30 @@
+{%- comment -%}
+  Python expression decoding a value of type `t` with reader `r`: `r.seq(data.decode_Vec3)`.
+  Parameters: t, r, prefix.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    echo r | append: '.' | append: t.name | append: '()'
+  when 'ref'
+    echo prefix | append: 'decode_' | append: t.name | append: '(' | append: r | append: ')'
+  when 'array'
+    echo r | append: '.array(' | append: t.size | append: ', '
+    render '_py_decoder', t: t.of, prefix: prefix
+    echo ')'
+  when 'optional', 'set'
+    echo r | append: '.' | append: t.kind | append: '('
+    render '_py_decoder', t: t.of, prefix: prefix
+    echo ')'
+  when 'map'
+    echo r | append: '.map('
+    render '_py_decoder', t: t.key, prefix: prefix
+    echo ', '
+    render '_py_decoder', t: t.value, prefix: prefix
+    echo ')'
+  else
+    echo r | append: '.seq('
+    render '_py_decoder', t: t.of, prefix: prefix
+    echo ')'
+  endcase
+-%}
