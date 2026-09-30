@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - C++17 transports: bracketed IPv6 hosts (`[::1]:47000`) resolve, as in Python.
+- Inspectors: selects as tall as inputs and buttons; no separator above the first section.
 
 ## [0.1.0] - 2026-09-30
 
