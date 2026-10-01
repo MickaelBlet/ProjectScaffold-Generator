@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Editor tabs: the icons of view tabs (view, module view, Definitions) and the kind letter of editor tabs (T, I, M, L) are shown, and temporary views in italics; the tabs' own classes were dropped by dockview.
 - Explorer: the _New_ buttons of a section (Types) no longer cover its title in a narrow panel; they wrap below it.
 - Electron portable `.exe` (Windows): unpacks into a folder next to itself (removed on exit) instead of `%TEMP%`, where policies or antivirus may block running it; `%TEMP%` stays the fallback when its folder is read-only.
 - Code generation: the text filters (case filters, `doc_comment`) given an object or a list read it as JSON instead of `[object Object]`.
