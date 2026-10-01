@@ -178,6 +178,35 @@ types:
           of:
             kind: ref
             name: Tree
+  - kind: alias
+    name: Names
+    description: Bounded names
+    type:
+      kind: vector
+      of:
+        kind: primitive
+        name: string
+        max: 4
+      max: 3
+  - kind: struct
+    name: Badge
+    fields:
+      - name: code
+        type:
+          kind: primitive
+          name: string
+          max: 4
+      - name: marks
+        type:
+          kind: map
+          key:
+            kind: primitive
+            name: uint8
+          value:
+            kind: primitive
+            name: bytes
+            max: 2
+          max: 2
 interfaces:
   - name: Echo
     description: Every call sends its arguments back
@@ -271,6 +300,24 @@ interfaces:
           of:
             kind: primitive
             name: string
+      - name: names
+        params:
+          - name: names
+            type:
+              kind: ref
+              name: Names
+        returns:
+          kind: ref
+          name: Names
+      - name: badge
+        params:
+          - name: b
+            type:
+              kind: ref
+              name: Badge
+        returns:
+          kind: ref
+          name: Badge
   - name: Status
     messages:
       - name: report

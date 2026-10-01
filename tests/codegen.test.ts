@@ -232,9 +232,11 @@ describe('generation context', () => {
     const client = ctx.systems.find((s) => s.binary?.name === 'Client')!
     expect(client.proxies.map((r) => r.index)).toEqual([0, 1, 2, 3, 4, 5])
     expect(client.stubs.map((r) => [r.index, r.interface.name])).toEqual([[6, 'Status']])
-    // Through the fields of Sample and Tree, sorted by name.
+    // Through the parameters and the fields of Sample, Tree and Badge, sorted by name.
     expect(ctx.remoteTypes.map((t) => t.name)).toEqual([
+      'Badge',
       'Mode',
+      'Names',
       'Numbers',
       'Sample',
       'Samples',

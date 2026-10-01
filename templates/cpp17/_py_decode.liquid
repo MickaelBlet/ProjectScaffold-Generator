@@ -5,7 +5,11 @@
 {%- liquid
   case t.kind
   when 'primitive'
-    echo r | append: '.' | append: t.name | append: '()'
+    echo r | append: '.' | append: t.name | append: '('
+    if t.max
+      echo t.max
+    endif
+    echo ')'
   when 'ref'
     echo prefix | append: 'decode_' | append: t.name | append: '(' | append: r | append: ')'
   when 'array'
@@ -15,16 +19,25 @@
   when 'optional', 'set'
     echo r | append: '.' | append: t.kind | append: '('
     render '_py_decoder', t: t.of, prefix: prefix
+    if t.kind == 'set' and t.max
+      echo ', ' | append: t.max
+    endif
     echo ')'
   when 'map'
     echo r | append: '.map('
     render '_py_decoder', t: t.key, prefix: prefix
     echo ', '
     render '_py_decoder', t: t.value, prefix: prefix
+    if t.max
+      echo ', ' | append: t.max
+    endif
     echo ')'
   else
     echo r | append: '.seq('
     render '_py_decoder', t: t.of, prefix: prefix
+    if t.max
+      echo ', ' | append: t.max
+    endif
     echo ')'
   endcase
 -%}

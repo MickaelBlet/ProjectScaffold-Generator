@@ -39,6 +39,7 @@ types:
         type:
           kind: primitive
           name: string
+          max: 32
       - name: score
         type:
           kind: primitive
@@ -58,6 +59,7 @@ types:
       of:
         kind: ref
         name: Detection
+      max: 64
   - kind: struct
     name: Command
     fields:

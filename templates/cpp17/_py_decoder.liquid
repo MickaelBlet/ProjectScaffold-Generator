@@ -5,7 +5,12 @@
 {%- liquid
   case t.kind
   when 'primitive'
-    echo 'Reader.' | append: t.name
+    if t.max
+      echo 'lambda r: '
+      render '_py_decode', t: t, r: 'r', prefix: prefix
+    else
+      echo 'Reader.' | append: t.name
+    endif
   when 'ref'
     echo prefix | append: 'decode_' | append: t.name
   else

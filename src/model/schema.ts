@@ -20,13 +20,29 @@ const QualifiedName = z
 const Description = z.string().optional()
 const Metadata = z.record(z.string(), z.string()).optional()
 
+const Max = z.int().positive().optional()
+
 export const FileTypeRefSchema: z.ZodType<FileTypeRef> = z
   .lazy(() =>
     z.union([
-      z.object({ kind: z.literal('primitive'), name: z.enum(PRIMITIVES) }),
+      z.object({
+        kind: z.literal('primitive'),
+        name: z.enum(PRIMITIVES),
+        max: Max.describe('string, bytes: most UTF-8 bytes')
+      }),
       z.object({ kind: z.literal('array'), of: FileTypeRefSchema, size: z.int().positive() }),
-      z.object({ kind: z.enum(['vector', 'list', 'set', 'optional']), of: FileTypeRefSchema }),
-      z.object({ kind: z.literal('map'), key: FileTypeRefSchema, value: FileTypeRefSchema }),
+      z.object({
+        kind: z.enum(['vector', 'list', 'set']),
+        of: FileTypeRefSchema,
+        max: Max.describe('most items')
+      }),
+      z.object({ kind: z.literal('optional'), of: FileTypeRefSchema }),
+      z.object({
+        kind: z.literal('map'),
+        key: FileTypeRefSchema,
+        value: FileTypeRefSchema,
+        max: Max.describe('most entries')
+      }),
       z.object({ kind: z.literal('ref'), name: Identifier })
     ])
   )

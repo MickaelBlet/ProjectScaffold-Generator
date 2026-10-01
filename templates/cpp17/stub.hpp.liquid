@@ -41,16 +41,34 @@ public:
                 {% render '_type', t: p.type %} {% render '_id', name: p.name %}{};
 {% endfor %}
 {% for p in msg.inputs %}
-                decode(reader_, {% render '_id', name: p.name %});
+{% capture value %}{% render '_id', name: p.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: p.type, v: value, depth: 0 %}{% endcapture -%}
+{% # Decoded, then checked. %}
+                decode(reader_, {{ value }});
+{% if check != '' %}
+                {{ check }}
+{% endif %}
 {% endfor %}
                 reader_.end();
 {% if msg.returns %}
+{% capture check %}{% render '_bounds', t: msg.returns, v: 'result_', depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+                const auto result_ = target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %});
+                {{ check }}
+                encode(writer_, result_);
+{% else %}
                 encode(writer_, target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %}));
+{% endif %}
 {% else %}
                 target_->{% render '_id', name: msg.name %}({% render '_args', params: msg.params %});
 {% endif %}
 {% for p in msg.outputs %}
-                encode(writer_, {% render '_id', name: p.name %});
+{% capture value %}{% render '_id', name: p.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: p.type, v: value, depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+                {{ check }}
+{% endif %}
+                encode(writer_, {{ value }});
 {% endfor %}
                 return true;
             }

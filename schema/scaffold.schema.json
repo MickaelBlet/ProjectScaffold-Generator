@@ -849,6 +849,12 @@
                 "string",
                 "bytes"
               ]
+            },
+            "max": {
+              "description": "string, bytes: most UTF-8 bytes",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "required": [
@@ -886,9 +892,30 @@
               "enum": [
                 "vector",
                 "list",
-                "set",
-                "optional"
+                "set"
               ]
+            },
+            "of": {
+              "$ref": "#/$defs/TypeRef"
+            },
+            "max": {
+              "description": "most items",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "kind",
+            "of"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "optional"
             },
             "of": {
               "$ref": "#/$defs/TypeRef"
@@ -911,6 +938,12 @@
             },
             "value": {
               "$ref": "#/$defs/TypeRef"
+            },
+            "max": {
+              "description": "most entries",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "required": [

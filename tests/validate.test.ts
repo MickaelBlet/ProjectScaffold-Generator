@@ -56,6 +56,19 @@ describe('validate', () => {
     expect(messages(p)).toEqual(['Pose.orientation: map key must be a primitive or an enum'])
   })
 
+  it('bounds strings, bytes and containers only', () => {
+    const p = load()
+    delete type<StructDef>(p, 'Pose').fields[1]!.default
+    type<StructDef>(p, 'Pose').fields[1]!.type = {
+      kind: 'vector',
+      of: { kind: 'primitive', name: 'string', max: 8 },
+      max: 4
+    }
+    expect(messages(p)).toEqual([])
+    type<StructDef>(p, 'Pose').fields[1]!.type = { kind: 'primitive', name: 'int32', max: 8 }
+    expect(messages(p)).toEqual(['Pose.orientation: int32 cannot be bounded'])
+  })
+
   it('accepts enum map keys through aliases, warns on float keys', () => {
     const p = load()
     const mode = type<EnumDef>(p, 'Mode')

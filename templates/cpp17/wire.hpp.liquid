@@ -4,7 +4,8 @@
 // Wire format of the calls between binaries, shared with the Python peers (python/*/wire.py).
 // Little-endian; bool and char: 1 byte; string, bytes: u32 length + bytes; vector, list, set:
 // u32 count + items; array: its items; optional: u8 flag + value; map: u32 count + key, value;
-// struct: its fields in order; enum: its underlying type.
+// struct: its fields in order; enum: its underlying type. Bounds (`string<16>`, `vector<T, 8>`) are
+// checked when encoding and decoding.
 // Frame: 16-byte header (magic "SCF1", u8 kind, u8 flags, u16 message, u32 call id, u32 payload
 // length), then the payload: the inputs of a call, or the result then the outputs of a reply.
 
@@ -115,6 +116,14 @@ private:
 
 // encode(Writer&, const T&) and decode(Reader&, T&) for each type; those of the types of the
 // project are in codec.hpp.
+
+/// Throws when a string, bytes or container is over its bound (`string<16>`, `vector<T, 8>`).
+template <class T>
+void checkBound(const T& v, std::size_t max)
+{
+    if (v.size() > max)
+        throw Error("size " + std::to_string(v.size()) + " over the bound of " + std::to_string(max));
+}
 
 inline void encode(Writer& w, bool v) { w.number<std::uint8_t>(v ? 1 : 0); }
 inline void decode(Reader& r, bool& v) { v = r.number<std::uint8_t>() != 0; }

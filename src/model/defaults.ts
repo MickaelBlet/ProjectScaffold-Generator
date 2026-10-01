@@ -176,6 +176,11 @@ export function valueErrors(v: Value, t: TypeRef, types: readonly TypeDef[]): st
       case 'primitive': {
         const e = primitiveError(v, t.name)
         if (e) at(path, e)
+        else if (t.max !== undefined && typeof v === 'string') {
+          // Bytes: one per character, as generators write them.
+          const size = t.name === 'bytes' ? [...v].length : new TextEncoder().encode(v).length
+          if (size > t.max) at(path, `${size} bytes, more than the bound of ${t.max}`)
+        }
         return
       }
       case 'optional':
@@ -188,6 +193,8 @@ export function valueErrors(v: Value, t: TypeRef, types: readonly TypeDef[]): st
         if (!Array.isArray(v)) return at(path, `Expected a list, got ${describe(v)}`)
         if (t.kind === 'array' && v.length !== t.size)
           at(path, `Expected ${t.size} elements, got ${v.length}`)
+        if (t.kind !== 'array' && t.max !== undefined && v.length > t.max)
+          at(path, `${v.length} elements, more than the bound of ${t.max}`)
         v.forEach((e, i) => check(e, t.of, `${path}[${i}]`, seen))
         if (t.kind === 'set') {
           const texts = v.map(formatValue)
@@ -197,6 +204,8 @@ export function valueErrors(v: Value, t: TypeRef, types: readonly TypeDef[]): st
       }
       case 'map':
         if (!isMapping(v)) return at(path, `Expected a mapping, got ${describe(v)}`)
+        if (t.max !== undefined && Object.keys(v).length > t.max)
+          at(path, `${Object.keys(v).length} entries, more than the bound of ${t.max}`)
         for (const [k, e] of Object.entries(v)) {
           check(key(k, t.key), t.key, `${path}[${k}]`, seen)
           check(e, t.value, `${path}[${k}]`, seen)

@@ -52,6 +52,12 @@ class Echo(EchoHandler):
     def pick(self, m, key):
         return m.get(key)
 
+    def names(self, names):
+        return names
+
+    def badge(self, b):
+        return b
+
 
 def full(raw_size: int) -> data.Sample:
     return data.Sample(
@@ -91,6 +97,18 @@ def call(proxy: EchoProxy, transport: str) -> None:
     m = {data.Mode.Idle: 'i', data.Mode.Run: None}
     check('pick', proxy.pick(m, data.Mode.Idle) == 'i')
     check('pick none', proxy.pick(m, data.Mode.Run) is None and proxy.pick(m, data.Mode.Fault) is None)
+    check('bounds', proxy.names(['a', 'bcde']) == ['a', 'bcde'])
+    badge = data.Badge('ab', {1: b'\x07\x08'})
+    check('bounds of fields', proxy.badge(badge) == badge)
+    for what, bad in [('bound of a string', lambda: proxy.names(['abcde'])),
+                      ('bound of a vector', lambda: proxy.names(['a', 'b', 'c', 'd'])),
+                      ('bound of a field', lambda: proxy.badge(data.Badge('abcde', {}))),
+                      ('bound of a map value', lambda: proxy.badge(data.Badge('a', {1: b'123'})))]:
+        try:
+            bad()
+            check(what, False)
+        except RemoteError as e:
+            check(what, 'over the bound' in str(e))
 
 
 def main() -> int:

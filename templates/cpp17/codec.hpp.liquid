@@ -24,7 +24,12 @@ inline void decode(Reader& r, {% render '_qualified', e: t %}& v);
 inline void encode(Writer& w, const {% render '_qualified', e: t %}& v)
 {
 {% for f in t.fields %}
-    encode(w, v.{% render '_id', name: f.name %});
+{% capture value %}v.{% render '_id', name: f.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: f.type, v: value, depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+    {{ check }}
+{% endif %}
+    encode(w, {{ value }});
 {% else %}
     (void)w;
     (void)v;
@@ -34,7 +39,13 @@ inline void encode(Writer& w, const {% render '_qualified', e: t %}& v)
 inline void decode(Reader& r, {% render '_qualified', e: t %}& v)
 {
 {% for f in t.fields %}
-    decode(r, v.{% render '_id', name: f.name %});
+{% capture value %}v.{% render '_id', name: f.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: f.type, v: value, depth: 0 %}{% endcapture -%}
+{% # Decoded, then checked. %}
+    decode(r, {{ value }});
+{% if check != '' %}
+    {{ check }}
+{% endif %}
 {% else %}
     (void)r;
     (void)v;

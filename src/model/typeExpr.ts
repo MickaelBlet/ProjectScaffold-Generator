@@ -1,10 +1,19 @@
-// Textual type expressions, e.g. `map<string, vector<uint16>>`, `array<Vec3, 4>`.
-import { CONTAINERS, PRIMITIVES, type Primitive, type TypeRef, type TypeRefOf } from './types'
+// Textual type expressions, e.g. `map<string, vector<uint16>>`, `array<Vec3, 4>`; bounds:
+// `string<16>`, `bytes<16>`, `vector<T, 8>` (also list and set), `map<K, V, 8>`.
+import {
+  BOUNDED_PRIMITIVES,
+  CONTAINERS,
+  PRIMITIVES,
+  type Primitive,
+  type TypeRef,
+  type TypeRefOf
+} from './types'
 import type { FileTypeRef } from './schema'
 
 export class TypeExprError extends Error {}
 
 const PRIMITIVE_SET = new Set<string>(PRIMITIVES)
+const BOUNDED_SET = new Set<string>(BOUNDED_PRIMITIVES)
 const RESERVED = new Set<string>([...PRIMITIVES, ...CONTAINERS])
 
 export function isReservedTypeName(name: string): boolean {
@@ -39,16 +48,41 @@ export function parseTypeExpr(src: string): FileTypeRef {
     i++
   }
 
+  const size = (what: string): number => {
+    const n = tokens[i++]
+    if (!n || n.kind !== 'int') throw new TypeExprError(`Expected ${what}`)
+    const size = Number(n.text)
+    if (size <= 0) throw new TypeExprError(`${what.charAt(0).toUpperCase()}${what.slice(1)} must be > 0`)
+    return size
+  }
+  /** `, N>` or `>`: the bound, if any. */
+  const bound = (): { max?: number } => {
+    const max = peek()?.text === ',' ? (i++, size('bound')) : undefined
+    expect('>')
+    return max === undefined ? {} : { max }
+  }
+
   const parseType = (): FileTypeRef => {
     const t = tokens[i++]
     if (!t) throw new TypeExprError('Expected a type')
     if (t.kind !== 'ident') throw new TypeExprError(`Expected a type but found '${t.text}'`)
     const name = t.text
-    if (PRIMITIVE_SET.has(name)) return { kind: 'primitive', name: name as Primitive }
+    if (PRIMITIVE_SET.has(name)) {
+      if (!(BOUNDED_SET.has(name) && peek()?.text === '<'))
+        return { kind: 'primitive', name: name as Primitive }
+      i++
+      const max = size('bound')
+      expect('>')
+      return { kind: 'primitive', name: name as Primitive, max }
+    }
     switch (name) {
       case 'vector':
       case 'list':
-      case 'set':
+      case 'set': {
+        expect('<')
+        const of = parseType()
+        return { kind: name, of, ...bound() }
+      }
       case 'optional': {
         expect('<')
         const of = parseType()
@@ -59,20 +93,16 @@ export function parseTypeExpr(src: string): FileTypeRef {
         expect('<')
         const of = parseType()
         expect(',')
-        const n = tokens[i++]
-        if (!n || n.kind !== 'int') throw new TypeExprError('Expected array size')
-        const size = Number(n.text)
-        if (size <= 0) throw new TypeExprError('Array size must be > 0')
+        const n = size('array size')
         expect('>')
-        return { kind: 'array', of, size }
+        return { kind: 'array', of, size: n }
       }
       case 'map': {
         expect('<')
         const key = parseType()
         expect(',')
         const value = parseType()
-        expect('>')
-        return { kind: 'map', key, value }
+        return { kind: 'map', key, value, ...bound() }
       }
       default:
         return { kind: 'ref', name }
@@ -89,16 +119,22 @@ export function parseTypeExpr(src: string): FileTypeRef {
 export function printTypeExpr(t: FileTypeRef): string {
   switch (t.kind) {
     case 'primitive':
-      return t.name
+      return t.max === undefined ? t.name : `${t.name}<${t.max}>`
     case 'ref':
       return t.name
     case 'array':
       return `array<${printTypeExpr(t.of)}, ${t.size}>`
     case 'map':
-      return `map<${printTypeExpr(t.key)}, ${printTypeExpr(t.value)}>`
+      return `map<${printTypeExpr(t.key)}, ${printTypeExpr(t.value)}${printBound(t.max)}>`
+    case 'optional':
+      return `optional<${printTypeExpr(t.of)}>`
     default:
-      return `${t.kind}<${printTypeExpr(t.of)}>`
+      return `${t.kind}<${printTypeExpr(t.of)}${printBound(t.max)}>`
   }
+}
+
+function printBound(max: number | undefined): string {
+  return max === undefined ? '' : `, ${max}`
 }
 
 /** Rewrite the user-type references of a type tree. */
@@ -114,14 +150,16 @@ export function mapTypeRef<A, B>(
     case 'array':
       return { kind: 'array', of: mapTypeRef(t.of, f), size: t.size }
     case 'map':
-      return { kind: 'map', key: mapTypeRef(t.key, f), value: mapTypeRef(t.value, f) }
+      return { ...t, key: mapTypeRef(t.key, f), value: mapTypeRef(t.value, f) }
+    case 'optional':
+      return { kind: 'optional', of: mapTypeRef(t.of, f) }
     default:
-      return { kind: t.kind, of: mapTypeRef(t.of, f) }
+      return { ...t, of: mapTypeRef(t.of, f) }
   }
 }
 
 /** Visit every node of a type tree. */
-export function walkTypeRef<R>(t: TypeRefOf<R>, visit: (node: TypeRefOf<R>) => void): void {
+export function walkTypeRef<R, M>(t: TypeRefOf<R, M>, visit: (node: TypeRefOf<R, M>) => void): void {
   visit(t)
   switch (t.kind) {
     case 'array':

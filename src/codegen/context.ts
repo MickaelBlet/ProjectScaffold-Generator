@@ -26,8 +26,26 @@ import type {
 
 export type TypeKind = FileTypeDef['kind']
 
-/** Type reference with the kind and owner of the user types it names. */
-export type GenTypeRef = TypeRefOf<{ name: string; typeKind: TypeKind; dependency: string | null }>
+/** Type reference with the kind and owner of the user types it names; `max`: null when unbounded. */
+export type GenTypeRef = TypeRefOf<GenRefTarget, number | null>
+type GenRefTarget = { name: string; typeKind: TypeKind; dependency: string | null }
+
+/** Every bound present, for the templates: null when none. */
+function withBounds(t: TypeRefOf<GenRefTarget>): GenTypeRef {
+  switch (t.kind) {
+    case 'primitive':
+      return { ...t, max: t.max ?? null }
+    case 'ref':
+      return t
+    case 'array':
+    case 'optional':
+      return { ...t, of: withBounds(t.of) }
+    case 'map':
+      return { ...t, key: withBounds(t.key), value: withBounds(t.value), max: t.max ?? null }
+    default:
+      return { ...t, of: withBounds(t.of), max: t.max ?? null }
+  }
+}
 
 interface Owned {
   /** Name of the dependency defining it; null for the project's own ones. */
@@ -324,15 +342,17 @@ export function buildContext(file: FileProject): GenContext {
       if (!typeOwner.has(t.name)) typeOwner.set(t.name, { kind: t.kind, dependency: d.name })
 
   const ref = (t: TypeRefOf<{ name: string }>): GenTypeRef =>
-    mapTypeRef(t, (r) => {
-      const owner = typeOwner.get(r.name)
-      return {
-        kind: 'ref',
-        name: r.name,
-        typeKind: owner?.kind ?? 'primitive',
-        dependency: owner?.dependency ?? null
-      }
-    })
+    withBounds(
+      mapTypeRef(t, (r) => {
+        const owner = typeOwner.get(r.name)
+        return {
+          kind: 'ref',
+          name: r.name,
+          typeKind: owner?.kind ?? 'primitive',
+          dependency: owner?.dependency ?? null
+        }
+      })
+    )
 
   const field = (f: {
     name: string

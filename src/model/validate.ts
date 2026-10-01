@@ -73,6 +73,8 @@ export function validate(p: Project): Problem[] {
   const checkTypeRef = (t: TypeRef, target: ProblemTarget, where: string): void => {
     walkTypeRef(t, (n) => {
       if (n.kind === 'ref' && !types.has(n.id)) push('error', target, `${where}: references a deleted type`)
+      if (n.kind === 'primitive' && n.max !== undefined && n.name !== 'string' && n.name !== 'bytes')
+        push('error', target, `${where}: ${n.name} cannot be bounded`)
       const keyOf = n.kind === 'map' ? n.key : n.kind === 'set' ? n.of : null
       if (!keyOf) return
       const k = resolve(keyOf)

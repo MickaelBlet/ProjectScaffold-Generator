@@ -25,7 +25,12 @@ public:
     {
         Writer request_;
 {% for p in msg.inputs %}
-        encode(request_, {% render '_id', name: p.name %});
+{% capture value %}{% render '_id', name: p.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: p.type, v: value, depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+        encode(request_, {{ value }});
 {% endfor %}
 {% if msg.returns or msg.outputs.size > 0 %}
         const Bytes reply_ = caller_.call({{ forloop.index0 }}, request_.bytes(), true);
@@ -33,9 +38,19 @@ public:
 {% if msg.returns %}
         {% render '_type', t: msg.returns %} result_{};
         decode(reader_, result_);
+{% capture check %}{% render '_bounds', t: msg.returns, v: 'result_', depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+        {{ check }}
+{% endif %}
 {% endif %}
 {% for p in msg.outputs %}
-        decode(reader_, {% render '_id', name: p.name %});
+{% capture value %}{% render '_id', name: p.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: p.type, v: value, depth: 0 %}{% endcapture -%}
+{% # Decoded, then checked. %}
+        decode(reader_, {{ value }});
+{% if check != '' %}
+        {{ check }}
+{% endif %}
 {% endfor %}
         reader_.end();
 {% if msg.returns %}

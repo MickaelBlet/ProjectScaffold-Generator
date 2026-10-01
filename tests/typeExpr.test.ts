@@ -11,7 +11,12 @@ describe('type expressions', () => {
     'set<Mode>',
     'array<float64, 4>',
     'map<string, vector<uint16>>',
-    'map<uint32, map<string, array<Vec3, 3>>>'
+    'map<uint32, map<string, array<Vec3, 3>>>',
+    'string<16>',
+    'bytes<4>',
+    'vector<string<8>, 4>',
+    'set<uint8, 2>',
+    'map<string<8>, list<Vec3, 3>, 10>'
   ]
   it.each(cases)('round-trips %s', (src) => {
     expect(printTypeExpr(parseTypeExpr(src))).toBe(src)
@@ -38,11 +43,24 @@ describe('type expressions', () => {
     'map<string>',
     'array<uint8>',
     'array<uint8, 0>',
+    'vector<uint8, 0>',
+    'optional<uint8, 2>',
+    'string<>',
     'uint8 x',
     'vector<uint8',
     'a$b'
   ])('rejects %j', (src) => {
     expect(() => parseTypeExpr(src)).toThrow(TypeExprError)
+  })
+
+  it('keeps bounds through user type rewrites', () => {
+    const ref = parseTypeRef('map<string<8>, vector<Vec3, 2>, 5>', () => 'id-vec3')
+    expect(ref).toEqual({
+      kind: 'map',
+      key: { kind: 'primitive', name: 'string', max: 8 },
+      value: { kind: 'vector', of: { kind: 'ref', id: 'id-vec3' }, max: 2 },
+      max: 5
+    })
   })
 
   it('resolves user types to ids', () => {

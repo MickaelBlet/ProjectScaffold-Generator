@@ -36,6 +36,7 @@ partials:
   - _endpoint.liquid
   - _main.liquid
   - _value.liquid
+  - _bounds.liquid
   - _generated_transport.liquid
   - _address.liquid
   - _address_variable.liquid

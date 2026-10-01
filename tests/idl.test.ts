@@ -96,7 +96,7 @@ describe('IDL import', () => {
       ['y', 'float64', undefined],
       ['z', 'float64', undefined],
       ['heading', 'optional<float32>', 'degrees'],
-      ['frame', 'string', undefined]
+      ['frame', 'string<16>', undefined]
     ])
     expect(fields(idl, 'Payload')).toEqual(['int32 discriminator', 'optional<int32> a', 'optional<string> b'])
     const payload = typeNamed(idl, 'Payload')
@@ -235,7 +235,7 @@ describe('IDL import', () => {
        import "../common/types.idl";`,
       { file: '/idl/robot/main.idl', files }
     )
-    expect(alias(t, 'Stamps')).toBe('vector<Stamp>')
+    expect(alias(t, 'Stamps')).toBe('vector<Stamp, 8>')
     expect(typeNamed(t, 'Wrong')).toBeUndefined()
     expect(typeNamed(t, 'Wrong2')).toBeUndefined()
     expect(alias(t, 'id_t')).toBe('int32')

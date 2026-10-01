@@ -65,6 +65,10 @@ public:
         return it == m.end() ? std::nullopt : it->second;
     }
 
+    Names names(const Names& names) override { return names; }
+
+    Badge badge(const Badge& b) override { return b; }
+
 private:
     std::mutex mutex_;
     std::string last_;
@@ -140,6 +144,22 @@ int call(EchoProxy& proxy, const std::string& transport)
     const std::map<Mode, std::optional<std::string>> m{{Mode::Idle, "i"}, {Mode::Run, std::nullopt}};
     check("pick", proxy.pick(m, Mode::Idle) == std::optional<std::string>("i"));
     check("pick none", !proxy.pick(m, Mode::Run) && !proxy.pick(m, Mode::Fault));
+
+    check("bounds", proxy.names({"a", "bcde"}) == Names{"a", "bcde"});
+    const Badge badge{"ab", {{1, {7, 8}}}};
+    check("bounds of fields", bytes(proxy.badge(badge)) == bytes(badge));
+    const auto rejected = [](const char* what, auto&& call) {
+        try {
+            call();
+            check(what, false);
+        } catch (const remote::Error& e) {
+            check(what, std::strstr(e.what(), "over the bound") != nullptr);
+        }
+    };
+    rejected("bound of a string", [&] { proxy.names({"abcde"}); });
+    rejected("bound of a vector", [&] { proxy.names({"a", "b", "c", "d"}); });
+    rejected("bound of a field", [&] { proxy.badge(Badge{"abcde", {}}); });
+    rejected("bound of a map value", [&] { proxy.badge(Badge{"a", {{1, {1, 2, 3}}}}); });
     return failures ? 1 : 0;
 }
 

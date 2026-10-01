@@ -981,6 +981,12 @@ class Parser {
     return n
   }
 
+  /** Bound of a string, sequence or map, up to `>`; none when 0. */
+  private bound(): { max?: number } {
+    const n = this.count('>')
+    return n > 0 ? { max: n } : {}
+  }
+
   // Annotations
 
   private annotations(): Annotation[] {
@@ -1925,18 +1931,23 @@ class Parser {
         this.next()
         return prim('char')
       case 'string':
-      case 'wstring':
+      case 'wstring': {
         this.next()
-        if (this.is('<')) this.balanced('<', '>')
-        return prim('string')
+        if (!this.accept('<')) return prim('string')
+        const max = this.bound()
+        this.expect('>')
+        return { ...prim('string'), ...max }
+      }
       case 'sequence': {
         if (!template) break
         this.next()
         this.expect('<')
         const of = this.typeSpec()
-        if (this.accept(',')) this.count('>')
+        const max = this.accept(',') ? this.bound() : {}
         this.expect('>')
-        return of.kind === 'primitive' && of.name === 'uint8' ? prim('bytes') : { kind: 'vector', of }
+        return of.kind === 'primitive' && of.name === 'uint8'
+          ? { ...prim('bytes'), ...max }
+          : { kind: 'vector', of, ...max }
       }
       case 'map': {
         if (!template) break
@@ -1945,9 +1956,9 @@ class Parser {
         const key = this.typeSpec()
         this.expect(',')
         const value = this.typeSpec()
-        if (this.accept(',')) this.count('>')
+        const max = this.accept(',') ? this.bound() : {}
         this.expect('>')
-        return { kind: 'map', key, value }
+        return { kind: 'map', key, value, ...max }
       }
       case 'fixed':
         this.next()

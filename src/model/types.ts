@@ -37,12 +37,20 @@ export const INT_RANGES: Record<IntPrimitive, [bigint, bigint]> = {
   uint64: [0n, 2n ** 64n - 1n]
 }
 
-/** Type reference, parameterised by how user types are referenced (`{id}` in memory, `{name}` on disk). */
-export type TypeRefOf<R> =
-  | { kind: 'primitive'; name: Primitive }
-  | { kind: 'array'; of: TypeRefOf<R>; size: number }
-  | { kind: 'vector' | 'list' | 'set' | 'optional'; of: TypeRefOf<R> }
-  | { kind: 'map'; key: TypeRefOf<R>; value: TypeRefOf<R> }
+/** Primitives that may be bounded (`string<16>`). */
+export const BOUNDED_PRIMITIVES = ['string', 'bytes'] as const
+
+/**
+ * Type reference, parameterised by how user types are referenced (`{id}` in memory, `{name}` on disk).
+ * `max`: bound of a string or bytes (UTF-8 bytes), or of the items of a vector, list, set or map;
+ * `M` lets generators write null for none.
+ */
+export type TypeRefOf<R, M = number> =
+  | { kind: 'primitive'; name: Primitive; max?: M }
+  | { kind: 'array'; of: TypeRefOf<R, M>; size: number }
+  | { kind: 'vector' | 'list' | 'set'; of: TypeRefOf<R, M>; max?: M }
+  | { kind: 'optional'; of: TypeRefOf<R, M> }
+  | { kind: 'map'; key: TypeRefOf<R, M>; value: TypeRefOf<R, M>; max?: M }
   | ({ kind: 'ref' } & R)
 
 export type TypeRef = TypeRefOf<{ id: string }>

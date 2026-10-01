@@ -3,7 +3,8 @@
 
 Little-endian; bool and char: 1 byte; string, bytes: u32 length + bytes; vector, list, set:
 u32 count + items; array: its items; optional: u8 flag + value; map: u32 count + key, value;
-struct: its fields in order; enum: its underlying type.
+struct: its fields in order; enum: its underlying type. Bounds (`string<16>`, `vector<T, 8>`): the
+`bound` arguments, checked when encoding and decoding.
 Frame: 16-byte header (magic "SCF1", u8 kind, u8 flags, u16 message, u32 call id, u32 payload
 length), then the payload: the inputs of a call, or the result then the outputs of a reply.
 """
@@ -31,6 +32,11 @@ _FORMATS = {
     'int64': 'q', 'uint64': 'Q', 'float32': 'f', 'float64': 'd',
 }
 _STRUCTS = {name: struct.Struct('<' + f) for name, f in _FORMATS.items()}
+
+
+def _check(size: int, bound: Optional[int]) -> None:
+    if bound is not None and size > bound:
+        raise RemoteError(f'size {size} over the bound of {bound}')
 
 
 class Writer:
@@ -62,15 +68,17 @@ class Writer:
     def float32(self, value: float) -> None: self._number('float32', value)
     def float64(self, value: float) -> None: self._number('float64', value)
 
-    def string(self, value: str) -> None:
-        self.bytes(value.encode('utf-8'))
+    def string(self, value: str, bound: Optional[int] = None) -> None:
+        self.bytes(value.encode('utf-8'), bound)
 
-    def bytes(self, value: bytes) -> None:
+    def bytes(self, value: bytes, bound: Optional[int] = None) -> None:
+        _check(len(value), bound)
         self.uint32(len(value))
         self.data += value
 
-    def seq(self, items: Any, encode: Callable[[Writer, Any], None]) -> None:
+    def seq(self, items: Any, encode: Callable[[Writer, Any], None], bound: Optional[int] = None) -> None:
         """vector, list, set: count, then the items."""
+        _check(len(items), bound)
         self.uint32(len(items))
         for x in items:
             encode(self, x)
@@ -88,7 +96,9 @@ class Writer:
             self.data.append(1)
             encode(self, value)
 
-    def map(self, value: Dict[Any, Any], key: Callable[[Writer, Any], None], item: Callable[[Writer, Any], None]) -> None:
+    def map(self, value: Dict[Any, Any], key: Callable[[Writer, Any], None], item: Callable[[Writer, Any], None],
+            bound: Optional[int] = None) -> None:
+        _check(len(value), bound)
         self.uint32(len(value))
         for k, v in value.items():
             key(self, k)
@@ -130,17 +140,22 @@ class Reader:
     def float32(self) -> float: return self._number('float32')
     def float64(self) -> float: return self._number('float64')
 
-    def string(self) -> str:
-        return self.bytes().decode('utf-8')
+    def _count(self, bound: Optional[int]) -> int:
+        n = self.uint32()
+        _check(n, bound)
+        return n
 
-    def bytes(self) -> bytes:
-        return self._take(self.uint32())
+    def string(self, bound: Optional[int] = None) -> str:
+        return self.bytes(bound).decode('utf-8')
 
-    def seq(self, decode: Callable[[Reader], Any]) -> List[Any]:
-        return [decode(self) for _ in range(self.uint32())]
+    def bytes(self, bound: Optional[int] = None) -> bytes:
+        return self._take(self._count(bound))
 
-    def set(self, decode: Callable[[Reader], Any]) -> Set[Any]:
-        return {decode(self) for _ in range(self.uint32())}
+    def seq(self, decode: Callable[[Reader], Any], bound: Optional[int] = None) -> List[Any]:
+        return [decode(self) for _ in range(self._count(bound))]
+
+    def set(self, decode: Callable[[Reader], Any], bound: Optional[int] = None) -> Set[Any]:
+        return {decode(self) for _ in range(self._count(bound))}
 
     def array(self, size: int, decode: Callable[[Reader], Any]) -> List[Any]:
         return [decode(self) for _ in range(size)]
@@ -148,9 +163,10 @@ class Reader:
     def optional(self, decode: Callable[[Reader], Any]) -> Any:
         return decode(self) if self._take(1) != b'\0' else None
 
-    def map(self, key: Callable[[Reader], Any], item: Callable[[Reader], Any]) -> Dict[Any, Any]:
+    def map(self, key: Callable[[Reader], Any], item: Callable[[Reader], Any],
+            bound: Optional[int] = None) -> Dict[Any, Any]:
         out = {}
-        for _ in range(self.uint32()):
+        for _ in range(self._count(bound)):
             k = key(self)
             out[k] = item(self)
         return out

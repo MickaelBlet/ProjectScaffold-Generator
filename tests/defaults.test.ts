@@ -107,6 +107,20 @@ describe('default values', () => {
     expect(errors('[{x: 1}]', { kind: 'vector', of: ref('Vec') })).toEqual(["[0]: Missing field 'y' of Vec"])
   })
 
+  it('checks bounds', () => {
+    const name: TypeRef = { kind: 'primitive', name: 'string', max: 3 }
+    expect(errors('abc', name)).toEqual([])
+    expect(errors('abcd', name)).toEqual(['4 bytes, more than the bound of 3'])
+    expect(errors('été', name)).toEqual(['5 bytes, more than the bound of 3'])
+    expect(errors('[1, 2, 3]', { kind: 'vector', of: prim('uint8'), max: 2 })).toEqual([
+      '3 elements, more than the bound of 2'
+    ])
+    expect(
+      errors('{a: 1, b: 2}', { kind: 'map', key: prim('string'), value: prim('uint8'), max: 1 })
+    ).toEqual(['2 entries, more than the bound of 1'])
+    expect(errors('[abcd]', { kind: 'list', of: name })).toEqual(['[0]: 4 bytes, more than the bound of 3'])
+  })
+
   it('keeps custom primitive values opaque', () => {
     expect(errors('std::chrono::milliseconds(10)', ref('Duration'))).toEqual([])
     expect(errors('{ms: 10}', ref('Duration'))).toEqual([])
