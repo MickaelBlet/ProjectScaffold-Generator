@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Inspectors: lists of fields, parameters, attributes, constants and union cases size their columns by their content and the room left instead of fixed percentages, and wrap a long entry onto several lines when the inspector is narrow (the default value, then the type, below the name); narrow inspectors put labels above their value. The Definitions view and editor tabs use their full width.
+- Inspectors: lists of fields, parameters, attributes, constants and union cases size their columns by their content and the room left instead of fixed percentages, and wrap a long entry onto several lines when the inspector is narrow (the default value, then the type, below the name), separated by a line; narrow inspectors put labels above their value. The Definitions view and editor tabs use their full width.
 - Explorer: sections in the order views, binaries, dependencies, constants, types, interfaces, modules, links by default (_Reset sections_ applies it to a saved order); the Definitions view follows it.
 - VS Code: project files (`*.scaffold.{yaml,yml,json}`) open in the full diagram editor by default; the text, with its preview, through _Show Source_ or _Reopen Editor With… › Text Editor_.
 - Workspaces (browser and desktop apps): the folders picked to read a workspace are remembered, and a workspace file inside one of them (at any depth) opens without picking its folder again; picking a folder above the workspace file is accepted.
