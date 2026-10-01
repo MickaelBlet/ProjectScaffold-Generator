@@ -138,6 +138,14 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           underlying: t.underlying,
           values: t.values.map((v) => ({ name: v.name, value: v.value }))
         }
+      case 'bitmask':
+        return {
+          kind: 'bitmask',
+          name: t.name,
+          description: opt(t.description),
+          underlying: t.underlying,
+          flags: t.flags.map((v) => ({ name: v.name, bit: v.bit }))
+        }
       case 'alias':
         return { kind: 'alias', name: t.name, description: opt(t.description), type: ref(t.type) }
       case 'primitive':
@@ -465,6 +473,15 @@ export function fromFile(data: unknown, prev?: Project): Project {
           kind: 'enum',
           underlying: t.underlying,
           values: t.values.map((v, j) => ({ id: values[j]?.id ?? newId(), name: v.name, value: v.value }))
+        }
+      }
+      case 'bitmask': {
+        const flags = named(was?.kind === 'bitmask' ? was.flags : [], t.flags)
+        return {
+          ...base,
+          kind: 'bitmask',
+          underlying: t.underlying,
+          flags: t.flags.map((v, j) => ({ id: flags[j]?.id ?? newId(), name: v.name, bit: v.bit }))
         }
       }
       case 'alias':

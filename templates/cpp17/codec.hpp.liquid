@@ -8,7 +8,7 @@
 {% user 'includes' %}
 {% enduser %}
 
-// Encoding of the types of the calls between binaries (enums and aliases need none: see wire.hpp).
+// Encoding of the types of the calls between binaries (enums, bitmasks and aliases need none: see wire.hpp).
 namespace {{ project.ident | snake }}::remote {
 
 {% for t in remoteTypes %}

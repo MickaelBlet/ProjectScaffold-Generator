@@ -24,6 +24,33 @@ enum class {% render '_name', e: item %} : {% render '_primitive', name: item.un
     {% render '_id', name: v.name %} = {{ v.value }},
 {% endfor %}
 };
+{% when 'bitmask' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+{% capture bits %}{% render '_primitive', name: item.underlying %}{% endcapture -%}
+enum class {{ name }} : {{ bits }} {
+{% for f in item.flags %}
+    {% render '_id', name: f.name %} = {{ bits }}{1} << {{ f.bit }},
+{% endfor %}
+};
+
+constexpr {{ name }} operator|({{ name }} a, {{ name }} b)
+{
+    return static_cast<{{ name }}>(static_cast<{{ bits }}>(a) | static_cast<{{ bits }}>(b));
+}
+constexpr {{ name }} operator&({{ name }} a, {{ name }} b)
+{
+    return static_cast<{{ name }}>(static_cast<{{ bits }}>(a) & static_cast<{{ bits }}>(b));
+}
+constexpr {{ name }} operator^({{ name }} a, {{ name }} b)
+{
+    return static_cast<{{ name }}>(static_cast<{{ bits }}>(a) ^ static_cast<{{ bits }}>(b));
+}
+constexpr {{ name }} operator~({{ name }} a) { return static_cast<{{ name }}>(~static_cast<{{ bits }}>(a)); }
+constexpr {{ name }}& operator|=({{ name }}& a, {{ name }} b) { return a = a | b; }
+constexpr {{ name }}& operator&=({{ name }}& a, {{ name }} b) { return a = a & b; }
+constexpr {{ name }}& operator^=({{ name }}& a, {{ name }} b) { return a = a ^ b; }
+/// True when every flag of `flags` is set in `value`.
+constexpr bool has({{ name }} value, {{ name }} flags) { return (value & flags) == flags; }
 {% when 'alias' %}
 using {% render '_name', e: item %} = {% render '_type', t: item.type %};
 {% when 'primitive' %}

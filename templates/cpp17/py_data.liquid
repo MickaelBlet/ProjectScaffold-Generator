@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field as _field
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 from typing import Any, Dict, List, Optional, Set
 
 from .wire import Reader, Writer, enum
@@ -18,6 +18,16 @@ class {% render '_py_id', name: t.name %}(IntEnum):
 {{ t.description | doc_comment: '    # ' }}
 {% for v in t.values %}
     {% render '_py_id', name: v.name %} = {{ v.value }}
+{% else %}
+    pass
+{% endfor %}
+{% when 'bitmask' %}
+
+
+class {% render '_py_id', name: t.name %}(IntFlag):
+{{ t.description | doc_comment: '    # ' }}
+{% for f in t.flags %}
+    {% render '_py_id', name: f.name %} = {{ f.value }}
 {% else %}
     pass
 {% endfor %}
@@ -46,6 +56,15 @@ def encode_{{ t.name }}(w: Writer, v: int) -> None:
 
 def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
     return enum({% render '_py_id', name: t.name %}, r.{{ t.underlying }}())
+{% when 'bitmask' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: int) -> None:
+    w.{{ t.underlying }}(int(v))
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    return {% render '_py_id', name: t.name %}(r.{{ t.underlying }}())
 {% when 'struct' %}
 
 

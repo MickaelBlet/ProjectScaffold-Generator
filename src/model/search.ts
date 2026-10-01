@@ -64,6 +64,7 @@ export function searchProject(p: Project, query: string): SearchHit[] {
         check(target, `${t.name}.${f.name}`, 'field description', f.description)
       }
     if (t.kind === 'enum') for (const v of t.values) check(target, `${t.name}.${v.name}`, 'value', v.name)
+    if (t.kind === 'bitmask') for (const v of t.flags) check(target, `${t.name}.${v.name}`, 'flag', v.name)
   }
   for (const i of p.interfaces) {
     const target = { kind: 'interface', id: i.id } as const

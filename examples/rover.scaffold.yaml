@@ -10,6 +10,19 @@ binaries:
     description: Runs on the ground station
     color: "#4f9ed1"
 types:
+  - kind: bitmask
+    name: Channels
+    description: Color channels of an image
+    underlying: uint8
+    flags:
+      - name: Red
+        bit: 0
+      - name: Green
+        bit: 1
+      - name: Blue
+        bit: 2
+      - name: Depth
+        bit: 3
   - kind: struct
     name: Frame
     description: Camera image
@@ -28,6 +41,14 @@ types:
           kind: primitive
           name: uint16
         default: 480
+      - name: channels
+        type:
+          kind: ref
+          name: Channels
+        default:
+          - Red
+          - Green
+          - Blue
       - name: pixels
         type:
           kind: primitive

@@ -310,6 +310,7 @@ describe('IDL import', () => {
       @annotation Units { string value; };
       @bit_bound(8) enum Small { @value(1) ONE, TWO };
       @bit_bound(16) bitmask Flags { A, @position(9) B };
+      bitmask Big { A, @position(63) TOP };
       @final @topic
       struct S {
         @key @default(3) long count;
@@ -320,9 +321,14 @@ describe('IDL import', () => {
     `)
     expect(typeNamed(t, 'Small')).toMatchObject({ underlying: 'uint8', values: [{ value: 1 }, { value: 2 }] })
     expect(typeNamed(t, 'Flags')).toMatchObject({
+      kind: 'bitmask',
       underlying: 'uint16',
-      values: [{ value: 1 }, { value: 512 }]
+      flags: [
+        { name: 'A', bit: 0 },
+        { name: 'B', bit: 9 }
+      ]
     })
+    expect(typeNamed(t, 'Big')).toMatchObject({ underlying: 'uint64', flags: [{ bit: 0 }, { bit: 63 }] })
     const s = typeNamed(t, 'S')
     expect(s?.kind === 'struct' && s.fields.map((f) => [f.name, f.default, f.description])).toEqual([
       ['count', 3, undefined],

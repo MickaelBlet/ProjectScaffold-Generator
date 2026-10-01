@@ -3,7 +3,7 @@
 
 Little-endian; bool and char: 1 byte; string, bytes: u32 length + bytes; vector, list, set:
 u32 count + items; array: its items; optional: u8 flag + value; map: u32 count + key, value;
-struct: its fields in order; enum: its underlying type. Bounds (`string<16>`, `vector<T, 8>`): the
+struct: its fields in order; enum, bitmask: its underlying type. Bounds (`string<16>`, `vector<T, 8>`): the
 `bound` arguments, checked when encoding and decoding.
 Frame: 16-byte header (magic "SCF1", u8 kind, u8 flags, u16 message, u32 call id, u32 payload
 length), then the payload: the inputs of a call, or the result then the outputs of a reply.

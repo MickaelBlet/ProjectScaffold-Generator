@@ -1521,7 +1521,7 @@ class Parser {
     const name = this.name()
     const q = this.qualified(name)
     this.expect('{')
-    const values: { name: string; value: number }[] = []
+    const flags: { name: string; bit: number }[] = []
     let bit = 0
     do {
       if (this.is('}')) break
@@ -1530,27 +1530,24 @@ class Parser {
       const flag = this.name()
       this.decls.set(this.qualified(flag), 'enumerator')
       this.consts.set(this.qualified(flag), flag)
-      if (Number.isSafeInteger(2 ** bit)) values.push({ name: flag, value: 2 ** bit })
-      else this.warn(first, `bitmask ${q}: flag ${flag} above bit 52 left out`)
+      if (bit < 64) flags.push({ name: flag, bit })
+      else this.warn(first, `bitmask ${q}: flag ${flag} above bit 63 left out`)
       bit++
     } while (this.accept(','))
     this.expect('}')
-    const bits = Number(this.annotationValue(anns.find((a) => a.name === 'bit_bound')) ?? 32)
+    const bound = Number(this.annotationValue(anns.find((a) => a.name === 'bit_bound')) ?? 32)
+    const bits = Math.max(bound, ...flags.map((f) => f.bit + 1))
     const description = first.doc || this.endTrail() || first.trail
     this.add({
       q,
       simple: name,
       kind: 'type',
       def: {
-        kind: 'enum',
+        kind: 'bitmask',
         name,
         description,
-        underlying: intType(
-          values.map((v) => v.value),
-          bits,
-          false
-        ),
-        values
+        underlying: bits <= 8 ? 'uint8' : bits <= 16 ? 'uint16' : bits <= 32 ? 'uint32' : 'uint64',
+        flags
       },
       needs: []
     })
@@ -2275,6 +2272,13 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
         kind: 'enum',
         underlying: e.underlying,
         values: e.values.map((v) => ({ ...v, id: newId() }))
+      })
+    else if (e.kind === 'bitmask')
+      types.push({
+        ...base,
+        kind: 'bitmask',
+        underlying: e.underlying,
+        flags: e.flags.map((v) => ({ ...v, id: newId() }))
       })
     else if (e.kind === 'alias') types.push({ ...base, kind: 'alias', type: ref(e.type) })
     else types.push({ ...base, kind: 'primitive' })

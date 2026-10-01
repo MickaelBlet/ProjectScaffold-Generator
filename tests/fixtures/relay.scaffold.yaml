@@ -188,6 +188,16 @@ types:
         name: string
         max: 4
       max: 3
+  - kind: bitmask
+    name: Access
+    underlying: uint8
+    flags:
+      - name: Read
+        bit: 0
+      - name: Write
+        bit: 1
+      - name: Exec
+        bit: 7
   - kind: struct
     name: Badge
     fields:
@@ -207,6 +217,13 @@ types:
             name: bytes
             max: 2
           max: 2
+      - name: access
+        type:
+          kind: ref
+          name: Access
+        default:
+          - Read
+          - Exec
 interfaces:
   - name: Echo
     description: Every call sends its arguments back
@@ -309,6 +326,15 @@ interfaces:
         returns:
           kind: ref
           name: Names
+      - name: access
+        params:
+          - name: a
+            type:
+              kind: ref
+              name: Access
+        returns:
+          kind: ref
+          name: Access
       - name: badge
         params:
           - name: b

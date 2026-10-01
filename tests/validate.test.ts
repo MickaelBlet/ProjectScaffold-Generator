@@ -32,6 +32,26 @@ describe('validate', () => {
     expect(messages(p)).toEqual(["Enum 'Mode': Fault = 255 does not fit in int8"])
   })
 
+  it('flags bitmask flags out of range or sharing a bit', () => {
+    const p = load()
+    p.types.push({
+      id: 'bm',
+      kind: 'bitmask',
+      name: 'Bits',
+      description: '',
+      underlying: 'uint8',
+      flags: [
+        { id: 'a', name: 'A', bit: 0 },
+        { id: 'b', name: 'B', bit: 0 },
+        { id: 'c', name: 'C', bit: 8 }
+      ]
+    })
+    expect(messages(p)).toEqual([
+      "Bitmask 'Bits': bit 0 used more than once",
+      "Bitmask 'Bits': C (bit 8) does not fit in uint8"
+    ])
+  })
+
   it('flags duplicate names in lists', () => {
     const p = load()
     const s = type<StructDef>(p, 'Vec3')
@@ -53,7 +73,7 @@ describe('validate', () => {
       key: { kind: 'ref', id: vec3.id },
       value: { kind: 'primitive', name: 'bool' }
     }
-    expect(messages(p)).toEqual(['Pose.orientation: map key must be a primitive or an enum'])
+    expect(messages(p)).toEqual(['Pose.orientation: map key must be a primitive, an enum or a bitmask'])
   })
 
   it('bounds strings, bytes and containers only', () => {

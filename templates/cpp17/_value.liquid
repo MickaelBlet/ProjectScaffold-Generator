@@ -83,6 +83,20 @@
       render '_type', t: t
       echo '::'
       render '_id', name: v
+    when 'bitmask'
+      # The flags of the list, or no flag.
+      if v.size == 0
+        render '_type', t: t
+        echo '{}'
+      endif
+      for flag in v
+        render '_type', t: t
+        echo '::'
+        render '_id', name: flag
+        unless forloop.last
+          echo ' | '
+        endunless
+      endfor
     when 'alias'
       render '_value', v: v, t: def.type
     when 'struct'

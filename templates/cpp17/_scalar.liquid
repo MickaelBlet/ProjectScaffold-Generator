@@ -1,5 +1,5 @@
 {%- comment -%}
-  `true` for a type cheap to copy (passed and returned by value): numbers, bool, char, enums,
+  `true` for a type cheap to copy (passed and returned by value): numbers, bool, char, enums, bitmasks,
   aliases of those. Parameter: t.
 {%- endcomment -%}
 {%- liquid
@@ -10,7 +10,7 @@
     endunless
   when 'ref'
     assign def = allTypes | where: 'name', t.name | first
-    if def.kind == 'enum'
+    if def.kind == 'enum' or def.kind == 'bitmask'
       echo 'true'
     elsif def.kind == 'alias'
       render '_scalar', t: def.type

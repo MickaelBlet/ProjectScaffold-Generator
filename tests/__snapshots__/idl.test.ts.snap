@@ -44,7 +44,7 @@ exports[`IDL import > imports examples/idl/sensors_dds.idl 1`] = `
   "modules": [],
   "types": [
     "enum Health",
-    "enum Capabilities",
+    "bitmask Capabilities",
     "struct Point",
     "struct Header",
     "struct Scan",

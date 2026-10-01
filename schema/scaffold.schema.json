@@ -702,7 +702,7 @@
                     "type": "string"
                   },
                   "default": {
-                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name; any value for a custom primitive",
+                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names; any value for a custom primitive",
                     "$ref": "#/$defs/__schema0"
                   }
                 },
@@ -774,6 +774,60 @@
             "underlying",
             "values"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bitmask"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "underlying": {
+              "type": "string",
+              "enum": [
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64"
+              ]
+            },
+            "flags": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "bit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991,
+                    "description": "value: 1 << bit"
+                  }
+                },
+                "required": [
+                  "name",
+                  "bit"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "underlying",
+            "flags"
+          ],
+          "description": "set of flags, combined with |"
         },
         {
           "type": "object",
@@ -1141,7 +1195,7 @@
                 "type": "string"
               },
               "default": {
-                "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name; any value for a custom primitive",
+                "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names; any value for a custom primitive",
                 "$ref": "#/$defs/__schema0"
               },
               "static": {

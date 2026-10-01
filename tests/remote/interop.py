@@ -55,6 +55,9 @@ class Echo(EchoHandler):
     def names(self, names):
         return names
 
+    def access(self, a):
+        return a
+
     def badge(self, b):
         return b
 
@@ -97,6 +100,8 @@ def call(proxy: EchoProxy, transport: str) -> None:
     m = {data.Mode.Idle: 'i', data.Mode.Run: None}
     check('pick', proxy.pick(m, data.Mode.Idle) == 'i')
     check('pick none', proxy.pick(m, data.Mode.Run) is None and proxy.pick(m, data.Mode.Fault) is None)
+    check('bitmask', proxy.access(data.Access.Write | data.Access.Exec) == data.Access.Write | data.Access.Exec)
+    check('bitmask default', data.Badge().access == data.Access.Read | data.Access.Exec)
     check('bounds', proxy.names(['a', 'bcde']) == ['a', 'bcde'])
     badge = data.Badge('ab', {1: b'\x07\x08'})
     check('bounds of fields', proxy.badge(badge) == badge)

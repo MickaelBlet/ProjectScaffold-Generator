@@ -79,8 +79,8 @@ export function validate(p: Project): Problem[] {
       if (!keyOf) return
       const k = resolve(keyOf)
       if (!k) return
-      const ok = k.kind === 'primitive' || k.kind === 'enum'
-      if (!ok) push('error', target, `${where}: ${n.kind} key must be a primitive or an enum`)
+      const ok = k.kind === 'primitive' || k.kind === 'enum' || k.kind === 'bitmask'
+      if (!ok) push('error', target, `${where}: ${n.kind} key must be a primitive, an enum or a bitmask`)
       else if (k.kind === 'primitive' && (k.name === 'float32' || k.name === 'float64'))
         push('warning', target, `${where}: floating-point ${n.kind} key`)
     })
@@ -121,6 +121,22 @@ export function validate(p: Project): Problem[] {
         for (const v of t.values)
           if (BigInt(v.value) < min || BigInt(v.value) > max)
             push('error', target, `Enum '${t.name}': ${v.name} = ${v.value} does not fit in ${t.underlying}`)
+        break
+      }
+      case 'bitmask': {
+        if (!t.flags.length) push('warning', target, `Bitmask '${t.name}' has no flags`)
+        for (const n of duplicates(t.flags.map((v) => v.name)))
+          push('error', target, `Bitmask '${t.name}': duplicate flag '${n}'`)
+        for (const n of duplicates(t.flags.map((v) => String(v.bit))))
+          push('error', target, `Bitmask '${t.name}': bit ${n} used more than once`)
+        const width = Number(t.underlying.slice(4))
+        for (const v of t.flags)
+          if (v.bit >= width)
+            push(
+              'error',
+              target,
+              `Bitmask '${t.name}': ${v.name} (bit ${v.bit}) does not fit in ${t.underlying}`
+            )
         break
       }
       case 'alias':

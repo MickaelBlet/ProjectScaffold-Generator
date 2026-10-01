@@ -38,6 +38,10 @@
         else
           echo '0'
         endif
+      when 'bitmask'
+        echo prefix
+        render '_py_id', name: t.name
+        echo '(0)'
       when 'alias'
         render '_py_zero', t: def.type, prefix: prefix
       else

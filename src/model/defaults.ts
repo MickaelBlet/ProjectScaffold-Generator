@@ -110,6 +110,12 @@ export function valueChoices(t: TypeRef, types: readonly TypeDef[]): Value[] | n
   return list && optional ? [...list, null] : list
 }
 
+/** Flag names of a bitmask type (its values are lists of them), else null. */
+export function valueFlags(t: TypeRef, types: readonly TypeDef[]): string[] | null {
+  const r = resolve(t, new Map(types.map((d) => [d.id, d])))
+  return r?.kind === 'bitmask' ? r.flags.map((f) => f.name) : null
+}
+
 /** Value showing the shape of a type, for a placeholder: zeros, first enum values, empty containers. */
 export function valueExample(t: TypeRef, types: readonly TypeDef[]): Value {
   const byId = new Map(types.map((d) => [d.id, d]))
@@ -144,6 +150,8 @@ export function valueExample(t: TypeRef, types: readonly TypeDef[]): Value {
             return example(def.type, inner)
           case 'enum':
             return def.values[0]?.name ?? null
+          case 'bitmask':
+            return def.flags[0] ? [def.flags[0].name] : []
           case 'struct':
             return Object.fromEntries(def.fields.map((f) => [f.name, f.default ?? example(f.type, inner)]))
         }
@@ -225,6 +233,16 @@ export function valueErrors(v: Value, t: TypeRef, types: readonly TypeDef[]): st
               path,
               `Expected a value of ${def.name} (${def.values.map((x) => x.name).join(', ')}), got ${describe(v)}`
             )
+          return
+        }
+        if (def.kind === 'bitmask') {
+          const names = def.flags.map((x) => x.name)
+          if (!Array.isArray(v)) return at(path, `Expected a list of ${def.name} flags, got ${describe(v)}`)
+          v.forEach((e, i) => {
+            if (typeof e !== 'string' || !names.includes(e))
+              at(`${path}[${i}]`, `Expected a flag of ${def.name} (${names.join(', ')}), got ${describe(e)}`)
+            else if (v.indexOf(e) < i) at(path, `Duplicate flag ${e}`)
+          })
           return
         }
         if (!isMapping(v)) return at(path, `Expected a mapping of ${def.name} fields, got ${describe(v)}`)

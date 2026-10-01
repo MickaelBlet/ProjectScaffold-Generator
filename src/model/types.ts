@@ -11,6 +11,7 @@ export const INT_PRIMITIVES = [
   'uint32',
   'uint64'
 ] as const
+export const UNSIGNED_PRIMITIVES = ['uint8', 'uint16', 'uint32', 'uint64'] as const
 export const PRIMITIVES = [
   'bool',
   'char',
@@ -24,6 +25,7 @@ export const CONTAINERS = ['array', 'vector', 'list', 'set', 'optional', 'map'] 
 
 export type Primitive = (typeof PRIMITIVES)[number]
 export type IntPrimitive = (typeof INT_PRIMITIVES)[number]
+export type UnsignedPrimitive = (typeof UNSIGNED_PRIMITIVES)[number]
 export type Container = (typeof CONTAINERS)[number]
 
 export const INT_RANGES: Record<IntPrimitive, [bigint, bigint]> = {
@@ -105,6 +107,23 @@ export interface EnumDef extends Owned {
   values: EnumValue[]
 }
 
+export interface BitmaskFlag {
+  id: Id
+  name: string
+  /** Position of the flag: value `1 << bit`. */
+  bit: number
+}
+
+/** Set of flags, combined with `|`. */
+export interface BitmaskDef extends Owned {
+  id: Id
+  kind: 'bitmask'
+  name: string
+  description: string
+  underlying: UnsignedPrimitive
+  flags: BitmaskFlag[]
+}
+
 export interface AliasDef extends Owned {
   id: Id
   kind: 'alias'
@@ -121,7 +140,7 @@ export interface PrimitiveDef extends Owned {
   description: string
 }
 
-export type TypeDef = StructDef | EnumDef | AliasDef | PrimitiveDef
+export type TypeDef = StructDef | EnumDef | BitmaskDef | AliasDef | PrimitiveDef
 
 export const PARAM_DIRECTIONS = ['in', 'out', 'inout'] as const
 /** `in`: caller → callee. `out`: callee → caller. `inout`: both ways. */

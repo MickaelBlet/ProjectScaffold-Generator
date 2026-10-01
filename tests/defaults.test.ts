@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatValue, parseValue, valueChoices, valueErrors, valueExample } from '@/model/defaults'
+import {
+  formatValue,
+  parseValue,
+  valueChoices,
+  valueErrors,
+  valueExample,
+  valueFlags
+} from '@/model/defaults'
 import type { TypeDef, TypeRef } from '@/model/types'
 
 const prim = (name: 'bool' | 'char' | 'uint8' | 'int8' | 'uint64' | 'float32' | 'string'): TypeRef => ({
@@ -49,6 +56,17 @@ const types: TypeDef[] = [
     fields: [
       { id: 'p', name: 'position', type: ref('Vec'), description: '' },
       { id: 'q', name: 'opts', type: ref('Opts'), description: '' }
+    ]
+  },
+  {
+    id: 'Perm',
+    kind: 'bitmask',
+    name: 'Perm',
+    description: '',
+    underlying: 'uint8',
+    flags: [
+      { id: 'pr', name: 'Read', bit: 0 },
+      { id: 'pw', name: 'Write', bit: 1 }
     ]
   },
   { id: 'Speed', kind: 'alias', name: 'Speed', description: '', type: prim('float32') },
@@ -119,6 +137,19 @@ describe('default values', () => {
       errors('{a: 1, b: 2}', { kind: 'map', key: prim('string'), value: prim('uint8'), max: 1 })
     ).toEqual(['2 entries, more than the bound of 1'])
     expect(errors('[abcd]', { kind: 'list', of: name })).toEqual(['[0]: 4 bytes, more than the bound of 3'])
+  })
+
+  it('checks bitmask flags', () => {
+    expect(errors('[Read, Write]', ref('Perm'))).toEqual([])
+    expect(errors('[]', ref('Perm'))).toEqual([])
+    expect(errors('Read', ref('Perm'))).toEqual(['Expected a list of Perm flags, got text Read'])
+    expect(errors('[Read, Exec, Read]', ref('Perm'))).toEqual([
+      '[1]: Expected a flag of Perm (Read, Write), got text Exec',
+      'Duplicate flag Read'
+    ])
+    expect(valueFlags(ref('Perm'), types)).toEqual(['Read', 'Write'])
+    expect(valueFlags(prim('uint8'), types)).toBeNull()
+    expect(valueExample(ref('Perm'), types)).toEqual(['Read'])
   })
 
   it('keeps custom primitive values opaque', () => {

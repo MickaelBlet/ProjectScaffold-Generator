@@ -67,6 +67,8 @@ public:
 
     Names names(const Names& names) override { return names; }
 
+    Access access(Access a) override { return a; }
+
     Badge badge(const Badge& b) override { return b; }
 
 private:
@@ -145,6 +147,8 @@ int call(EchoProxy& proxy, const std::string& transport)
     check("pick", proxy.pick(m, Mode::Idle) == std::optional<std::string>("i"));
     check("pick none", !proxy.pick(m, Mode::Run) && !proxy.pick(m, Mode::Fault));
 
+    check("bitmask", proxy.access(Access::Write | Access::Exec) == (Access::Write | Access::Exec));
+    check("bitmask default", has(Badge{}.access, Access::Read | Access::Exec) && !has(Badge{}.access, Access::Write));
     check("bounds", proxy.names({"a", "bcde"}) == Names{"a", "bcde"});
     const Badge badge{"ab", {{1, {7, 8}}}};
     check("bounds of fields", bytes(proxy.badge(badge)) == bytes(badge));

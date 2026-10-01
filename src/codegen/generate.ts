@@ -79,6 +79,7 @@ export function reservedNames(ctx: GenContext, reserved: string[]): string[] {
     check(t.name, t.name)
     if (t.kind === 'struct') for (const f of t.fields) check(f.name, `${t.name}.${f.name}`)
     if (t.kind === 'enum') for (const v of t.values) check(v.name, `${t.name}.${v.name}`)
+    if (t.kind === 'bitmask') for (const v of t.flags) check(v.name, `${t.name}.${v.name}`)
   }
   for (const i of ctx.interfaces) {
     check(i.name, i.name)

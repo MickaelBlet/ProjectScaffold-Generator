@@ -74,6 +74,21 @@
       render '_py_id', name: t.name
       echo '.'
       render '_py_id', name: v
+    when 'bitmask'
+      if v.size == 0
+        echo prefix
+        render '_py_id', name: t.name
+        echo '(0)'
+      endif
+      for flag in v
+        echo prefix
+        render '_py_id', name: t.name
+        echo '.'
+        render '_py_id', name: flag
+        unless forloop.last
+          echo ' | '
+        endunless
+      endfor
     when 'alias'
       render '_py_value', v: v, t: def.type, prefix: prefix
     when 'struct'

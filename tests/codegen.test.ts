@@ -234,6 +234,7 @@ describe('generation context', () => {
     expect(client.stubs.map((r) => [r.index, r.interface.name])).toEqual([[6, 'Status']])
     // Through the parameters and the fields of Sample, Tree and Badge, sorted by name.
     expect(ctx.remoteTypes.map((t) => t.name)).toEqual([
+      'Access',
       'Badge',
       'Mode',
       'Names',

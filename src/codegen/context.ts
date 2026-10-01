@@ -76,6 +76,8 @@ export type GenType = Owned & {
 } & (
     | { kind: 'struct'; fields: GenField[] }
     | { kind: 'enum'; underlying: string; values: { name: string; value: number }[] }
+    /** `value`: `1 << bit`, as decimal text (64-bit values do not fit in numbers). */
+    | { kind: 'bitmask'; underlying: string; flags: { name: string; bit: number; value: string }[] }
     | { kind: 'alias'; type: GenTypeRef }
     | { kind: 'primitive' }
   )
@@ -380,6 +382,13 @@ export function buildContext(file: FileProject): GenContext {
         return { ...base, kind: 'struct', fields: t.fields.map(field) }
       case 'enum':
         return { ...base, kind: 'enum', underlying: t.underlying, values: t.values.map((v) => ({ ...v })) }
+      case 'bitmask':
+        return {
+          ...base,
+          kind: 'bitmask',
+          underlying: t.underlying,
+          flags: t.flags.map((f) => ({ ...f, value: (1n << BigInt(f.bit)).toString() }))
+        }
       case 'alias':
         return { ...base, kind: 'alias', type: ref(t.type) }
       case 'primitive':
@@ -512,7 +521,7 @@ export function buildContext(file: FileProject): GenContext {
         ? usesOf(t.fields.map((f) => f.type))
         : t.kind === 'alias'
           ? usesOf([t.type])
-          : usesOf([], t.kind === 'enum' ? [t.underlying] : [])
+          : usesOf([], t.kind === 'enum' || t.kind === 'bitmask' ? [t.underlying] : [])
   for (const i of allInterfaces) i.uses = usesOf(i.messages.flatMap(messageRefs))
   for (const m of modules)
     m.uses = usesOf([...m.attributes.map((a) => a.type), ...m.methods.flatMap(messageRefs)])

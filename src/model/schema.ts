@@ -6,6 +6,7 @@ import {
   PARAM_DIRECTIONS,
   PERFORMANCE_CLASSES,
   PRIMITIVES,
+  UNSIGNED_PRIMITIVES,
   type TypeRefOf
 } from './types'
 
@@ -59,7 +60,7 @@ const ValueField = Field.extend({
     .json()
     .optional()
     .describe(
-      'default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name; any value for a custom primitive'
+      'default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names; any value for a custom primitive'
     )
 })
 
@@ -78,6 +79,15 @@ const TypeDef = z
       underlying: z.enum(INT_PRIMITIVES),
       values: z.array(z.object({ name: Identifier, value: z.int() }))
     }),
+    z
+      .object({
+        kind: z.literal('bitmask'),
+        name: Identifier,
+        description: Description,
+        underlying: z.enum(UNSIGNED_PRIMITIVES),
+        flags: z.array(z.object({ name: Identifier, bit: z.int().nonnegative().describe('value: 1 << bit') }))
+      })
+      .describe('set of flags, combined with |'),
     z.object({
       kind: z.literal('alias'),
       name: Identifier,
