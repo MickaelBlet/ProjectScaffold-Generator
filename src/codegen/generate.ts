@@ -64,8 +64,15 @@ export function createEngine(templates: Record<string, string>, globals: object)
     doc_comment: docComment
   }
   for (const [name, f] of Object.entries(filters))
-    liquid.registerFilter(name, (s: unknown, ...args: unknown[]) => f(String(s ?? ''), ...args.map(String)))
+    liquid.registerFilter(name, (s: unknown, ...args: unknown[]) => f(text(s), ...args.map(text)))
   return liquid
+}
+
+/** A filter input as text: objects as JSON rather than `[object Object]`. */
+function text(v: unknown): string {
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v)
+  return v === null || v === undefined ? '' : (JSON.stringify(v) ?? '')
 }
 
 /** Names of the project that are reserved words of the target language. */
