@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Explorer: sections reordered by dragging their header (or Alt+Up / Alt+Down on it) and hidden; the right-click menu of a header moves (up, down, top, bottom), hides, shows the hidden ones again and resets them. A line below the sections lists the hidden ones. Kept with the settings.
+- Definitions view (_View › Open definitions view_, Alt+T; listed below _Global_ in the Explorer's _Views_, neither renamed nor deleted): a tab listing every constant, type and interface of the document (filter, kinds, with the dependencies' ones on demand, how many places use each, problem markers) beside the editor of the chosen one; _New_ creates any kind. Constants get an editor of their own there (name, description, type, value).
 - _File › Code templates…_ (VS Code: _ProjectScaffold: Code Templates…_): generate a document's code with the templates of a folder of one's own, picked at any time and remembered for the document, or back to the default ones; _Copy the built-in templates into a folder…_ to start from the C++17 set. VS Code setting `projectScaffold.generate.templates`. The generation summary names the templates used.
 - Transport settings of remote links (`constraints.remote.settings`), edited in the link inspector under _Transport settings_: client and server host and port (tcp, udp, http, websocket, grpc), request path (http, websocket), shared memory segment and ring capacity (shm), socket (ipc), broker and topic (mqtt), interface and frame id (can), device and baud rate (serial), and free `options` for any transport, custom ones included. Checked: fields not applying to the transport, http paths, shared memory names, two links listening on the same port or sharing a segment. C++17 generation uses them for the generated transports and lists them in the user sections of the others; template context: `r.settings` (defaults applied) and `link.constraints.remote.settings`.
 - Remote defaults (`remoteDefaults` in the project file, project inspector): client and server host and first port of the links between binaries.
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Explorer: the _New_ buttons of a section (Types) no longer cover its title in a narrow panel; they wrap below it.
 - Electron portable `.exe` (Windows): unpacks into a folder next to itself (removed on exit) instead of `%TEMP%`, where policies or antivirus may block running it; `%TEMP%` stays the fallback when its folder is read-only.
 - C++17 transports: bracketed IPv6 hosts (`[::1]:47000`) resolve, as in Python.
 - Inspectors: selects as tall as inputs and buttons; no separator above the first section.
