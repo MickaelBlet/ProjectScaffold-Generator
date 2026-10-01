@@ -170,6 +170,50 @@ describe('dependencies', () => {
     expect(back.modules[0]!.ports[0]!.interfaceId).toBe(back.interfaces[0]!.id)
   })
 
+  it('copies the constants of a dependency, follows their renames, drops removed ones', () => {
+    const constants = produce(common, (d) => {
+      d.consts.push(
+        {
+          id: 'g',
+          name: 'Gravity',
+          description: '',
+          type: { kind: 'primitive', name: 'float32' },
+          value: 9.81
+        },
+        {
+          id: 'o',
+          name: 'Origin',
+          description: '',
+          type: { kind: 'ref', id: d.types[0]!.id },
+          value: { x: 1 }
+        }
+      )
+    })
+    const p = produce(station(), (d) => void addDependency(d, constants, 'common.scaffold.yaml', null))
+    const dep = p.dependencies.find((x) => x.name === 'Common')!
+    expect(p.consts.map((c) => [c.name, c.dependency])).toEqual([
+      ['Gravity', dep.id],
+      ['Origin', dep.id]
+    ])
+    expect(errors(p)).toEqual([])
+    // File: under the dependency, matching the JSON Schema.
+    const file = toFile(p, { editor: false })
+    expect(file.constants).toBeUndefined()
+    expect(file.dependencies?.[0]?.constants?.map((c) => c.name)).toEqual(['Gravity', 'Origin'])
+    const ajv = new Ajv2020({ strict: false })
+    expect(ajv.validate(jsonSchema, file), JSON.stringify(ajv.errors)).toBe(true)
+    expect(toFile(fromFile(file), { editor: false })).toEqual(file)
+    // Renamed in the dependency, then removed there.
+    const renamed = produce(constants, (d) => void (d.consts[0]!.name = 'G'))
+    const q = produce(p, (d) =>
+      applyDependencyRenames(d, 'common.scaffold.yaml', diffRenames(constants, renamed)!)
+    )
+    expect(q.consts.map((c) => c.name)).toEqual(['G', 'Origin'])
+    const removed = produce(renamed, (d) => void (d.consts = []))
+    const r = produce(q, (d) => void refreshDependencies(d, new Map([[dep.id, removed]]), null))
+    expect(r.consts).toEqual([])
+  })
+
   it('keeps ids when reloaded', () => {
     const { p } = withCommon()
     const again = fromFile(toFile(p, { editor: true }), p)

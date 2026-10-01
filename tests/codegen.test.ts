@@ -246,6 +246,17 @@ describe('generation context', () => {
       'Tree',
       'Vec3'
     ])
+    expect(ctx.constants.map((c) => c.name)).toEqual([
+      'MaxNames',
+      'Greeting',
+      'DefaultMode',
+      'DefaultAccess',
+      'Origin',
+      'Weights',
+      'FirstItem'
+    ])
+    expect(ctx.remoteConstants).toHaveLength(7)
+    expect(ctx.constantsFile.uses.types.map((t) => t.name)).toEqual(['Access', 'Item', 'Mode', 'Vec3'])
     // Unions: the label set with each case, a free one for the default case.
     const item = ctx.types.find((t) => t.name === 'Item')!
     expect(item.kind === 'union' && item.cases.map((c) => [c.name, c.label, c.index])).toEqual([

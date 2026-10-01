@@ -3,6 +3,7 @@ import YAML, { LineCounter, YAMLParseError, isMap, isScalar, isSeq, type Node as
 import {
   FileProjectSchema,
   SCHEMA_VERSION,
+  type FileConstant,
   type FileEditor,
   type FileInterface,
   type FileMessage,
@@ -28,6 +29,7 @@ import {
   METHOD_QUALIFIERS,
   type Attribute,
   type Binary,
+  type ConstDef,
   type Field,
   type Id,
   type Dependency,
@@ -169,10 +171,21 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     description: opt(i.description),
     messages: i.messages.map(message)
   })
-  const owned = (dependency: Id | undefined) => ({
-    types: p.types.filter((t) => t.dependency === dependency).map(typeDef),
-    interfaces: p.interfaces.filter((i) => i.dependency === dependency).map(iface)
-  })
+  const owned = (dependency: Id | undefined) => {
+    const consts = p.consts.filter((c) => c.dependency === dependency)
+    return {
+      types: p.types.filter((t) => t.dependency === dependency).map(typeDef),
+      interfaces: p.interfaces.filter((i) => i.dependency === dependency).map(iface),
+      constants: consts.length
+        ? consts.map((c) => ({
+            name: c.name,
+            description: opt(c.description),
+            type: ref(c.type),
+            value: c.value
+          }))
+        : undefined
+    }
+  }
 
   const binaryName = new Map(p.binaries.map((b) => [b.id, b.name]))
   const moduleTree = (parentId: Id | null): FileModule[] =>
@@ -414,6 +427,28 @@ export function fromFile(data: unknown, prev?: Project): Project {
     declare(x.e.name, 'interface', prevInterfaces[i], [...x.at, 'name'])
   )
   const interfaceNames = new Set(interfaceEntries.map((x) => x.e.name))
+  // Constants share the namespace too.
+  const constEntries: Entry<FileConstant>[] = [
+    ...(f.constants ?? []).map((e, i) => ({ e, at: ['constants', i] })),
+    ...fileDependencies.flatMap((x, xi) =>
+      (x.constants ?? []).map((e, i) => ({
+        e,
+        at: ['dependencies', xi, 'constants', i],
+        dependency: dependencyIds[xi]!
+      }))
+    )
+  ]
+  const prevConsts = named(
+    prev?.consts,
+    constEntries.map((x) => x.e)
+  )
+  const constNames = new Set<string>()
+  const constIds = constEntries.map((x, i) => {
+    if (typeIds.has(x.e.name) || constNames.has(x.e.name))
+      report(`Duplicate constant name '${x.e.name}'`, [...x.at, 'name'])
+    constNames.add(x.e.name)
+    return idOf(prevConsts[i], () => `const:${x.e.name}`)
+  })
 
   const ref = (t: FileTypeRef, where: string, at: DataPath): TypeRef =>
     mapTypeRef(t, (r) => {
@@ -515,6 +550,15 @@ export function fromFile(data: unknown, prev?: Project): Project {
         return { ...base, kind: 'primitive' }
     }
   })
+
+  const consts: ConstDef[] = constEntries.map(({ e: c, at, dependency }, i) => ({
+    id: constIds[i]!,
+    name: c.name,
+    description: c.description ?? '',
+    ...owner(dependency),
+    type: ref(c.type, c.name, [...at, 'type']),
+    value: c.value
+  }))
 
   const interfaces: Interface[] = interfaceEntries.map(({ e: i, at, dependency }, idx) => ({
     id: interfaceIds[idx]!,
@@ -797,6 +841,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
     binaries,
     types,
     interfaces,
+    consts,
     modules,
     links,
     dependencies,

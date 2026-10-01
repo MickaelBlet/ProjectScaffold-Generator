@@ -14,7 +14,19 @@ import {
   subtreeIds,
   uniqueName
 } from './project'
-import type { Field, Id, Interface, Link, Message, Module, Note, Project, TypeDef, TypeRef } from './types'
+import type {
+  ConstDef,
+  Field,
+  Id,
+  Interface,
+  Link,
+  Message,
+  Module,
+  Note,
+  Project,
+  TypeDef,
+  TypeRef
+} from './types'
 
 const originOf = (p: Project, id: Id | null): { x: number; y: number } =>
   id ? absolutePosition(p, id) : { x: 0, y: 0 }
@@ -33,6 +45,8 @@ export interface Clip {
   notes: Note[]
   types: TypeDef[]
   interfaces: Interface[]
+  /** Absent in clips of older versions. */
+  consts?: ConstDef[]
   /** Names of the source project's types and interfaces, to rebind references elsewhere. */
   names: Record<Id, string>
 }
@@ -74,15 +88,21 @@ export function copyItems(p: Project, ids: Id[]): Clip | null {
     notes: p.notes.filter((n) => selected.has(n.id)),
     types: p.types.filter((t) => selected.has(t.id)),
     interfaces: p.interfaces.filter((i) => selected.has(i.id)),
+    consts: p.consts.filter((c) => selected.has(c.id)),
     names: Object.fromEntries([...p.types, ...p.interfaces].map((e) => [e.id, e.name]))
   }
-  const empty = !clip.modules.length && !clip.notes.length && !clip.types.length && !clip.interfaces.length
+  const empty =
+    !clip.modules.length &&
+    !clip.notes.length &&
+    !clip.types.length &&
+    !clip.interfaces.length &&
+    !clip.consts?.length
   return empty ? null : structuredClone(clip)
 }
 
 /**
  * The whole content of `source`, to paste into `target`: its modules with their links, its notes
- * when asked, and the types and interfaces `target` lacks (the others are matched by name).
+ * when asked, and the types, interfaces and constants `target` lacks (the others are matched by name).
  * Links to modules of other projects are left out.
  */
 export function copyProject(source: Project, target: Project, withNotes: boolean): Clip | null {
@@ -90,7 +110,9 @@ export function copyProject(source: Project, target: Project, withNotes: boolean
   return copyItems(source, [
     ...childModules(source, null).map((m) => m.id),
     ...(withNotes ? source.notes.map((n) => n.id) : []),
-    ...[...source.types, ...source.interfaces].filter((e) => !have.has(e.name)).map((e) => e.id)
+    ...[...source.types, ...source.interfaces, ...source.consts]
+      .filter((e) => !have.has(e.name))
+      .map((e) => e.id)
   ])
 }
 
@@ -165,6 +187,17 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
     else if (t.kind === 'alias') d.types.push({ ...base, kind: 'alias', type: ref(t.type) })
     else d.types.push({ ...base, kind: 'primitive' })
     pasted.push(base.id)
+  }
+  for (const c of clip.consts ?? []) {
+    const id = newId()
+    d.consts.push({
+      id,
+      name: uniqueName(c.name, globalTypeNames(d)),
+      description: c.description,
+      type: ref(c.type),
+      value: structuredClone(c.value)
+    })
+    pasted.push(id)
   }
   for (const i of clip.interfaces) {
     const id = typeIds.get(i.id)!

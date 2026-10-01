@@ -33,6 +33,7 @@ export type ProblemTarget =
   | { kind: 'project' }
   | { kind: 'type'; id: Id }
   | { kind: 'interface'; id: Id }
+  | { kind: 'const'; id: Id }
   | { kind: 'module'; id: Id }
   | { kind: 'link'; id: Id }
 
@@ -52,7 +53,9 @@ function duplicates(names: string[]): string[] {
 export function validate(p: Project): Problem[] {
   const problems: Problem[] = []
   // Entities of dependencies are checked in their own file: here only errors matter.
-  const fromLibrary = new Set([...p.types, ...p.interfaces].filter((e) => e.dependency).map((e) => e.id))
+  const fromLibrary = new Set(
+    [...p.types, ...p.interfaces, ...p.consts].filter((e) => e.dependency).map((e) => e.id)
+  )
   const push = (severity: Severity, target: ProblemTarget, message: string): void => {
     if (severity === 'warning' && 'id' in target && fromLibrary.has(target.id)) return
     problems.push({ severity, target, message })
@@ -95,9 +98,16 @@ export function validate(p: Project): Problem[] {
   // Project
   if (!p.name.trim()) push('warning', { kind: 'project' }, 'Project has no name')
 
-  // Types & interfaces namespace
-  for (const n of duplicates([...p.types, ...p.interfaces].map((e) => e.name)))
-    push('error', { kind: 'project' }, `Duplicate type/interface name '${n}'`)
+  // Types, interfaces & constants namespace
+  for (const n of duplicates([...p.types, ...p.interfaces, ...p.consts].map((e) => e.name)))
+    push('error', { kind: 'project' }, `Duplicate type/interface/constant name '${n}'`)
+
+  for (const c of p.consts) {
+    const target = { kind: 'const', id: c.id } as const
+    if (isReservedTypeName(c.name)) push('error', target, `'${c.name}' is a reserved type name`)
+    checkTypeRef(c.type, target, c.name)
+    for (const e of valueErrors(c.value, c.type, p.types)) push('error', target, `Constant '${c.name}': ${e}`)
+  }
 
   for (const t of p.types) {
     const target = { kind: 'type', id: t.id } as const
@@ -380,7 +390,7 @@ export function validate(p: Project): Problem[] {
     )
       push('error', project, `Dependency '${x.name}' uses itself through other dependencies`)
   }
-  const owners = new Map([...p.types, ...p.interfaces].map((e) => [e.id, e.dependency]))
+  const owners = new Map([...p.types, ...p.interfaces, ...p.consts].map((e) => [e.id, e.dependency]))
   for (const { ref, where, owner } of allTypeRefs(p)) {
     const dependency = owner.kind === 'module' ? undefined : owners.get(owner.id)
     if (!dependency) continue

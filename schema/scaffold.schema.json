@@ -108,6 +108,13 @@
             "$ref": "#/$defs/Interface"
           }
         },
+        "constants": {
+          "description": "named values; their names share the namespace of the types and interfaces",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Constant"
+          }
+        },
         "modules": {
           "type": "array",
           "items": {
@@ -284,7 +291,7 @@
                 "type": "boolean"
               },
               "shared": {
-                "description": "types and interfaces it defines like another dependency of this list, listed there",
+                "description": "types, interfaces and constants it defines like another dependency of this list, listed there",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -304,6 +311,13 @@
                   "$ref": "#/$defs/Interface"
                 },
                 "description": "its own interfaces, as last read from it"
+              },
+              "constants": {
+                "description": "its own constants, as last read from it",
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Constant"
+                }
               },
               "modules": {
                 "description": "its modules placed on this canvas so that links reach them, with their ports as last read",
@@ -1203,6 +1217,61 @@
       "required": [
         "name",
         "messages"
+      ]
+    },
+    "Constant": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeRef"
+        },
+        "value": {
+          "description": "checked against the type, as default values are",
+          "$ref": "#/$defs/__schema1"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "value"
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
       ]
     },
     "Module": {

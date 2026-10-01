@@ -48,6 +48,12 @@ export function searchProject(p: Project, query: string): SearchHit[] {
       check(target, `${path}:${pt.name}`, 'port description', pt.description)
     }
   }
+  for (const c of p.consts) {
+    if (c.dependency) continue
+    const target = { kind: 'const', id: c.id } as const
+    check(target, c.name, 'constant', c.name)
+    check(target, c.name, 'description', c.description)
+  }
   for (const l of p.links) {
     const target = { kind: 'link', id: l.id } as const
     check(target, l.name, 'link', l.name)

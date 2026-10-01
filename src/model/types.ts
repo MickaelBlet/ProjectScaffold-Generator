@@ -439,6 +439,16 @@ export interface ImportedModule {
  * and `interfaces` with `dependency` set, as last read from the file (read-only here, one
  * namespace), and some of its modules may be placed on the canvas so that links reach them.
  */
+/** Named constant: a value of a type. */
+export interface ConstDef extends Owned {
+  id: Id
+  name: string
+  description: string
+  type: TypeRef
+  /** Checked against the type, as default values are (see defaults.ts). */
+  value: Value
+}
+
 export interface Dependency {
   id: Id
   /** Identifier naming the dependency in `uses` and link ends. */
@@ -449,7 +459,7 @@ export interface Dependency {
   uses: string[]
   /** Only here because another dependency uses it. */
   indirect: boolean
-  /** Names of the types and interfaces it defines like another dependency, which holds them here. */
+  /** Names of the types, interfaces and constants it defines like another dependency, which holds them here. */
   shared: string[]
   /** Its modules placed on this project's canvas. */
   modules: ImportedModule[]
@@ -467,6 +477,8 @@ export interface Project {
   binaries: Binary[]
   types: TypeDef[]
   interfaces: Interface[]
+  /** Named constants; their names share the namespace of the types and interfaces. */
+  consts: ConstDef[]
   modules: Module[]
   links: Link[]
   dependencies: Dependency[]

@@ -6,6 +6,7 @@ import { mapTypeRef, walkTypeRef } from '../model/typeExpr'
 import { DEFAULT_BASE_PORT, DEFAULT_HOST, DEFAULT_SHM_CAPACITY, transportFields } from '../model/transports'
 import { snake } from './filters'
 import type {
+  FileConstant,
   FileInterface,
   FileLink,
   FileMethod,
@@ -314,6 +315,24 @@ export interface GenDependency {
   indirect: boolean
   types: GenType[]
   interfaces: GenInterface[]
+  constants: GenConst[]
+}
+
+export type GenConst = Owned & {
+  entity: 'constant'
+  name: string
+  description: string
+  type: GenTypeRef
+  /** As in the file: checked against the type. */
+  value: Value
+}
+
+/** The constants of the project as one entity (one header): `_header` / `_includes` take it. */
+export interface GenConstantsFile {
+  entity: 'constants'
+  name: 'constants'
+  dependency: null
+  uses: GenUses
 }
 
 export interface GenContext {
@@ -343,6 +362,11 @@ export interface GenContext {
   remoteLinks: GenRemoteLink[]
   /** Types the remote interfaces use, directly or through other types (dependencies' included), by name. */
   remoteTypes: GenType[]
+  /** The project's own constants. */
+  constants: GenConst[]
+  constantsFile: GenConstantsFile
+  /** Constants naming only types of `remoteTypes` (the Python peers have those). */
+  remoteConstants: GenConst[]
   links: GenLink[]
   dependencies: GenDependency[]
   /** Own types and those of the dependencies. */
@@ -481,14 +505,25 @@ export function buildContext(file: FileProject): GenContext {
     uses: noUses()
   })
 
+  const constant = (c: FileConstant, dependency: string | null): GenConst => ({
+    entity: 'constant',
+    name: c.name,
+    description: c.description ?? '',
+    dependency,
+    type: ref(c.type),
+    value: c.value
+  })
+
   const types = file.types.map((t) => typeDef(t, null))
   const interfaces = file.interfaces.map((i) => iface(i, null))
+  const constants = (file.constants ?? []).map((c) => constant(c, null))
   const dependencies: GenDependency[] = (file.dependencies ?? []).map((d) => ({
     name: d.name,
     file: d.file,
     indirect: !!d.indirect,
     types: d.types.map((t) => typeDef(t, d.name)),
-    interfaces: d.interfaces.map((i) => iface(i, d.name))
+    interfaces: d.interfaces.map((i) => iface(i, d.name)),
+    constants: (d.constants ?? []).map((c) => constant(c, d.name))
   }))
   const allTypes = [...types, ...dependencies.flatMap((d) => d.types)]
   const allInterfaces = [...interfaces, ...dependencies.flatMap((d) => d.interfaces)]
@@ -583,6 +618,12 @@ export function buildContext(file: FileProject): GenContext {
             ? usesOf([t.discriminator, ...t.cases.map((c) => c.type)], t.cases.length ? ['variant'] : [])
             : usesOf([], t.kind === 'enum' || t.kind === 'bitmask' ? [t.underlying] : [])
   for (const i of allInterfaces) i.uses = usesOf(i.messages.flatMap(messageRefs))
+  const constantsFile: GenConstantsFile = {
+    entity: 'constants',
+    name: 'constants',
+    dependency: null,
+    uses: usesOf(constants.map((c) => c.type))
+  }
   for (const m of modules)
     m.uses = usesOf([...m.attributes.map((a) => a.type), ...m.methods.flatMap(messageRefs)])
 
@@ -757,6 +798,9 @@ export function buildContext(file: FileProject): GenContext {
     t.uses.types.forEach(reach)
   }
   for (const i of remoteInterfaces.values()) i.uses.types.forEach(reach)
+  const remoteConstants = constants.filter((c) =>
+    usesOf([c.type]).types.every((t) => remoteTypes.has(t.name))
+  )
   for (const m of modules)
     for (const p of m.ports)
       if (p.role === 'in' && p.delegates.length > 1)
@@ -782,6 +826,9 @@ export function buildContext(file: FileProject): GenContext {
     remoteInterfaces: [...remoteInterfaces.values()],
     remoteLinks,
     remoteTypes: [...remoteTypes.values()].sort((a, b) => (a.name < b.name ? -1 : 1)),
+    constants,
+    constantsFile,
+    remoteConstants,
     links,
     dependencies,
     allTypes,

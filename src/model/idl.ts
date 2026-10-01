@@ -8,9 +8,10 @@
 import { isReservedTypeName, mapTypeRef, walkTypeRef } from './typeExpr'
 import { defaultSize, newId } from './project'
 import { CLIP_FORMAT, type Clip } from './clipboard'
-import type { FileInterface, FileMessage, FileTypeDef, FileTypeRef } from './schema'
+import type { FileConstant, FileInterface, FileMessage, FileTypeDef, FileTypeRef } from './schema'
 import {
   INT_RANGES,
+  type ConstDef,
   type Field,
   type Id,
   type Interface,
@@ -59,6 +60,7 @@ export interface IdlComponent {
 export interface IdlFile {
   types: FileTypeDef[]
   interfaces: FileInterface[]
+  constants: FileConstant[]
   components: IdlComponent[]
   /**
    * Names each type or interface needs besides the types it references: raised exceptions,
@@ -783,6 +785,8 @@ class Parser {
   /** Interfaces and valuetypes (qualified) by scope: their names are visible in derived ones. */
   private readonly inherited = new Map<string, string[]>()
   private readonly consts = new Map<string, ConstValue>()
+  /** Constants with a value, for the project (qualified IDL name). */
+  private readonly constDefs: { q: string; def: FileConstant }[] = []
   private readonly templates = new Map<string, { params: string[]; body: Token[] }>()
   private readonly porttypes = new Map<string, { ports: IdlPort[]; attributes: IdlAttribute[] }>()
   private instances = 0
@@ -1089,7 +1093,7 @@ class Parser {
       case 'typedef':
         return this.typedef(first)
       case 'const':
-        return this.constant()
+        return this.constant(first)
       case 'native': {
         this.next()
         const name = this.name()
@@ -1612,22 +1616,41 @@ class Parser {
       })
   }
 
-  private constant(): void {
+  private constant(first: Token): void {
     this.expect('const')
     const warnings = this.warnings.length
-    this.typeSpec()
+    const type = this.typeSpec()
     this.warnings.length = warnings
     const name = this.name()
     this.expect('=')
     const tokens = this.until(';')
-    this.expect(';')
+    const end = this.expect(';')
     const q = this.qualified(name)
     this.decls.set(q, 'const')
+    let value: ConstValue
     try {
-      this.consts.set(q, this.evaluate(tokens))
+      value = this.evaluate(tokens)
     } catch {
       // Unknown value: uses of the constant tell.
+      this.warn(first, `constant ${q} left out: its value is not computed`)
+      return
     }
+    this.consts.set(q, value)
+    if (this.constDefs.some((c) => c.q === q)) return
+    this.constDefs.push({
+      q,
+      def: {
+        name,
+        description: first.doc || end.trail || first.trail,
+        type,
+        value:
+          typeof value === 'bigint'
+            ? Number.isSafeInteger(Number(value))
+              ? Number(value)
+              : String(value)
+            : value
+      }
+    })
   }
 
   /**
@@ -2066,6 +2089,9 @@ class Parser {
       return e && e.kind !== 'type' ? this.objectRef(e) : q
     }
     this.rewrite(defined, typeTarget, target)
+    const constRef = (type: (n: string) => string) => (c: { def: FileConstant }) =>
+      void (c.def.type = mapTypeRef(c.def.type, (r) => ({ kind: 'ref', name: type(r.name) })))
+    this.constDefs.forEach(constRef(typeTarget))
 
     // Project names: simple names, qualified ones for those several entities share.
     const all = [...this.entities.values()]
@@ -2094,12 +2120,31 @@ class Parser {
     const name = (n: string): string => (n.startsWith('?') ? n.slice(1) : (names.get(n) ?? n))
     this.rewrite(all, name, name)
     for (const e of all) e.def.name = names.get(e.q)!
+    // Constants: in the namespace of the types and interfaces.
+    this.constDefs.forEach(constRef(name))
+    const taken = new Set(names.values())
+    const constCount = new Map<string, number>()
+    for (const c of this.constDefs) constCount.set(c.def.name, (constCount.get(c.def.name) ?? 0) + 1)
+    const types = new Map(all.flatMap((e) => (e.kind === 'type' ? [[e.def.name, e.def] as const] : [])))
+    for (const c of this.constDefs) {
+      const simple = c.def.name
+      let n = simple
+      if (constCount.get(n)! > 1 || taken.has(n) || isReservedTypeName(n)) n = c.q.split('::').join('_')
+      while (taken.has(n) || isReservedTypeName(n)) n += '_'
+      taken.add(n)
+      if (n !== simple) this.warnings.push(`${c.q} imported as ${n}`)
+      c.def.name = n
+      // A bitmask value: its flags.
+      const t = c.def.type.kind === 'ref' ? types.get(c.def.type.name) : undefined
+      if (t?.kind === 'bitmask' && typeof c.def.value === 'string') c.def.value = [c.def.value]
+    }
 
     const pick = <K extends Entity['kind']>(kind: K) =>
       all.filter((e): e is Extract<Entity, { kind: K }> => e.kind === kind)
     return {
       types: pick('type').map((e) => e.def),
       interfaces: pick('interface').map((e) => e.def),
+      constants: this.constDefs.map((c) => c.def),
       components: pick('component').map((e) => ({ ...e.def, needs: [...new Set(e.needs)] })),
       needs: Object.fromEntries(
         all
@@ -2214,6 +2259,10 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
     messageNames(c.methods, queue)
     queue.push(...c.needs)
   }
+  // The whole file: its constants too, with their types.
+  const targetNames = new Set([...target.types, ...target.interfaces, ...target.consts].map((e) => e.name))
+  const constants = only ? [] : idl.constants.filter((c) => !targetNames.has(c.name))
+  for (const c of constants) refNames(c.type, queue)
   const portInterfaces = new Set<string>()
   for (const name of pickedComponents)
     for (const p of components.get(name)!.ports)
@@ -2350,7 +2399,15 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
     modules.push(m)
   }
 
-  const empty = !types.length && !interfaces.length && !modules.length
+  const consts: ConstDef[] = constants.map((c) => ({
+    id: newId(),
+    name: c.name,
+    description: c.description ?? '',
+    type: ref(c.type),
+    value: c.value
+  }))
+
+  const empty = !types.length && !interfaces.length && !modules.length && !consts.length
   return {
     clip: empty
       ? null
@@ -2362,6 +2419,7 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
           notes: [],
           types,
           interfaces,
+          consts,
           names: {}
         },
     existing: [...existing],

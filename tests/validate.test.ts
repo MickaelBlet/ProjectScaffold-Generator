@@ -91,6 +91,20 @@ describe('validate', () => {
     expect(messages(p)).toEqual(["Union 'U': discriminator must be an integer, bool, char or enum"])
   })
 
+  it('checks constants: their value against their type, their name in the namespace', () => {
+    const p = load()
+    const mode = type<EnumDef>(p, 'Mode')
+    p.consts.push(
+      { id: 'c1', name: 'Start', description: '', type: { kind: 'ref', id: mode.id }, value: 'Run' },
+      { id: 'c2', name: 'Limit', description: '', type: { kind: 'primitive', name: 'uint8' }, value: 300 },
+      { id: 'c3', name: 'Mode', description: '', type: { kind: 'primitive', name: 'bool' }, value: true }
+    )
+    expect(messages(p)).toEqual([
+      "Duplicate type/interface/constant name 'Mode'",
+      "Constant 'Limit': 300 does not fit in uint8"
+    ])
+  })
+
   it('flags duplicate names in lists', () => {
     const p = load()
     const s = type<StructDef>(p, 'Vec3')

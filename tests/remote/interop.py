@@ -11,7 +11,7 @@ import threading
 
 sys.path.insert(0, sys.argv[1])
 
-from relay import data  # noqa: E402
+from relay import constants, data  # noqa: E402
 from relay.peers.client import ClientPeer  # noqa: E402
 from relay.peers.server import ServerPeer  # noqa: E402
 from relay.remote.echo import EchoHandler, EchoProxy, EchoStub  # noqa: E402
@@ -115,6 +115,10 @@ def call(proxy: EchoProxy, transport: str) -> None:
     check('union field default', data.Badge().command == data.Command(data.Mode.Run, 1.5))
     for item in [data.Item(2, 5), data.Item(0, 'x'), data.Item(9, 'y'), data.Item(-3, ['a', 'b'])]:
         check(f'union {item}', proxy.item(item) == item)
+    check('constants', constants.MaxNames == 3 and constants.Greeting == 'hello'
+          and constants.DefaultMode == data.Mode.Run and constants.DefaultAccess == data.Access.Read | data.Access.Write
+          and constants.Origin == data.Vec3(0, 0, 1.5) and constants.Weights == {'a': 0.5}
+          and constants.FirstItem == data.Item(1, 7))
     check('bounds', proxy.names(['a', 'bcde']) == ['a', 'bcde'])
     badge = data.Badge('ab', {1: b'\x07\x08'})
     check('bounds of fields', proxy.badge(badge) == badge)

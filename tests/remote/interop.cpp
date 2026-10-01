@@ -2,6 +2,7 @@
 // Echo of tests/fixtures/relay.scaffold.yaml over a transport, from or to interop.py.
 //   interop serve <transport> <address>
 //   interop call <transport> <address> <ack: true|false>
+#include <relay/constants.hpp>
 #include <relay/remote/EchoProxy.hpp>
 #include <relay/remote/EchoStub.hpp>
 
@@ -169,6 +170,9 @@ int call(EchoProxy& proxy, const std::string& transport)
     check("union default case label", proxy.item(item)._d() == 9 && proxy.item(item).text() == "y");
     item.names({"a", "b"});
     check("union negative label", proxy.item(item)._d() == -3 && proxy.item(item).names() == Names{"a", "b"});
+    static_assert(MaxNames == 3 && DefaultMode == Mode::Run && DefaultAccess == (Access::Read | Access::Write));
+    check("constants", Greeting == "hello" && Origin.z == 1.5 && Weights.at("a") == 0.5f &&
+                           FirstItem._d() == 1 && FirstItem.number() == 7);
     check("bounds", proxy.names({"a", "bcde"}) == Names{"a", "bcde"});
     const Badge badge{"ab", {{1, {7, 8}}}};
     check("bounds of fields", bytes(proxy.badge(badge)) == bytes(badge));

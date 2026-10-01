@@ -17,6 +17,8 @@ module Robot {
   struct Vec3 { double x, y, z; };
 
   enum Mode { IDLE, @value(10) RUN, STOP };
+  const Mode START = RUN; // first mode
+  const string NAME = "robot";
 
   typedef sequence<Vec3> Path;
   typedef double Matrix[AXES][AXES + 1];
@@ -120,6 +122,22 @@ describe('IDL import', () => {
     expect(fields(idl, 'Busy')).toEqual(['string reason'])
     expect(idl.warnings).toEqual(['Line 2: base.idl not found'])
     expect(idl.missing).toEqual(['base.idl'])
+    expect(idl.constants).toEqual([
+      { name: 'AXES', description: '', type: { kind: 'primitive', name: 'int32' }, value: 3 },
+      { name: 'START', description: 'first mode', type: { kind: 'ref', name: 'Mode' }, value: 'RUN' },
+      { name: 'NAME', description: '', type: { kind: 'primitive', name: 'string' }, value: 'robot' }
+    ])
+  })
+
+  it('imports the constants of the whole file, with their types', () => {
+    const t = parseIdl('module M { enum E { A, B }; const E FIRST = A; const short N = -2; };')
+    const { clip } = idlImport(t, emptyProject())
+    expect(clip!.consts!.map((c) => [c.name, c.value])).toEqual([
+      ['FIRST', 'A'],
+      ['N', -2]
+    ])
+    expect(clip!.types.map((x) => x.name)).toEqual(['E'])
+    expect(idlImport(t, emptyProject(), []).clip).toBeNull()
   })
 
   it('reads interfaces', () => {

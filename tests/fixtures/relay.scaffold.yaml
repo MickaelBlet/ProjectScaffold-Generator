@@ -275,6 +275,55 @@ types:
           name: Command
         default:
           speed: 1.5
+constants:
+  - name: MaxNames
+    description: Most names of Names
+    type:
+      kind: primitive
+      name: uint8
+    value: 3
+  - name: Greeting
+    type:
+      kind: primitive
+      name: string
+    value: hello
+  - name: DefaultMode
+    type:
+      kind: ref
+      name: Mode
+    value: Run
+  - name: DefaultAccess
+    type:
+      kind: ref
+      name: Access
+    value:
+      - Read
+      - Write
+  - name: Origin
+    type:
+      kind: ref
+      name: Vec3
+    value:
+      x: 0
+      y: 0
+      z: 1.5
+  - name: Weights
+    type:
+      kind: map
+      key:
+        kind: primitive
+        name: string
+      value:
+        kind: primitive
+        name: float32
+    value:
+      a: 0.5
+  - name: FirstItem
+    type:
+      kind: ref
+      name: Item
+    value:
+      number: 7
 interfaces:
   - name: Echo
     description: Every call sends its arguments back

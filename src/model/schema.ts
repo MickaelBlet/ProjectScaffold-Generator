@@ -229,6 +229,15 @@ const Endpoint = z.object({
   port: Identifier
 })
 
+const Constant = z
+  .object({
+    name: Identifier,
+    description: Description,
+    type: FileTypeRefSchema,
+    value: z.json().describe('checked against the type, as default values are')
+  })
+  .meta({ id: 'Constant' })
+
 const Dependency = z
   .object({
     name: Identifier.describe('referenced by `uses` of other dependencies and by link endpoints (`project`)'),
@@ -241,9 +250,12 @@ const Dependency = z
     shared: z
       .array(Identifier)
       .optional()
-      .describe('types and interfaces it defines like another dependency of this list, listed there'),
+      .describe(
+        'types, interfaces and constants it defines like another dependency of this list, listed there'
+      ),
     types: z.array(TypeDef).describe('its own types, as last read from it'),
     interfaces: z.array(Interface).describe('its own interfaces, as last read from it'),
+    constants: z.array(Constant).optional().describe('its own constants, as last read from it'),
     modules: z
       .array(z.object({ module: QualifiedName, ports: z.array(Port) }))
       .optional()
@@ -412,6 +424,10 @@ export const FileProjectSchema = z
       ),
     types: z.array(TypeDef),
     interfaces: z.array(Interface),
+    constants: z
+      .array(Constant)
+      .optional()
+      .describe('named values; their names share the namespace of the types and interfaces'),
     modules: z.array(Module),
     links: z.array(Link),
     dependencies: z.array(Dependency).optional(),
@@ -427,3 +443,4 @@ export type FileMethod = z.infer<typeof Method>
 export type FileLink = z.infer<typeof Link>
 export type FileEditor = z.infer<typeof Editor>
 export type FileDependency = z.infer<typeof Dependency>
+export type FileConstant = z.infer<typeof Constant>

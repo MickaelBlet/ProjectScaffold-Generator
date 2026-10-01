@@ -1,4 +1,4 @@
-// Keeping projects in sync: renames of modules, ports, types and interfaces made in one project are
+// Keeping projects in sync: renames of modules, ports, types, interfaces and constants made in one project are
 // carried to the projects depending on it (see dependencies.ts).
 import type { Id, Project } from './types'
 
@@ -12,6 +12,8 @@ export interface Renames {
   interfaces: Map<string, string>
   /** Old type name → new name (own types: dependents follow them). */
   types: Map<string, string>
+  /** Old constant name → new name (own constants). */
+  consts: Map<string, string>
 }
 
 /** Last component of a file path: dependencies name files relative to the project, tabs by their name. */
@@ -74,9 +76,20 @@ function paths(p: Project): Map<Id, string> {
 
 /** Renames from `prev` to `next`; null when there are none. */
 export function diffRenames(prev: Project, next: Project): Renames | null {
-  if (prev.modules === next.modules && prev.interfaces === next.interfaces && prev.types === next.types)
+  if (
+    prev.modules === next.modules &&
+    prev.interfaces === next.interfaces &&
+    prev.types === next.types &&
+    prev.consts === next.consts
+  )
     return null
-  const r: Renames = { modules: new Map(), ports: new Map(), interfaces: new Map(), types: new Map() }
+  const r: Renames = {
+    modules: new Map(),
+    ports: new Map(),
+    interfaces: new Map(),
+    types: new Map(),
+    consts: new Map()
+  }
   if (prev.modules !== next.modules) {
     const before = paths(prev)
     const after = paths(next)
@@ -106,5 +119,10 @@ export function diffRenames(prev: Project, next: Project): Renames | null {
       const was = prev.types.find((x) => x.id === t.id)
       if (was && was.name !== t.name && !t.dependency) r.types.set(was.name, t.name)
     }
-  return r.modules.size || r.ports.size || r.interfaces.size || r.types.size ? r : null
+  if (prev.consts !== next.consts)
+    for (const c of next.consts) {
+      const was = prev.consts.find((x) => x.id === c.id)
+      if (was && was.name !== c.name && !c.dependency) r.consts.set(was.name, c.name)
+    }
+  return r.modules.size || r.ports.size || r.interfaces.size || r.types.size || r.consts.size ? r : null
 }

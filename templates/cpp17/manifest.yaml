@@ -63,6 +63,9 @@ outputs:
   - template: types.hpp.liquid
     path: include/{{ project.ident | snake }}/types.hpp
     when: types.size > 0
+  - template: constants.hpp.liquid
+    path: include/{{ project.ident | snake }}/constants.hpp
+    when: constants.size > 0
   - template: interface.hpp.liquid
     each: interfaces
     path: "include/{% render '_header', e: item %}"
@@ -132,6 +135,10 @@ outputs:
   - template: py_data.liquid
     path: python/{{ project.ident | snake }}/data.py
     when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_constants.liquid
+    path: python/{{ project.ident | snake }}/constants.py
+    when: remoteLinks.size > 0 and remoteConstants.size > 0
     comment: '#'
   - template: py_remote_init.liquid
     path: python/{{ project.ident | snake }}/remote/__init__.py

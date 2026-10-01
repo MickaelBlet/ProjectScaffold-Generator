@@ -34,6 +34,7 @@ export function emptyProject(): Project {
     binaries: [],
     types: [],
     interfaces: [],
+    consts: [],
     modules: [],
     links: [],
     dependencies: [],
@@ -449,13 +450,13 @@ export function uniqueName(base: string, taken: Iterable<string>): string {
   for (let i = 2; ; i++) if (!set.has(`${base}${i}`)) return `${base}${i}`
 }
 
-/** Names that must be unique together: user types and interfaces share one namespace. */
+/** Names that must be unique together: user types, interfaces and constants share one namespace. */
 export function globalTypeNames(p: Project, exceptId?: Id): string[] {
-  return [...p.types, ...p.interfaces].filter((e) => e.id !== exceptId).map((e) => e.name)
+  return [...p.types, ...p.interfaces, ...p.consts].filter((e) => e.id !== exceptId).map((e) => e.name)
 }
 
 export type NameTarget =
-  | { kind: 'type' | 'interface'; id?: Id }
+  | { kind: 'type' | 'interface' | 'const'; id?: Id }
   | { kind: 'module'; id?: Id; parentId: Id | null }
   | { kind: 'port'; id?: Id; moduleId: Id }
   | { kind: 'other' }
@@ -471,9 +472,10 @@ export function nameError(p: Project, target: NameTarget, name: string): string 
   switch (target.kind) {
     case 'type':
     case 'interface':
+    case 'const':
       if (isReservedTypeName(name)) return `'${name}' is a reserved type name`
       if (globalTypeNames(p, target.id).includes(name))
-        return `A type or interface named '${name}' already exists`
+        return `A type, interface or constant named '${name}' already exists`
       return null
     case 'module':
       if (childModules(p, target.parentId).some((m) => m.id !== target.id && m.name === name))
@@ -506,7 +508,7 @@ export function binaryError(p: Project, name: string, except?: Id): string | nul
 }
 
 export interface UsageOwner {
-  kind: 'type' | 'interface' | 'module'
+  kind: 'type' | 'interface' | 'const' | 'module'
   id: Id
 }
 
@@ -522,6 +524,7 @@ export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: strin
       for (const c of t.cases) yield { ref: c.type, where: `${t.name}.${c.name}`, owner }
     }
   }
+  for (const c of p.consts) yield { ref: c.type, where: c.name, owner: { kind: 'const', id: c.id } }
   for (const i of p.interfaces) {
     const owner = { kind: 'interface', id: i.id } as const
     for (const m of i.messages) {

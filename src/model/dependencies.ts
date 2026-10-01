@@ -1,5 +1,5 @@
-// Dependencies: other project files this project uses. Their types and interfaces are kept in the
-// project's `types` and `interfaces` with `dependency` set, as last read from the file, so that the
+// Dependencies: other project files this project uses. Their types, interfaces and constants are
+// kept in the project's `types`, `interfaces` and `consts` with `dependency` set, as last read from the file, so that the
 // file stays self-contained for generators. The dependencies they use are listed too (flattened,
 // `indirect`), each with its file relative to this project. Some of their modules may be placed on
 // the canvas, with a copy of their ports as last read, so that links reach them.
@@ -8,6 +8,7 @@ import { pair } from './reuse'
 import { normalizeFile, resolveRelative, sameFile, type Renames } from './sync'
 import { mapTypeRef } from './typeExpr'
 import type {
+  ConstDef,
   Dependency,
   Id,
   ImportedModule,
@@ -19,11 +20,13 @@ import type {
   TypeRef
 } from './types'
 
-type Entity = TypeDef | Interface
-type Kind = 'types' | 'interfaces'
+type Entity = TypeDef | Interface | ConstDef
+type Kind = 'types' | 'interfaces' | 'consts'
+const KINDS = ['types', 'interfaces', 'consts'] as const
 
-const entities = (p: Pick<Project, 'types' | 'interfaces'>): Entity[] => [...p.types, ...p.interfaces]
+const entities = (p: Pick<Project, Kind>): Entity[] => [...p.types, ...p.interfaces, ...p.consts]
 const isInterface = (e: Entity): e is Interface => 'messages' in e
+const isConst = (e: Entity): e is ConstDef => 'value' in e
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 
 /** An identifier made from a project name, for a new dependency. */
@@ -33,11 +36,9 @@ export function dependencyName(name: string): string {
   return IDENTIFIER_RE.test(id) ? id : `_${id}`
 }
 
-/** Types and interfaces of a dependency, or the project's own ones (`undefined`). */
-export const dependencyEntities = (
-  p: Pick<Project, 'types' | 'interfaces'>,
-  dependency: Id | undefined
-): Entity[] => entities(p).filter((e) => e.dependency === dependency)
+/** Types, interfaces and constants of a dependency, or the project's own ones (`undefined`). */
+export const dependencyEntities = (p: Pick<Project, Kind>, dependency: Id | undefined): Entity[] =>
+  entities(p).filter((e) => e.dependency === dependency)
 
 /** Dependency defining a type or interface; undefined for the project's own ones. */
 export function dependencyOf(p: Project, id: Id): Dependency | undefined {
@@ -92,6 +93,7 @@ function rebind(e: Entity, idOf: (id: Id) => Id): void {
       for (const prm of m.params) prm.type = ref(prm.type)
       if (m.returns) m.returns = ref(m.returns)
     }
+  else if (isConst(e)) e.type = ref(e.type)
   else if (e.kind === 'struct') for (const f of e.fields) f.type = ref(f.type)
   else if (e.kind === 'union') {
     e.discriminator = ref(e.discriminator)
@@ -99,8 +101,9 @@ function rebind(e: Entity, idOf: (id: Id) => Id): void {
   } else if (e.kind === 'alias') e.type = ref(e.type)
 }
 
-/** Whether something outside `inside` (ids) uses a type or interface. */
+/** Whether something outside `inside` (ids) uses a type or interface (nothing refers to constants). */
 function usedOutside(p: Project, e: Entity, inside: Set<Id>): boolean {
+  if (isConst(e)) return false
   if (isInterface(e))
     return (
       p.modules.some((m) => m.ports.some((pt) => pt.interfaceId === e.id)) ||
@@ -187,7 +190,7 @@ class Sync {
     const names = new Map(entities(source).map((e) => [e.id, e.name]))
     const sourceShape = shaper(source)
     const shared: string[] = []
-    for (const kind of ['types', 'interfaces'] as const) {
+    for (const kind of KINDS) {
       const here = shaper(this.d)
       const list = this.d[kind] as Entity[]
       const current = list.filter((e) => e.dependency === dep.id)
@@ -202,7 +205,11 @@ class Sync {
         const taken = entities(this.d).find((x) => x.name === e.name && x.dependency !== dep.id)
         const target = was[i]
         if (taken) {
-          const alike = !target && isInterface(taken) === isInterface(e) && here(taken) === sourceShape(e)
+          const alike =
+            !target &&
+            isInterface(taken) === isInterface(e) &&
+            isConst(taken) === isConst(e) &&
+            here(taken) === sourceShape(e)
           // An own entity with the same definition becomes the dependency's; one of another
           // dependency stays that one's, shared.
           if (alike && !taken.dependency) taken.dependency = dep.id
@@ -344,6 +351,7 @@ class Sync {
     if (gone.size) {
       d.types = d.types.filter((e) => !gone.has(e))
       d.interfaces = d.interfaces.filter((e) => !gone.has(e))
+      d.consts = d.consts.filter((e) => !gone.has(e))
     }
     prune(d)
     return this.result
@@ -378,6 +386,7 @@ function removeWithEntities(d: Project, dep: Dependency): void {
   d.dependencies = d.dependencies.filter((x) => x.id !== dep.id)
   d.types = d.types.filter((e) => !left.has(e))
   d.interfaces = d.interfaces.filter((e) => !left.has(e))
+  d.consts = d.consts.filter((e) => !left.has(e))
 }
 
 /**
@@ -515,7 +524,7 @@ export function detachDependency(d: Project, dependencyId: Id): string[] {
 
 /**
  * Carry the renames made in the project saved as `file` to a project draft depending on it: paths
- * and port names of its placed modules, names of its types and interfaces, and the interfaces of
+ * and port names of its placed modules, names of its types, interfaces and constants, and the interfaces of
  * placed ports.
  */
 export function applyDependencyRenames(d: Project, file: string, r: Renames): void {
@@ -539,6 +548,7 @@ export function applyDependencyRenames(d: Project, file: string, r: Renames): vo
     }
     rename('types', r.types)
     rename('interfaces', r.interfaces)
+    rename('consts', r.consts)
   }
   followPortInterfaces(d, r.interfaces)
 }
