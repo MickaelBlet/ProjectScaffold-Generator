@@ -18,7 +18,7 @@
     "format": "prettier --write .",
     "tauri": "tauri",
     "electron": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder --linux --win",
+    "electron:build": "npm run build && scripts/patch_portable.sh && electron-builder --linux --win",
     "vscode:compile": "tsc -p vscode && esbuild vscode/src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=vscode/out/extension.js && mkdir -p vscode/media && cp dist-web/index.html electron/icon.png vscode/media/ && cp LICENSE vscode/",
     "vscode:package": "npm run vscode:compile && mkdir -p dist-vscode && cd vscode && vsce package $npm_package_version --no-git-tag-version --no-update-package-json --no-dependencies --out ../dist-vscode/",
     "vscode:build": "npm run build && npm run vscode:package",

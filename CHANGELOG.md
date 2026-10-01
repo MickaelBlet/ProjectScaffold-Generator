@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Electron portable `.exe` (Windows): unpacks into a folder next to itself (removed on exit) instead of `%TEMP%`, where policies or antivirus may block running it; `%TEMP%` stays the fallback when its folder is read-only.
 - C++17 transports: bracketed IPv6 hosts (`[::1]:47000`) resolve, as in Python.
 - Inspectors: selects as tall as inputs and buttons; no separator above the first section.
 - Source panel: the text field fits the panel, so its scrollbars can be dragged and the horizontal one matches the visible width.
