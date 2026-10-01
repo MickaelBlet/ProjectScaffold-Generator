@@ -219,7 +219,7 @@ bool Controller::setMode(const ::common::Mode mode)
   - a file changed **outside** its user sections is left as it is and reported as a conflict (`--force` overwrites it);
   - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files).
   - `.scaffold-gen.json` in the output directory records what was generated (keep it with the code).
-- A template set in `<output directory>/.scaffold/templates/` is used instead of the built-in one (or `-t <dir>`).
+- Templates: _File › Code templates…_ picks the template folder of the document, used until _Default templates_ is picked again (remembered for the document, read again at each generation: edits to the templates apply at once); _Copy the built-in templates into a folder…_ starts a set of one's own from the C++17 one. By default a template set in `<output directory>/.scaffold/templates/` is used instead of the built-in one. Command line: `-t <dir>`; VS Code: _ProjectScaffold: Code Templates…_, or setting `projectScaffold.generate.templates` (folder relative to the project file).
 - [`examples/rover.scaffold.yaml`](examples/rover.scaffold.yaml) is made of modules with ports only (no attributes nor methods): frames, detections, drive commands, lifecycle and health calls between a camera, a perception container (with its content wired through its ports), a planner, motors, a recorder and a supervisor. It is split into two binaries: `Onboard` (the rover) and `Ground` (the supervisor), linked over TCP. `npm run generate -- examples/rover.scaffold.yaml` writes it into `examples/generated/rover`: executables `rover_onboard` and `rover_ground`.
 
 ### C++17 mapping
