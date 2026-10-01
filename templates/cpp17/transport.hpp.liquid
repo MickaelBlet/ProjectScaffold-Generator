@@ -92,6 +92,11 @@ public:
             Reader reader(out);
             std::string text;
             decode(reader, text);
+            if (r.flags & Header::typed) {
+                const auto index = reader.number<std::uint16_t>();
+                throw Raised(index, Bytes(out.end() - static_cast<std::ptrdiff_t>(reader.remaining()), out.end()),
+                             "remote call failed: " + text);
+            }
             throw Error("remote call failed: " + text);
         }
         if (r.kind != Header::reply) throw Error("not a reply");
@@ -105,5 +110,39 @@ private:
     std::chrono::milliseconds timeout_{5000};
     std::uint32_t next_ = 0;
 };
+
+/// Declared exception `e` of a called method (`index` in the `raises` of its message), to send back.
+template <class E>
+Raised raised(std::uint16_t index, const E& e)
+{
+    Writer w;
+    encode(w, e);
+    return Raised(index, w.bytes(), e.what());
+}
+
+/// Throws the declared exception of `e`: one of `E...`, the `raises` of the message in order.
+template <class E, class... Rest>
+[[noreturn]] void raise(const Raised& e, std::uint16_t index = 0)
+{
+    if (e.index == index) {
+        Reader r(e.value);
+        E x{};
+        decode(r, x);
+        throw x;
+    }
+    if constexpr (sizeof...(Rest) > 0) raise<Rest...>(e, static_cast<std::uint16_t>(index + 1));
+    else throw Error(e.what());
+}
+
+/// `caller.call(...)`, throwing the declared exceptions `E...` (the `raises` of the message, in order).
+template <class... E>
+Bytes callRaising(Caller& caller, std::uint16_t message, const Bytes& inputs, bool result)
+{
+    try {
+        return caller.call(message, inputs, result);
+    } catch (const Raised& e) {
+        raise<E...>(e);
+    }
+}
 
 } // namespace {{ project.ident | snake }}::remote

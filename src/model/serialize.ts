@@ -105,11 +105,14 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     ...field(prm),
     direction: prm.direction === 'in' ? undefined : prm.direction
   })
+  const raises = (m: Message) =>
+    m.raises?.length ? m.raises.map((id) => typeName.get(id) ?? '__deleted__') : undefined
   const message = (m: Message) => ({
     name: m.name,
     description: opt(m.description),
     params: m.params.map(param),
-    returns: m.returns ? ref(m.returns) : null
+    returns: m.returns ? ref(m.returns) : null,
+    raises: raises(m)
   })
   const attribute = (a: Attribute) => {
     const { name, ...rest } = valueField(a)
@@ -120,7 +123,8 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     description: opt(m.description),
     ...qualifiers(m),
     params: m.params.map((prm) => ({ ...param(prm), ...qualifiers(prm) })),
-    returns: m.returns ? ref(m.returns) : null
+    returns: m.returns ? ref(m.returns) : null,
+    raises: raises(m)
   })
 
   const typeDef = (t: TypeDef): FileTypeDef => {
@@ -139,6 +143,13 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           description: opt(t.description),
           underlying: t.underlying,
           values: t.values.map((v) => ({ name: v.name, value: v.value }))
+        }
+      case 'exception':
+        return {
+          kind: 'exception',
+          name: t.name,
+          description: opt(t.description),
+          fields: t.fields.map(valueField)
         }
       case 'bitmask':
         return {
@@ -496,7 +507,17 @@ export function fromFile(data: unknown, prev?: Project): Project {
           ...field(prm, where, params[k], [...at, j, 'params', k]),
           direction: prm.direction ?? 'in'
         })),
-        returns: m.returns ? ref(m.returns, `${where} returns`, [...at, j, 'returns']) : null
+        returns: m.returns ? ref(m.returns, `${where} returns`, [...at, j, 'returns']) : null,
+        ...(m.raises?.length
+          ? {
+              raises: m.raises.map((name, k) => {
+                const id = typeIds.get(name)
+                if (!id || interfaceNames.has(name))
+                  report(`${where} raises: unknown exception '${name}'`, [...at, j, 'raises', k])
+                return id ?? newId()
+              })
+            }
+          : {})
       }
     })
   }
@@ -520,6 +541,14 @@ export function fromFile(data: unknown, prev?: Project): Project {
           kind: 'enum',
           underlying: t.underlying,
           values: t.values.map((v, j) => ({ id: values[j]?.id ?? newId(), name: v.name, value: v.value }))
+        }
+      }
+      case 'exception': {
+        const fields = named(was?.kind === 'exception' ? was.fields : [], t.fields)
+        return {
+          ...base,
+          kind: 'exception',
+          fields: t.fields.map((fl, j) => valueField(fl, t.name, fields[j], [...at, 'fields', j]))
         }
       }
       case 'bitmask': {

@@ -31,8 +31,8 @@ exports[`IDL import > imports examples/idl/robot_control.idl 1`] = `
     "enum ArmState",
     "struct Waypoint",
     "alias Trajectory",
-    "struct Busy",
-    "struct OutOfReach",
+    "exception Busy",
+    "exception OutOfReach",
   ],
   "warnings": [],
 }
@@ -70,7 +70,7 @@ exports[`IDL import > imports examples/idl/tank_ccm.idl 1`] = `
   "types": [
     "enum Health",
     "struct LevelChanged",
-    "struct Stuck",
+    "exception Stuck",
   ],
   "warnings": [
     "Line 53: home Plant::TankHome left out",

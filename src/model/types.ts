@@ -124,6 +124,15 @@ export interface BitmaskDef extends Owned {
   flags: BitmaskFlag[]
 }
 
+/** Exception: raised by messages and methods (their `raises`), never used as a type. */
+export interface ExceptionDef extends Owned {
+  id: Id
+  kind: 'exception'
+  name: string
+  description: string
+  fields: ValueField[]
+}
+
 /** Case of a union: held when the discriminator is one of its labels (or none's, for the default case). */
 export interface UnionCase extends Field {
   /** Discriminator values selecting it: integers, characters, booleans or enum value names. */
@@ -159,7 +168,7 @@ export interface PrimitiveDef extends Owned {
   description: string
 }
 
-export type TypeDef = StructDef | EnumDef | BitmaskDef | UnionDef | AliasDef | PrimitiveDef
+export type TypeDef = StructDef | EnumDef | BitmaskDef | UnionDef | ExceptionDef | AliasDef | PrimitiveDef
 
 export const PARAM_DIRECTIONS = ['in', 'out', 'inout'] as const
 /** `in`: caller → callee. `out`: callee → caller. `inout`: both ways. */
@@ -175,6 +184,8 @@ export interface Message {
   description: string
   params: Param[]
   returns: TypeRef | null
+  /** Exceptions (ids of exception types) it may raise; absent: none. */
+  raises?: Id[]
 }
 
 /** C++-like qualifiers of module attributes and method parameters. */

@@ -794,6 +794,54 @@
           "properties": {
             "kind": {
               "type": "string",
+              "const": "exception"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "default": {
+                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive",
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "fields"
+          ],
+          "description": "raised by messages and methods (their `raises`), never used as a type"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
               "const": "bitmask"
             },
             "name": {
@@ -1204,6 +1252,14 @@
                     "type": "null"
                   }
                 ]
+              },
+              "raises": {
+                "description": "exceptions it may raise (names of exception types)",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
               }
             },
             "required": [
@@ -1411,6 +1467,14 @@
                     "type": "null"
                   }
                 ]
+              },
+              "raises": {
+                "description": "exceptions it may raise (names of exception types)",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
               },
               "static": {
                 "description": "called without a module instance",

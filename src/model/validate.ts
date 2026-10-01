@@ -77,6 +77,8 @@ export function validate(p: Project): Problem[] {
   const checkTypeRef = (t: TypeRef, target: ProblemTarget, where: string): void => {
     walkTypeRef(t, (n) => {
       if (n.kind === 'ref' && !types.has(n.id)) push('error', target, `${where}: references a deleted type`)
+      if (n.kind === 'ref' && types.get(n.id)?.kind === 'exception')
+        push('error', target, `${where}: exception '${types.get(n.id)!.name}' can only be raised`)
       if (n.kind === 'primitive' && n.max !== undefined && n.name !== 'string' && n.name !== 'bytes')
         push('error', target, `${where}: ${n.name} cannot be bounded`)
       const keyOf = n.kind === 'map' ? n.key : n.kind === 'set' ? n.of : null
@@ -114,9 +116,15 @@ export function validate(p: Project): Problem[] {
     if (isReservedTypeName(t.name)) push('error', target, `'${t.name}' is a reserved type name`)
     switch (t.kind) {
       case 'struct':
-        if (!t.fields.length) push('warning', target, `Struct '${t.name}' has no fields`)
+      case 'exception':
+        if (t.kind === 'struct' && !t.fields.length)
+          push('warning', target, `Struct '${t.name}' has no fields`)
         for (const n of duplicates(t.fields.map((f) => f.name)))
-          push('error', target, `Struct '${t.name}': duplicate field '${n}'`)
+          push(
+            'error',
+            target,
+            `${t.kind === 'struct' ? 'Struct' : 'Exception'} '${t.name}': duplicate field '${n}'`
+          )
         for (const f of t.fields) {
           checkTypeRef(f.type, target, `${t.name}.${f.name}`)
           checkDefault(f, target, `${t.name}.${f.name}`)
@@ -249,6 +257,14 @@ export function validate(p: Project): Problem[] {
       push('error', target, `${where}: duplicate parameter '${n}'`)
     for (const prm of m.params) checkTypeRef(prm.type, target, `${where}(${prm.name})`)
     if (m.returns) checkTypeRef(m.returns, target, `${where} returns`)
+    for (const id of m.raises ?? []) {
+      const e = types.get(id)
+      if (!e) push('error', target, `${where} raises a deleted type`)
+      else if (e.kind !== 'exception')
+        push('error', target, `${where} raises '${e.name}', which is not an exception`)
+    }
+    for (const id of duplicates(m.raises ?? []))
+      push('error', target, `${where} raises '${types.get(id)?.name ?? id}' more than once`)
   }
 
   // Interfaces

@@ -232,7 +232,7 @@ describe('generation context', () => {
     const client = ctx.systems.find((s) => s.binary?.name === 'Client')!
     expect(client.proxies.map((r) => r.index)).toEqual([0, 1, 2, 3, 4, 5])
     expect(client.stubs.map((r) => [r.index, r.interface.name])).toEqual([[6, 'Status']])
-    // Through the parameters and the fields of Sample, Tree and Badge, sorted by name.
+    // Through the parameters, the raised exceptions and the fields of Sample, Tree and Badge, sorted by name.
     expect(ctx.remoteTypes.map((t) => t.name)).toEqual([
       'Access',
       'Badge',
@@ -241,8 +241,10 @@ describe('generation context', () => {
       'Mode',
       'Names',
       'Numbers',
+      'Refused',
       'Sample',
       'Samples',
+      'Timeout',
       'Tree',
       'Vec3'
     ])
@@ -257,6 +259,12 @@ describe('generation context', () => {
     ])
     expect(ctx.remoteConstants).toHaveLength(7)
     expect(ctx.constantsFile.uses.types.map((t) => t.name)).toEqual(['Access', 'Item', 'Mode', 'Vec3'])
+    // Raised exceptions: types of the calls, in order.
+    const echoCheck = ctx.interfaces[0]!.messages.find((m) => m.name === 'check')!
+    expect(echoCheck.raises.map((r) => [r.name, r.typeKind])).toEqual([
+      ['Refused', 'exception'],
+      ['Timeout', 'exception']
+    ])
     // Unions: the label set with each case, a free one for the default case.
     const item = ctx.types.find((t) => t.name === 'Item')!
     expect(item.kind === 'union' && item.cases.map((c) => [c.name, c.label, c.index])).toEqual([

@@ -72,6 +72,9 @@ public:
 {% for x in m.methods %}
 
 {{ x.description | doc_comment: '    /// ' }}
+{% for r in x.raises %}
+    /// @throws {% render '_type', t: r %}
+{% endfor %}
     {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{% render '_type', t: x.returns %} {% render '_id', name: x.name %}({% render '_params', params: x.params %}){% if x.const %} const{% endif %}{% if x.override %} override{% endif %}{% if x.pure %} = 0{% endif %};
 {% endfor %}
 

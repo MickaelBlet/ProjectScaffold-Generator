@@ -81,6 +81,14 @@ const TypeDef = z
     }),
     z
       .object({
+        kind: z.literal('exception'),
+        name: Identifier,
+        description: Description,
+        fields: z.array(ValueField)
+      })
+      .describe('raised by messages and methods (their `raises`), never used as a type'),
+    z
+      .object({
         kind: z.literal('bitmask'),
         name: Identifier,
         description: Description,
@@ -134,7 +142,8 @@ const Message = z.object({
   name: Identifier,
   description: Description,
   params: z.array(Param),
-  returns: FileTypeRefSchema.nullable()
+  returns: FileTypeRefSchema.nullable(),
+  raises: z.array(Identifier).optional().describe('exceptions it may raise (names of exception types)')
 })
 
 const Attribute = ValueField.extend({

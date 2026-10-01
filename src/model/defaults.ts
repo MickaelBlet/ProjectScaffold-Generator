@@ -157,6 +157,7 @@ export function valueExample(t: TypeRef, types: readonly TypeDef[]): Value {
             return c ? { [c.name]: example(c.type, inner) } : null
           }
           case 'struct':
+          case 'exception':
             return Object.fromEntries(def.fields.map((f) => [f.name, f.default ?? example(f.type, inner)]))
         }
       }

@@ -513,10 +513,12 @@ export interface UsageOwner {
 }
 
 /** Every type reference in the project, with a label of where it is used and the entity holding it. */
-export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: string; owner: UsageOwner }> {
+export function* allTypeRefs(
+  p: Project
+): Generator<{ ref: TypeRef; where: string; owner: UsageOwner; raised?: boolean }> {
   for (const t of p.types) {
     const owner = { kind: 'type', id: t.id } as const
-    if (t.kind === 'struct')
+    if (t.kind === 'struct' || t.kind === 'exception')
       for (const f of t.fields) yield { ref: f.type, where: `${t.name}.${f.name}`, owner }
     if (t.kind === 'alias') yield { ref: t.type, where: t.name, owner }
     if (t.kind === 'union') {
@@ -530,6 +532,8 @@ export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: strin
     for (const m of i.messages) {
       for (const prm of m.params) yield { ref: prm.type, where: `${i.name}.${m.name}(${prm.name})`, owner }
       if (m.returns) yield { ref: m.returns, where: `${i.name}.${m.name} returns`, owner }
+      for (const id of m.raises ?? [])
+        yield { ref: { kind: 'ref', id }, where: `${i.name}.${m.name} raises`, owner, raised: true }
     }
   }
   for (const m of p.modules) {
@@ -539,6 +543,8 @@ export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: strin
     for (const x of m.methods) {
       for (const prm of x.params) yield { ref: prm.type, where: `${path}.${x.name}(${prm.name})`, owner }
       if (x.returns) yield { ref: x.returns, where: `${path}.${x.name} returns`, owner }
+      for (const id of x.raises ?? [])
+        yield { ref: { kind: 'ref', id }, where: `${path}.${x.name} raises`, owner, raised: true }
     }
   }
 }

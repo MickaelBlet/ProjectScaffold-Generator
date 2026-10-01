@@ -64,7 +64,7 @@ export function searchProject(p: Project, query: string): SearchHit[] {
     const target = { kind: 'type', id: t.id } as const
     check(target, t.name, t.kind, t.name)
     check(target, t.name, 'description', t.description)
-    if (t.kind === 'struct')
+    if (t.kind === 'struct' || t.kind === 'exception')
       for (const f of t.fields) {
         check(target, `${t.name}.${f.name}`, 'field', f.name)
         check(target, `${t.name}.${f.name}`, 'field description', f.description)

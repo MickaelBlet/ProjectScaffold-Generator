@@ -158,7 +158,8 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
     ...m,
     id: newId(),
     params: m.params.map(field),
-    returns: m.returns ? ref(m.returns) : null
+    returns: m.returns ? ref(m.returns) : null,
+    ...(m.raises ? { raises: m.raises.map(rebind) } : {})
   })
 
   for (const t of clip.types) {
@@ -167,7 +168,8 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
       name: uniqueName(t.name, globalTypeNames(d)),
       description: t.description
     }
-    if (t.kind === 'struct') d.types.push({ ...base, kind: 'struct', fields: t.fields.map(field) })
+    if (t.kind === 'struct' || t.kind === 'exception')
+      d.types.push({ ...base, kind: t.kind, fields: t.fields.map(field) })
     else if (t.kind === 'enum')
       d.types.push({
         ...base,

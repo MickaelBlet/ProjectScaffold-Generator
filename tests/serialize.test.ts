@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { fromFile, LoadError, loadText, reloadText, sameContent, saveText, toFile } from '@/model/serialize'
 import { validate } from '@/model/validate'
 import type { StructDef } from '@/model/types'
+import type { FileProject } from '@/model/schema'
 
 const exampleText = readFileSync('examples/robot.scaffold.yaml', 'utf8')
 const example = YAML.parse(exampleText)
@@ -139,6 +140,24 @@ describe('serialize', () => {
         "Link 'sensor_to_controller' to: unknown module 'Core.Nope'"
       ])
     }
+  })
+
+  it('round-trips the exceptions messages raise, reports unknown ones', () => {
+    const file = structuredClone(example) as FileProject
+    file.types.push({
+      kind: 'exception',
+      name: 'Busy',
+      fields: [{ name: 'reason', type: { kind: 'primitive', name: 'string' } }]
+    })
+    const message = file.dependencies![0]!.interfaces[0]!.messages[0]!
+    message.raises = ['Busy']
+    const p = fromFile(file)
+    const busy = p.types.find((t) => t.name === 'Busy')!
+    expect(p.interfaces[0]!.messages[0]!.raises).toEqual([busy.id])
+    const back = toFile(p, { editor: true })
+    expect(back.dependencies![0]!.interfaces[0]!.messages[0]!.raises).toEqual(['Busy'])
+    message.raises = ['Nope']
+    expect(() => fromFile(file)).toThrow(/raises: unknown exception 'Nope'/)
   })
 
   it('rejects duplicate referenced names', () => {

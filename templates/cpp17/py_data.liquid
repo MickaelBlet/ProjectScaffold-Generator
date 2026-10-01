@@ -46,11 +46,11 @@ class {% render '_py_id', name: t.name %}:
     d: Any = _field(default_factory=lambda: {% render '_py_zero', t: t.discriminator, prefix: '' %})
     value: Any = None
 {% endif %}
-{% when 'struct' %}
+{% when 'struct', 'exception' %}
 
 
 @dataclass
-class {% render '_py_id', name: t.name %}:
+class {% render '_py_id', name: t.name %}{% if t.kind == 'exception' %}(Exception){% endif %}:
 {{ t.description | doc_comment: '    # ' }}
 {% for f in t.fields %}
 {{ f.description | doc_comment: '    # ' }}
@@ -130,7 +130,7 @@ def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
 {% else %}
     return {% render '_py_id', name: t.name %}(d, None)
 {% endif %}
-{% when 'struct' %}
+{% when 'struct', 'exception' %}
 
 
 def encode_{{ t.name }}(w: Writer, v: {% render '_py_id', name: t.name %}) -> None:

@@ -1264,15 +1264,12 @@ class Parser {
     this.add({ q, simple: name, kind: 'interface', def: { name, description, messages }, needs })
   }
 
-  /** `raises (A, B)`: references to the exceptions, and their names for descriptions. */
-  private raises(): { refs: string[]; text: string } {
+  /** `raises (A, B)`: references to the exceptions. */
+  private raises(): string[] {
     this.expect('(')
     const names = this.scopedList()
     this.expect(')')
-    return {
-      refs: names.map((n) => this.encode(n)),
-      text: names.map((n) => lastSegment(`::${n}`)).join(', ')
-    }
+    return names.map((n) => this.encode(n))
   }
 
   /** Attribute declaration, as messages: `get_x`, and `set_x` unless read-only. */
@@ -1281,16 +1278,18 @@ class Parser {
     for (const n of a.names) {
       messages.push({
         name: `get_${n}`,
-        description: joinLines(a.description, a.get),
+        description: a.description,
         params: [],
-        returns: a.type
+        returns: a.type,
+        ...(a.getRaises.length ? { raises: [...a.getRaises] } : {})
       })
       if (!a.readonly)
         messages.push({
           name: `set_${n}`,
-          description: joinLines(a.description, a.set),
+          description: a.description,
           params: [{ name: n, type: a.type, direction: 'in' }],
-          returns: null
+          returns: null,
+          ...(a.setRaises.length ? { raises: [...a.setRaises] } : {})
         })
     }
     needs.push(...a.refs)
@@ -1301,8 +1300,8 @@ class Parser {
     type: FileTypeRef
     readonly: boolean
     description: string
-    get: string
-    set: string
+    getRaises: string[]
+    setRaises: string[]
     refs: string[]
   } {
     const readonly = !!this.accept('readonly')
@@ -1311,18 +1310,22 @@ class Parser {
     const names: string[] = []
     do names.push(this.name())
     while (this.accept(','))
-    let get = ''
-    let set = ''
-    const refs: string[] = []
+    const getRaises: string[] = []
+    const setRaises: string[] = []
     while (this.is('raises') || this.is('getraises') || this.is('setraises')) {
       const which = this.next().text
-      const r = this.raises()
-      refs.push(...r.refs)
-      if (which === 'setraises') set = `Raises ${r.text}.`
-      else get = `Raises ${r.text}.`
+      ;(which === 'setraises' ? setRaises : getRaises).push(...this.raises())
     }
     const end = this.expect(';')
-    return { names, type, readonly, description: first.doc || end.trail || first.trail, get, set, refs }
+    return {
+      names,
+      type,
+      readonly,
+      description: first.doc || end.trail || first.trail,
+      getRaises,
+      setRaises,
+      refs: [...getRaises, ...setRaises]
+    }
   }
 
   private operation(first: Token): { message: FileMessage; raises: string[] } {
@@ -1346,11 +1349,14 @@ class Parser {
         })
       } while (this.accept(','))
     this.expect(')')
-    const raised = this.accept('raises') ? this.raises() : undefined
+    const raised = this.accept('raises') ? this.raises() : []
     if (this.accept('context')) this.balanced('(', ')')
     const end = this.expect(';')
-    const description = joinLines(first.doc || end.trail || first.trail, raised && `Raises ${raised.text}.`)
-    return { message: { name, description, params, returns }, raises: raised?.refs ?? [] }
+    const description = first.doc || end.trail || first.trail
+    return {
+      message: { name, description, params, returns, ...(raised.length ? { raises: [...raised] } : {}) },
+      raises: raised
+    }
   }
 
   /** Struct, union, enum, bitmask or bitset definition (or forward declaration): its qualified name. */
@@ -1430,7 +1436,13 @@ class Parser {
     this.scope.pop()
     const description = first.doc || this.endTrail() || first.trail
     this.expect(';')
-    this.add({ q, simple: name, kind: 'type', def: { kind: 'struct', name, description, fields }, needs: [] })
+    this.add({
+      q,
+      simple: name,
+      kind: 'type',
+      def: { kind: 'exception', name, description, fields },
+      needs: []
+    })
   }
 
   /** Union: its discriminator and cases, with their labels. */
@@ -2047,6 +2059,7 @@ class Parser {
     const message = (m: FileMessage): void => {
       for (const p of m.params) p.type = ref(p.type)
       if (m.returns) m.returns = ref(m.returns)
+      if (m.raises) m.raises = m.raises.map(other)
     }
     for (const e of entities) {
       e.needs = e.needs.map(other)
@@ -2056,7 +2069,8 @@ class Parser {
         e.def.methods.forEach(message)
         for (const p of e.def.ports) p.interface = p.interface && other(p.interface)
         e.def.bases = e.def.bases.map(other)
-      } else if (e.def.kind === 'struct') for (const f of e.def.fields) f.type = ref(f.type)
+      } else if (e.def.kind === 'struct' || e.def.kind === 'exception')
+        for (const f of e.def.fields) f.type = ref(f.type)
       else if (e.def.kind === 'union') {
         e.def.discriminator = ref(e.def.discriminator)
         for (const c of e.def.cases) c.type = ref(c.type)
@@ -2206,7 +2220,7 @@ function messageNames(messages: FileMessage[], into: string[]): void {
 function usedNames(e: FileTypeDef | FileInterface, needs: string[] = []): string[] {
   const names = [...needs]
   if ('messages' in e) messageNames(e.messages, names)
-  else if (e.kind === 'struct') for (const f of e.fields) refNames(f.type, names)
+  else if (e.kind === 'struct' || e.kind === 'exception') for (const f of e.fields) refNames(f.type, names)
   else if (e.kind === 'union')
     for (const t of [e.discriminator, ...e.cases.map((c) => c.type)]) refNames(t, names)
   else if (e.kind === 'alias') refNames(e.type, names)
@@ -2310,7 +2324,8 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
     name: m.name,
     description: m.description ?? '',
     params: m.params.map((p) => ({ ...field(p), direction: p.direction ?? 'in' })),
-    returns: m.returns ? ref(m.returns) : null
+    returns: m.returns ? ref(m.returns) : null,
+    ...(m.raises?.length ? { raises: m.raises.map((n) => ids.get(n) ?? have.get(n)!) } : {})
   })
 
   const types: TypeDef[] = []
@@ -2319,10 +2334,10 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
     if (!picked.has(e.name)) continue
     const base = { id: ids.get(e.name)!, name: e.name, description: e.description ?? '' }
     if ('messages' in e) interfaces.push({ ...base, messages: e.messages.map(message) })
-    else if (e.kind === 'struct')
+    else if (e.kind === 'struct' || e.kind === 'exception')
       types.push({
         ...base,
-        kind: 'struct',
+        kind: e.kind,
         fields: e.fields.map((f) => ({
           ...field(f),
           ...(f.default !== undefined ? { default: f.default } : {})
@@ -2352,9 +2367,18 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
     else if (e.kind === 'alias') types.push({ ...base, kind: 'alias', type: ref(e.type) })
     else types.push({ ...base, kind: 'primitive' })
   }
+  // Names only raised: exceptions without fields.
+  const raised = new Set(
+    [...picked]
+      .map((n) => byName.get(n)!)
+      .flatMap((e) => ('messages' in e ? e.messages.flatMap((m) => m.raises ?? []) : []))
+  )
+  for (const c of pickedComponents)
+    for (const m of components.get(c)!.methods) for (const r of m.raises ?? []) raised.add(r)
   for (const name of unresolved) {
     const base = { id: ids.get(name)!, name, description: 'Not defined in the IDL files' }
     if (emptyInterfaces.has(name)) interfaces.push({ ...base, messages: [] })
+    else if (raised.has(name) && !usedAsType.has(name)) types.push({ ...base, kind: 'exception', fields: [] })
     else types.push({ ...base, kind: 'primitive' })
   }
 

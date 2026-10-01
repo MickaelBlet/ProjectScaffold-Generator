@@ -74,6 +74,18 @@ public:
 
     Item item(const Item& i) override { return i; }
 
+    bool check(std::int32_t level) override
+    {
+        if (level < 0) {
+            Refused e;
+            e.reason = "negative";
+            e.code = level;
+            throw e;
+        }
+        if (level > 100) throw Timeout{};
+        return true;
+    }
+
     Badge badge(const Badge& b) override { return b; }
 
 private:
@@ -173,6 +185,18 @@ int call(EchoProxy& proxy, const std::string& transport)
     static_assert(MaxNames == 3 && DefaultMode == Mode::Run && DefaultAccess == (Access::Read | Access::Write));
     check("constants", Greeting == "hello" && Origin.z == 1.5 && Weights.at("a") == 0.5f &&
                            FirstItem._d() == 1 && FirstItem.number() == 7);
+    check("raises nothing", proxy.check(5));
+    try {
+        proxy.check(-2);
+        check("raises", false);
+    } catch (const Refused& e) {
+        check("raises", e.reason == "negative" && e.code == -2);
+    }
+    try {
+        proxy.check(200);
+        check("raises the second", false);
+    } catch (const Timeout&) {
+    }
     check("bounds", proxy.names({"a", "bcde"}) == Names{"a", "bcde"});
     const Badge badge{"ab", {{1, {7, 8}}}};
     check("bounds of fields", bytes(proxy.badge(badge)) == bytes(badge));

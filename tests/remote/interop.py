@@ -64,6 +64,13 @@ class Echo(EchoHandler):
     def item(self, i):
         return i
 
+    def check(self, level):
+        if level < 0:
+            raise data.Refused('negative', level)
+        if level > 100:
+            raise data.Timeout()
+        return True
+
     def badge(self, b):
         return b
 
@@ -119,6 +126,17 @@ def call(proxy: EchoProxy, transport: str) -> None:
           and constants.DefaultMode == data.Mode.Run and constants.DefaultAccess == data.Access.Read | data.Access.Write
           and constants.Origin == data.Vec3(0, 0, 1.5) and constants.Weights == {'a': 0.5}
           and constants.FirstItem == data.Item(1, 7))
+    check('raises nothing', proxy.check(5) is True)
+    try:
+        proxy.check(-2)
+        check('raises', False)
+    except data.Refused as e:
+        check('raises', e.reason == 'negative' and e.code == -2)
+    try:
+        proxy.check(200)
+        check('raises the second', False)
+    except data.Timeout:
+        pass
     check('bounds', proxy.names(['a', 'bcde']) == ['a', 'bcde'])
     badge = data.Badge('ab', {1: b'\x07\x08'})
     check('bounds of fields', proxy.badge(badge) == badge)

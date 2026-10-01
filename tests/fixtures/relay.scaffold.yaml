@@ -243,6 +243,22 @@ types:
           kind: primitive
           name: string
         default: true
+  - kind: exception
+    name: Refused
+    description: Level out of range
+    fields:
+      - name: reason
+        type:
+          kind: primitive
+          name: string
+          max: 16
+      - name: code
+        type:
+          kind: primitive
+          name: int32
+  - kind: exception
+    name: Timeout
+    fields: []
   - kind: struct
     name: Badge
     fields:
@@ -453,6 +469,18 @@ interfaces:
         returns:
           kind: ref
           name: Item
+      - name: check
+        params:
+          - name: level
+            type:
+              kind: primitive
+              name: int32
+        returns:
+          kind: primitive
+          name: bool
+        raises:
+          - Refused
+          - Timeout
       - name: badge
         params:
           - name: b

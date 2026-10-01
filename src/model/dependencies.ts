@@ -79,6 +79,7 @@ function shaper(p: Project): (e: Entity) => string {
   return (e) =>
     JSON.stringify(e, (key, value: unknown) => {
       if (key === 'id' || key === 'dependency') return undefined
+      if (key === 'raises' && Array.isArray(value)) return value.map((id) => names.get(id as Id) ?? '')
       const ref = value as { kind?: unknown; id?: unknown } | null
       if (ref && typeof ref === 'object' && ref.kind === 'ref' && typeof ref.id === 'string')
         return { kind: 'ref', name: names.get(ref.id) ?? '' }
@@ -92,9 +93,10 @@ function rebind(e: Entity, idOf: (id: Id) => Id): void {
     for (const m of e.messages) {
       for (const prm of m.params) prm.type = ref(prm.type)
       if (m.returns) m.returns = ref(m.returns)
+      if (m.raises) m.raises = m.raises.map(idOf)
     }
   else if (isConst(e)) e.type = ref(e.type)
-  else if (e.kind === 'struct') for (const f of e.fields) f.type = ref(f.type)
+  else if (e.kind === 'struct' || e.kind === 'exception') for (const f of e.fields) f.type = ref(f.type)
   else if (e.kind === 'union') {
     e.discriminator = ref(e.discriminator)
     for (const c of e.cases) c.type = ref(c.type)

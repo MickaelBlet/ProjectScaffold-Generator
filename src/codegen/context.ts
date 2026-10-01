@@ -30,6 +30,8 @@ export type TypeKind = FileTypeDef['kind']
 /** Type reference with the kind and owner of the user types it names; `max`: null when unbounded. */
 export type GenTypeRef = TypeRefOf<GenRefTarget, number | null>
 type GenRefTarget = { name: string; typeKind: TypeKind; dependency: string | null }
+/** Reference to a user type. */
+export type GenNamedRef = Extract<GenTypeRef, { kind: 'ref' }>
 
 /** Every bound present, for the templates: null when none. */
 function withBounds(t: TypeRefOf<GenRefTarget>): GenTypeRef {
@@ -76,6 +78,7 @@ export type GenType = Owned & {
   uses: GenUses
 } & (
     | { kind: 'struct'; fields: GenField[] }
+    | { kind: 'exception'; fields: GenField[] }
     | { kind: 'enum'; underlying: string; values: { name: string; value: number }[] }
     /** `value`: `1 << bit`, as decimal text (64-bit values do not fit in numbers). */
     | { kind: 'bitmask'; underlying: string; flags: { name: string; bit: number; value: string }[] }
@@ -117,6 +120,8 @@ export interface GenMessage {
   /** Parameters passed back: `out` and `inout`. */
   outputs: GenParam[]
   returns: GenTypeRef | null
+  /** Exceptions it may raise (references to exception types), in order: indexes on the wire. */
+  raises: GenNamedRef[]
 }
 
 export interface GenInterface extends Owned {
@@ -444,6 +449,8 @@ export function buildContext(file: FileProject): GenContext {
     switch (t.kind) {
       case 'struct':
         return { ...base, kind: 'struct', fields: t.fields.map(field) }
+      case 'exception':
+        return { ...base, kind: 'exception', fields: t.fields.map(field) }
       case 'enum':
         return { ...base, kind: 'enum', underlying: t.underlying, values: t.values.map((v) => ({ ...v })) }
       case 'bitmask':
@@ -492,7 +499,8 @@ export function buildContext(file: FileProject): GenContext {
       params,
       inputs: params.filter((p) => p.direction !== 'out'),
       outputs: params.filter((p) => p.direction !== 'in'),
-      returns: m.returns ? ref(m.returns) : null
+      returns: m.returns ? ref(m.returns) : null,
+      raises: (m.raises ?? []).map((name) => ref({ kind: 'ref', name })).filter((r) => r.kind === 'ref')
     }
   }
 
@@ -606,12 +614,16 @@ export function buildContext(file: FileProject): GenContext {
   }
   const messageRefs = (m: GenMessage): GenTypeRef[] => [
     ...m.params.map((p) => p.type),
-    ...(m.returns ? [m.returns] : [])
+    ...(m.returns ? [m.returns] : []),
+    ...m.raises
   ]
   for (const t of allTypes)
     t.uses =
-      t.kind === 'struct'
-        ? usesOf(t.fields.map((f) => f.type))
+      t.kind === 'struct' || t.kind === 'exception'
+        ? usesOf(
+            t.fields.map((f) => f.type),
+            t.kind === 'exception' ? ['exception'] : []
+          )
         : t.kind === 'alias'
           ? usesOf([t.type])
           : t.kind === 'union'

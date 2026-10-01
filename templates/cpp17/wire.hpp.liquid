@@ -7,7 +7,9 @@
 // struct: its fields in order; enum, bitmask: its underlying type. Bounds (`string<16>`, `vector<T, 8>`) are
 // checked when encoding and decoding.
 // Frame: 16-byte header (magic "SCF1", u8 kind, u8 flags, u16 message, u32 call id, u32 payload
-// length), then the payload: the inputs of a call, or the result then the outputs of a reply.
+// length), then the payload: the inputs of a call, or the result then the outputs of a reply, or
+// the error text, then for a declared exception (flag `typed`) its u16 index in the `raises` of the
+// message and its fields.
 
 #include <algorithm>
 #include <array>
@@ -297,6 +299,8 @@ struct Header {
     enum Kind : std::uint8_t { call = 1, reply = 2, error = 3 };
     /// Flag of a call waiting for its reply.
     static constexpr std::uint8_t wantReply = 1;
+    /// Flag of an error frame holding a declared exception.
+    static constexpr std::uint8_t typed = 2;
 
     std::uint8_t kind = call;
     std::uint8_t flags = 0;
@@ -345,13 +349,30 @@ inline Bytes payload(const Bytes& frame)
     return Bytes(frame.begin() + Header::size, frame.end());
 }
 
-inline Bytes errorFrame(std::uint32_t id, const std::string& message)
+/// A declared exception of a remote call (`index` in the `raises` of its message), encoded.
+class Raised : public Error {
+public:
+    Raised(std::uint16_t index, Bytes value, const std::string& what)
+        : Error(what), index(index), value(std::move(value))
+    {
+    }
+
+    std::uint16_t index;
+    Bytes value;
+};
+
+inline Bytes errorFrame(std::uint32_t id, const std::string& message, const Raised* raised = nullptr)
 {
     Writer w;
     encode(w, message);
     Header h;
     h.kind = Header::error;
     h.id = id;
+    if (raised) {
+        h.flags = Header::typed;
+        w.number(raised->index);
+        w.raw(raised->value.data(), raised->value.size());
+    }
     return frame(h, w.bytes());
 }
 
@@ -364,6 +385,7 @@ std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
     const Header h = header(call);
     const bool wanted = (h.flags & Header::wantReply) != 0;
     std::string failure;
+    std::optional<Raised> raised;
     try {
         if (h.kind != Header::call) throw Error("not a call");
         const Bytes in = payload(call);
@@ -376,12 +398,15 @@ std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
         r.message = h.message;
         r.id = h.id;
         return frame(r, writer.bytes());
+    } catch (const Raised& e) {
+        failure = e.what();
+        raised = e;
     } catch (const std::exception& e) {
         failure = e.what();
     } catch (...) {
         failure = "unknown exception";
     }
-    if (wanted) return errorFrame(h.id, failure);
+    if (wanted) return errorFrame(h.id, failure, raised ? &*raised : nullptr);
     std::cerr << "remote call " << h.message << " failed: " << failure << '\n';
     return std::nullopt;
 }

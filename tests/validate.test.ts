@@ -105,6 +105,22 @@ describe('validate', () => {
     ])
   })
 
+  it('checks raised exceptions: exceptions only, once, never used as types', () => {
+    const p = load()
+    p.types.push({ id: 'x', kind: 'exception', name: 'Busy', description: '', fields: [] })
+    const telemetry = p.interfaces.find((i) => i.name === 'Telemetry')!
+    const message = telemetry.messages[0]!
+    message.raises = ['x']
+    expect(messages(p)).toEqual([])
+    message.raises = ['x', 'x', type<StructDef>(p, 'Vec3').id]
+    message.params[0]!.type = { kind: 'ref', id: 'x' }
+    expect(messages(p)).toEqual([
+      `Telemetry.${message.name}(${message.params[0]!.name}): exception 'Busy' can only be raised`,
+      `Telemetry.${message.name} raises 'Vec3', which is not an exception`,
+      `Telemetry.${message.name} raises 'Busy' more than once`
+    ])
+  })
+
   it('flags duplicate names in lists', () => {
     const p = load()
     const s = type<StructDef>(p, 'Vec3')

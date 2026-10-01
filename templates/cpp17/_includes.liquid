@@ -16,6 +16,8 @@
       assign std = std | append: '<' | append: b | append: '>,'
     when 'variant'
       assign std = std | append: '<utility>,<variant>,'
+    when 'exception'
+      assign std = std | append: '<exception>,'
     endcase
   endfor
   for t in e.uses.types

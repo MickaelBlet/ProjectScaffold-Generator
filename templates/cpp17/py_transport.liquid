@@ -13,9 +13,10 @@ import struct
 import sys
 import threading
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
-from .wire import CALL, ERROR, HEADER, MAX_LENGTH, REPLY, WANT_REPLY, Reader, RemoteError, Writer, error_frame, frame, header, payload
+from .wire import (CALL, ERROR, HEADER, MAX_LENGTH, REPLY, TYPED, WANT_REPLY, Raised, Reader, RemoteError, Writer,
+                   error_frame, frame, header, payload)
 
 Handler = Callable[[bytes], Optional[bytes]]
 """Answers a call frame: the reply frame, or None when the call wants none."""
@@ -545,9 +546,11 @@ class Caller:
         self._lock = threading.Lock()
         self._next = 0
 
-    def call(self, message: int, inputs: Writer, result: bool) -> Reader:
+    def call(self, message: int, inputs: Writer, result: bool,
+             raises: Tuple[Callable[[Reader], Any], ...] = ()) -> Reader:
         """Sends message `message` with its encoded inputs; waits for the reply when the message has
-        a result, or the link acknowledges calls. Returns a reader of the reply (empty without)."""
+        a result, or the link acknowledges calls. Returns a reader of the reply (empty without).
+        `raises`: decoders of the declared exceptions of the message, in order: raised as such."""
         with self._lock:
             wait = result or self.ack
             self._next = (self._next + 1) & 0xFFFFFFFF
@@ -555,10 +558,17 @@ class Caller:
             reply = self.channel.exchange(data, wait, self.timeout)
         if reply is None:
             return Reader(b'')
-        kind = header(reply)[0]
+        kind, flags = header(reply)[:2]
         body = payload(reply)
         if kind == ERROR:
-            raise RemoteError('remote call failed: ' + Reader(body).string())
+            r = Reader(body)
+            text = 'remote call failed: ' + r.string()
+            if not flags & TYPED:
+                raise RemoteError(text)
+            index = r.uint16()
+            if index < len(raises):
+                raise raises[index](r) from None
+            raise Raised(index, r.rest(), text)
         if kind != REPLY:
             raise RemoteError('not a reply')
         return Reader(body)

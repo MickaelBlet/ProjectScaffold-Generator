@@ -12,14 +12,14 @@
 namespace {{ project.ident | snake }}::remote {
 
 {% for t in remoteTypes %}
-{% if t.kind == 'struct' or t.kind == 'union' %}
+{% if t.kind == 'struct' or t.kind == 'union' or t.kind == 'exception' %}
 inline void encode(Writer& w, const {% render '_qualified', e: t %}& v);
 inline void decode(Reader& r, {% render '_qualified', e: t %}& v);
 {% endif %}
 {% endfor %}
 {% for t in remoteTypes %}
 {% case t.kind %}
-{% when 'struct' %}
+{% when 'struct', 'exception' %}
 
 inline void encode(Writer& w, const {% render '_qualified', e: t %}& v)
 {

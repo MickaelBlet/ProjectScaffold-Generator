@@ -104,6 +104,14 @@ types:
         value: 1
       - name: Failed
         value: 2
+  - kind: exception
+    name: StartFailed
+    description: The rover could not start
+    fields:
+      - name: diagnosis
+        type:
+          kind: ref
+          name: Diagnosis
   - kind: union
     name: Diagnosis
     description: Why the health is not Ok
@@ -184,6 +192,8 @@ interfaces:
         returns:
           kind: primitive
           name: bool
+        raises:
+          - StartFailed
       - name: stop
         params: []
         returns: null

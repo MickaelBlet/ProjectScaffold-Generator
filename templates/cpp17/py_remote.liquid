@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .. import data as _data
 from ..links import Link
 from ..transport import Caller, Channel, Server, connect, serve
-from ..wire import Reader, Writer, respond
+from ..wire import Reader, Writer, raised, respond
 {% user 'imports' %}
 {% enduser %}
 
@@ -36,6 +36,8 @@ class {{ item.name }}Proxy:
     def close(self) -> None:
         self._caller.close()
 {% for msg in item.messages %}
+{% capture raises %}{% if msg.raises.size > 0 %}, ({% for r in msg.raises %}_data.decode_{{ r.name }}{% if forloop.length == 1 %},{% elsif forloop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endcapture -%}
+{% # The decoders of its declared exceptions. %}
 
     def {% render '_py_id', name: msg.name %}(self{% for p in msg.inputs %}, {% render '_py_id', name: p.name %}: {% render '_py_type', t: p.type, prefix: '_data.' %}{% endfor %}) -> {% render '_py_results', msg: msg, what: 'hint', prefix: '_data.' %}:
 {{ msg.description | doc_comment: '        # ' }}
@@ -50,7 +52,7 @@ class {{ item.name }}Proxy:
         {{ statement }}
 {% endfor %}
 {% if msg.returns or msg.outputs.size > 0 %}
-        _r = self._caller.call({{ forloop.index0 }}, _w, True)
+        _r = self._caller.call({{ forloop.index0 }}, _w, True{{ raises }})
 {% assign k = 0 %}
 {% if msg.returns %}
         _v0 = {% render '_py_decode', t: msg.returns, r: '_r', prefix: '_data.' %}
@@ -62,7 +64,7 @@ class {{ item.name }}Proxy:
         _r.end()
         return {% render '_py_results', msg: msg, what: 'names' %}
 {% else %}
-        self._caller.call({{ forloop.index0 }}, _w, False)
+        self._caller.call({{ forloop.index0 }}, _w, False{{ raises }})
 {% endif %}
 {% endfor %}
 
@@ -110,7 +112,17 @@ class {{ item.name }}Stub:
             {% render '_py_id', name: p.name %} = {% render '_py_decode', t: p.type, r: '_r', prefix: '_data.' %}
 {% endfor %}
             _r.end()
-            {% if msg.returns or msg.outputs.size > 0 %}{% render '_py_results', msg: msg, what: 'names' %} = {% endif %}_h.{% render '_py_id', name: msg.name %}({% for p in msg.inputs %}{% render '_py_id', name: p.name %}{% unless forloop.last %}, {% endunless %}{% endfor %})
+{% capture call %}{% if msg.returns or msg.outputs.size > 0 %}{% render '_py_results', msg: msg, what: 'names' %} = {% endif %}_h.{% render '_py_id', name: msg.name %}({% for p in msg.inputs %}{% render '_py_id', name: p.name %}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endcapture -%}
+{% if msg.raises.size > 0 %}
+            try:
+                {{ call }}
+{% for r in msg.raises %}
+            except _data.{% render '_py_id', name: r.name %} as _e:
+                raise raised({{ forloop.index0 }}, _data.encode_{{ r.name }}, _e) from None
+{% endfor %}
+{% else %}
+            {{ call }}
+{% endif %}
 {% assign k = 0 %}
 {% if msg.returns %}
 {% capture statement %}

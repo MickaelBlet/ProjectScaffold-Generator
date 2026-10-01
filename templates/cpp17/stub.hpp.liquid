@@ -50,6 +50,7 @@ public:
 {% endif %}
 {% endfor %}
                 reader_.end();
+{% capture call %}
 {% if msg.returns %}
 {% capture check %}{% render '_bounds', t: msg.returns, v: 'result_', depth: 0 %}{% endcapture -%}
 {% if check != '' %}
@@ -70,6 +71,18 @@ public:
 {% endif %}
                 encode(writer_, {{ value }});
 {% endfor %}
+{% endcapture %}
+{% if msg.raises.size > 0 %}
+                try {
+{{ call | rstrip | replace: '\n', '\n    ' | prepend: '    ' }}
+{% for r in msg.raises %}
+                } catch (const {% render '_type', t: r %}& e) {
+                    throw raised({{ forloop.index0 }}, e);
+{% endfor %}
+                }
+{% else %}
+{{ call | rstrip }}
+{% endif %}
                 return true;
             }
 {% endfor %}

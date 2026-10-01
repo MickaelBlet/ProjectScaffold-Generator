@@ -40,7 +40,7 @@ module Robot {
       void move(in Path path, out boolean done) raises (Busy);
       Mode mode();
       oneway void stop();
-      readonly attribute Pose pose;
+      readonly attribute Pose pose raises (Busy);
       attribute unsigned long long speed;
       sequence<octet> dump(in map<string, Payload> items, inout ::Robot::Unknown u);
     };
@@ -57,7 +57,9 @@ const alias = (idl: IdlFile, name: string) => {
 }
 const fields = (idl: IdlFile, name: string) => {
   const t = typeNamed(idl, name)
-  return t?.kind === 'struct' ? t.fields.map((f) => `${printTypeExpr(f.type)} ${f.name}`) : undefined
+  return t?.kind === 'struct' || t?.kind === 'exception'
+    ? t.fields.map((f) => `${printTypeExpr(f.type)} ${f.name}`)
+    : undefined
 }
 const signatures = (messages: IdlFile['interfaces'][number]['messages']) =>
   messages.map(
@@ -120,6 +122,7 @@ describe('IDL import', () => {
       ]
     })
     expect(fields(idl, 'Busy')).toEqual(['string reason'])
+    expect(typeNamed(idl, 'Busy')?.kind).toBe('exception')
     expect(idl.warnings).toEqual(['Line 2: base.idl not found'])
     expect(idl.missing).toEqual(['base.idl'])
     expect(idl.constants).toEqual([
@@ -152,7 +155,8 @@ describe('IDL import', () => {
       'set_speed(in uint64 speed)',
       'dump(in map<string, Payload> items, inout Unknown u): bytes'
     ])
-    expect(motion.messages[0]!.description).toBe('Raises Busy.')
+    expect(motion.messages[0]!.raises).toEqual(['Busy'])
+    expect(motion.messages.find((m) => m.name === 'get_pose')!.raises).toEqual(['Busy'])
     expect(idl.needs).toEqual({ Motion: ['Busy'], Arm: ['Busy'] })
     expect(sig(idl, 'Arm')).toEqual([...sig(idl, 'Motion'), 'grip(in int32 force)'])
   })

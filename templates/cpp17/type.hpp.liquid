@@ -18,6 +18,17 @@ struct {% render '_name', e: item %} {
     {% user 'members' %}
     {% enduser %}
 };
+{% when 'exception' %}
+struct {% render '_name', e: item %} : std::exception {
+{% for f in item.fields %}
+{{ f.description | doc_comment: '    /// ' }}
+    {% render '_type', t: f.type %} {% render '_id', name: f.name %}{% if f.hasDefault %} = {% render '_value', v: f.default, t: f.type %}{% else %}{}{% endif %};
+{% endfor %}
+
+    const char* what() const noexcept override { return "{{ item.name }}"; }
+    {% user 'members' %}
+    {% enduser %}
+};
 {% when 'enum' %}
 enum class {% render '_name', e: item %} : {% render '_primitive', name: item.underlying %} {
 {% for v in item.values %}
