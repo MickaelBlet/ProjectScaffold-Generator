@@ -4,12 +4,16 @@ import {
   belowContent,
   contentTop,
   emptyProject,
+  findView,
+  isolatedModuleId,
+  isolatedViewId,
   LAYOUT_PAD,
   minSize,
   modulePath,
-  modulePaths
+  modulePaths,
+  viewExists
 } from '@/model/project'
-import type { Module, Project } from '@/model/types'
+import { GLOBAL_VIEW, type Module, type Project } from '@/model/types'
 
 const mod = (id: string, parentId: string | null, y: number, height: number): Module => ({
   id,
@@ -81,5 +85,38 @@ describe('attributes', () => {
     const parent = { ...mod('parent', null, 0, 400), attributes: [attr('a')] }
     const p: Project = { ...emptyProject(), modules: [parent] }
     expect(belowContent(p, 'parent')).toBe(contentTop(p.orientation) + ATTR_ROW + 8 + LAYOUT_PAD)
+  })
+})
+
+describe('temporary views', () => {
+  const p: Project = {
+    ...emptyProject(),
+    modules: [mod('root', null, 0, 400), mod('a', 'root', 60, 50)],
+    views: [{ id: 'v', name: 'Stored', rootModuleId: 'a', hidden: [] }]
+  }
+
+  it('show a module, named after it', () => {
+    const id = isolatedViewId('a')
+    expect(isolatedModuleId(id)).toBe('a')
+    expect(findView(p, id)).toMatchObject({ id, name: 'a', rootModuleId: 'a', hidden: [], temporary: true })
+    expect(viewExists(p, id)).toBe(true)
+  })
+
+  it('keep the same hidden list between lookups', () => {
+    const id = isolatedViewId('a')
+    expect(findView(p, id).hidden).toBe(findView(p, id).hidden)
+  })
+
+  it('do not exist once the module is gone', () => {
+    const id = isolatedViewId('gone')
+    expect(findView(p, id).id).toBe(GLOBAL_VIEW)
+    expect(viewExists(p, id)).toBe(false)
+  })
+
+  it('are not stored views', () => {
+    expect(isolatedModuleId('v')).toBeNull()
+    expect(findView(p, 'v').temporary).toBeUndefined()
+    expect(viewExists(p, 'v') && viewExists(p, GLOBAL_VIEW)).toBe(true)
+    expect(viewExists(p, 'unknown')).toBe(false)
   })
 })

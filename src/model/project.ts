@@ -572,9 +572,32 @@ export function globalView(): View {
   return { id: GLOBAL_VIEW, name: 'Global', rootModuleId: null, hidden: [] }
 }
 
-/** The view with this id; the global view for an unknown id. */
-export function findView(p: Pick<Project, 'views'>, viewId: Id): View {
-  return p.views.find((v) => v.id === viewId) ?? globalView()
+const ISOLATED = 'isolate:'
+const NO_HIDDEN: Id[] = Object.freeze([]) as unknown as Id[]
+
+/** Id of the temporary view showing a module with its content (not stored in the project). */
+export function isolatedViewId(moduleId: Id): Id {
+  return ISOLATED + moduleId
+}
+
+/** Module shown by a temporary view id, else null. */
+export function isolatedModuleId(viewId: Id): Id | null {
+  return viewId.startsWith(ISOLATED) ? viewId.slice(ISOLATED.length) : null
+}
+
+/** The view with this id (a temporary view resolved from its module); the global view for an unknown id. */
+export function findView(p: Pick<Project, 'views' | 'modules'>, viewId: Id): View {
+  const stored = p.views.find((v) => v.id === viewId)
+  if (stored) return stored
+  const moduleId = isolatedModuleId(viewId)
+  const m = moduleId ? p.modules.find((m) => m.id === moduleId) : undefined
+  if (m) return { id: viewId, name: m.name, rootModuleId: m.id, hidden: NO_HIDDEN, temporary: true }
+  return globalView()
+}
+
+/** Whether the view can be shown: the global view, a stored view, or a temporary view of a module. */
+export function viewExists(p: Pick<Project, 'views' | 'modules'>, viewId: Id): boolean {
+  return viewId === GLOBAL_VIEW || findView(p, viewId).id === viewId
 }
 
 /** Ids of the modules drawn in a view: the root's subtree (or everything) minus hidden subtrees. */

@@ -404,6 +404,8 @@ export interface View {
   rootModuleId: Id | null
   /** Modules hidden in this view, with their content. */
   hidden: Id[]
+  /** Opened from a module and not stored in the project until kept. */
+  temporary?: true
 }
 
 /** Id of the implicit view showing the whole project. */
