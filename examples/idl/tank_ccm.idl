@@ -1,0 +1,56 @@
+// CCM components of a tank (IDL 3 / 4): components, porttypes, events, homes, and the
+// preprocessor. Importing it adds modules with ports; includes sensors_dds.idl for Sensors::Health.
+#include "sensors_dds.idl"
+
+#define MAX_TANKS 4
+#define BOUNDED(T) sequence<T, MAX_TANKS>
+
+module Plant {
+  /** Level of a tank, as a share of its capacity. */
+  eventtype LevelChanged {
+    public double level;
+    public Sensors::Health health;
+  };
+
+  /** Valve opening, from 0 (closed) to 1 (open). */
+  interface Valve {
+    exception Stuck { double position; };
+    void open(in double ratio) raises (Stuck);
+    readonly attribute double position;
+  };
+
+  interface Maintenance {
+    void calibrate();
+  };
+
+  /** Pair of ports to control a pump and read its state back. */
+  porttype PumpControl {
+    provides Valve valve;
+    uses Maintenance maintenance;
+  };
+
+  /** Anything that can be serviced in the field. */
+  component Equipment supports Maintenance {
+    readonly attribute string serial;
+  };
+
+  /** Storage tank with an inlet valve and level events. */
+  component Tank : Equipment {
+    attribute double capacity;   // m3
+    provides Valve inlet;
+    uses multiple Valve outlets;
+    publishes LevelChanged level;
+    port PumpControl pump;
+  };
+
+  /** Watches the levels of several tanks. */
+  component Supervisor {
+    attribute BOUNDED(string) tanks;
+    consumes LevelChanged levels;
+    mirrorport PumpControl pump;
+  };
+
+  home TankHome manages Tank {
+    factory create(in double capacity);
+  };
+};

@@ -1,0 +1,82 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`IDL import > imports examples/idl/navigation.idl 1`] = `
+{
+  "interfaces": [
+    "Planner",
+    "Localizer",
+  ],
+  "modules": [],
+  "types": [
+    "alias Route",
+    "enum GoalStatus",
+    "primitive Pose",
+    "primitive Vec3",
+  ],
+  "warnings": [],
+}
+`;
+
+exports[`IDL import > imports examples/idl/robot_control.idl 1`] = `
+{
+  "interfaces": [
+    "Stoppable",
+    "Arm",
+    "Gripper",
+  ],
+  "modules": [],
+  "types": [
+    "alias JointAngles",
+    "alias Transform",
+    "enum ArmState",
+    "struct Waypoint",
+    "alias Trajectory",
+    "struct Busy",
+    "struct OutOfReach",
+  ],
+  "warnings": [],
+}
+`;
+
+exports[`IDL import > imports examples/idl/sensors_dds.idl 1`] = `
+{
+  "interfaces": [],
+  "modules": [],
+  "types": [
+    "enum Health",
+    "enum Capabilities",
+    "struct Point",
+    "struct Header",
+    "struct Scan",
+    "struct Status",
+    "struct Reading",
+  ],
+  "warnings": [
+    "Line 50: union Sensors::Reading imported as a struct: discriminator and one optional field per case",
+  ],
+}
+`;
+
+exports[`IDL import > imports examples/idl/tank_ccm.idl 1`] = `
+{
+  "interfaces": [
+    "Valve",
+    "Maintenance",
+    "LevelChangedConsumer",
+  ],
+  "modules": [
+    "Equipment: ",
+    "Tank: in inlet, out outlets, out level, in pump_valve, out pump_maintenance",
+    "Supervisor: in levels, out pump_valve, in pump_maintenance",
+  ],
+  "types": [
+    "enum Health",
+    "struct LevelChanged",
+    "struct Stuck",
+  ],
+  "warnings": [
+    "Line 50 of sensors_dds.idl: union Sensors::Reading imported as a struct: discriminator and one optional field per case",
+    "Line 53: home Plant::TankHome left out",
+  ],
+}
+`;
