@@ -125,7 +125,7 @@ projects: # relative to the workspace file, opened in tabs in this order (the fi
   - shared/units.scaffold.yaml
 ```
 
-_File › Open…_ on a workspace file opens its projects; the browser and desktop apps then ask for the folder holding it, to read them (files outside that folder cannot be read). Projects already open with unsaved changes are kept. _File › Save workspace_ rewrites the workspace last opened or saved with the open project files, _Save workspace as…_ writes a new one. Example: [`examples/fleet/fleet.scaffold-workspace.yaml`](examples/fleet/fleet.scaffold-workspace.yaml). Not in VS Code, which opens project files one by one.
+_File › Open…_ on a workspace file opens its projects; the browser and desktop apps then ask for the folder holding it, to read them (files outside that folder cannot be read). Folders picked this way are remembered: a workspace file inside one of them, at any depth, opens without asking again (at most a permission prompt after a restart), so picking a parent folder once covers all the workspaces under it. Projects already open with unsaved changes are kept. _File › Save workspace_ rewrites the workspace last opened or saved with the open project files, _Save workspace as…_ writes a new one. Example: [`examples/fleet/fleet.scaffold-workspace.yaml`](examples/fleet/fleet.scaffold-workspace.yaml). Not in VS Code, which opens project files one by one.
 
 ### Types
 

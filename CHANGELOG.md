@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Workspaces (browser and desktop apps): the folders picked to read a workspace are remembered, and a workspace file inside one of them (at any depth) opens without picking its folder again; picking a folder above the workspace file is accepted.
 - _Open module in its own view_ (Alt+Enter, ⤢ on a container) opens a temporary view: italic tab, not saved in the file and gone once closed. _Keep view_ (double-click the tab, its right-click menu, the breadcrumb, _View › Keep view_) stores it with the document; hiding a module in it keeps it too.
 - C++17 generation: the server side of a link between binaries reads its address from `<PROJECT>_<LINK>_LISTEN` (the client keeps `<PROJECT>_<LINK>`). `remote::connect(transport, address, path)` and `remote::serve(transport, address, handler, capacity)` (Python `connect` / `serve` alike) take the http / websocket path and the shm capacity in place of the link name; Python `Link` has `client_address` / `server_address` in place of `address`.
 
