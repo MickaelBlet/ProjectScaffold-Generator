@@ -250,7 +250,7 @@ const Constant = z
 const Dependency = z
   .object({
     name: Identifier.describe('referenced by `uses` of other dependencies and by link endpoints (`project`)'),
-    file: z.string().describe('file of the other project, relative to this one'),
+    file: z.string().describe('file of the other project (project file or IDL file), relative to this one'),
     uses: z
       .array(Identifier)
       .optional()

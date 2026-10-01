@@ -6,12 +6,14 @@
 // when two share it. Components and connectors become modules with ports. What the model cannot
 // express is approximated or left out, and reported.
 import { isReservedTypeName, mapTypeRef, walkTypeRef } from './typeExpr'
-import { defaultSize, newId } from './project'
-import { CLIP_FORMAT, type Clip } from './clipboard'
+import { defaultSize, emptyProject, newId, uniqueName } from './project'
+import { CLIP_FORMAT, pasteClip, type Clip } from './clipboard'
+import { dependencyName } from './dependencies'
 import type { FileConstant, FileInterface, FileMessage, FileTypeDef, FileTypeRef } from './schema'
 import {
   INT_RANGES,
   type ConstDef,
+  type Dependency,
   type Field,
   type Id,
   type Interface,
@@ -67,6 +69,10 @@ export interface IdlFile {
    * interfaces of object references.
    */
   needs: Record<string, string[]>
+  /** File defining each type, interface, constant and component, by name. */
+  origins: Record<string, string>
+  /** Files each file includes. */
+  includes: Record<string, string[]>
   /** Included files found nowhere. */
   missing: string[]
   /** What was left out or approximated. */
@@ -437,6 +443,8 @@ class Preprocessor {
   readonly out: Token[] = []
   readonly warnings: string[] = []
   readonly missing: string[] = []
+  /** Files each file includes. */
+  readonly includes: Record<string, string[]> = {}
   private readonly macros = new Map<string, Macro>()
   /** Files read already: each is read once. */
   private readonly done = new Set<string>()
@@ -555,6 +563,8 @@ class Preprocessor {
       }
       return
     }
+    const from = (this.includes[t.file] ??= [])
+    if (found !== t.file && !from.includes(found)) from.push(found)
     this.include(found, this.files.get(found)!)
   }
 
@@ -734,6 +744,8 @@ type Entity = {
   synthetic?: boolean
   /** References to what it needs besides its types (see `IdlFile.needs`). */
   needs: string[]
+  /** File defining it. */
+  file?: string
 } & (
   | { kind: 'type'; def: FileTypeDef }
   | { kind: 'interface'; def: FileInterface }
@@ -786,7 +798,7 @@ class Parser {
   private readonly inherited = new Map<string, string[]>()
   private readonly consts = new Map<string, ConstValue>()
   /** Constants with a value, for the project (qualified IDL name). */
-  private readonly constDefs: { q: string; def: FileConstant }[] = []
+  private readonly constDefs: { q: string; def: FileConstant; file: string }[] = []
   private readonly templates = new Map<string, { params: string[]; body: Token[] }>()
   private readonly porttypes = new Map<string, { ports: IdlPort[]; attributes: IdlAttribute[] }>()
   private instances = 0
@@ -955,8 +967,13 @@ class Parser {
   private add(e: Entity): void {
     // Read twice (a file included without guards, a reopened module): the first one stays.
     if (this.entities.has(e.q)) return
-    this.entities.set(e.q, e)
+    this.entities.set(e.q, { ...e, file: this.file() })
     this.decls.set(e.q, e.kind)
+  }
+
+  /** File of the definition just read. */
+  private file(): string {
+    return (this.peek(-1) ?? this.peek())?.file ?? this.main
   }
 
   private forward(q: string, kind: DeclKind): void {
@@ -1651,6 +1668,7 @@ class Parser {
     if (this.constDefs.some((c) => c.q === q)) return
     this.constDefs.push({
       q,
+      file: this.file(),
       def: {
         name,
         description: first.doc || end.trail || first.trail,
@@ -2165,6 +2183,11 @@ class Parser {
           .filter((e) => e.kind !== 'component' && e.needs.length)
           .map((e) => [e.def.name, [...new Set(e.needs)]])
       ),
+      origins: Object.fromEntries<string>([
+        ...all.map((e): [string, string] => [e.def.name, e.file ?? this.main]),
+        ...this.constDefs.map((c): [string, string] => [c.def.name, c.file])
+      ]),
+      includes: {},
       missing,
       warnings: this.warnings
     }
@@ -2183,7 +2206,7 @@ export function parseIdl(text: string, options: IdlOptions = {}): IdlFile {
   const file = normalizePath(options.file ?? '')
   const pre = new Preprocessor(normalizeFiles(options.files ?? new Map()), file)
   pre.include(file, text)
-  return new Parser(pre.out, file, pre.warnings).parse(pre.missing)
+  return { ...new Parser(pre.out, file, pre.warnings).parse(pre.missing), includes: pre.includes }
 }
 
 /** Reads several IDL files (by path) as one: each in turn, but those another one includes. */
@@ -2199,7 +2222,10 @@ export function parseIdlFiles(files: ReadonlyMap<string, string>): IdlFile {
   if (!roots.length) roots.push(...all.keys())
   const pre = new Preprocessor(all, roots.length === 1 ? roots[0]! : '')
   for (const r of roots) pre.include(r, all.get(r)!)
-  return new Parser(pre.out, roots.length === 1 ? roots[0]! : '', pre.warnings).parse(pre.missing)
+  return {
+    ...new Parser(pre.out, roots.length === 1 ? roots[0]! : '', pre.warnings).parse(pre.missing),
+    includes: pre.includes
+  }
 }
 
 // Import into a project
@@ -2242,10 +2268,11 @@ const MODULES_PER_ROW = 4
 /**
  * The entities of an IDL file to add to `target`: the interfaces and components named in `only`
  * (all when absent) with the types and interfaces they use, or every type when the file has no
- * interfaces nor components. Components become modules. Types and interfaces `target` has by name
- * are used in place of the file's; names defined nowhere become custom primitives.
+ * interfaces nor components; every definition with `whole`. Components become modules. Types and
+ * interfaces `target` has by name are used in place of the file's; names defined nowhere become
+ * custom primitives.
  */
-export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlImport {
+export function idlImport(idl: IdlFile, target: Project, only?: string[], whole = false): IdlImport {
   const byName = new Map<string, FileTypeDef | FileInterface>(
     [...idl.types, ...idl.interfaces].map((e) => [e.name, e])
   )
@@ -2254,7 +2281,9 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
   const withBehavior = idl.interfaces.length + idl.components.length > 0
   const queue = only
     ? only.filter((n) => !components.has(n) || byName.has(n))
-    : (withBehavior ? idl.interfaces : idl.types).map((e) => e.name)
+    : whole
+      ? [...byName.keys()]
+      : (withBehavior ? idl.interfaces : idl.types).map((e) => e.name)
   const componentQueue = only
     ? only.filter((n) => components.has(n))
     : withBehavior
@@ -2448,5 +2477,87 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
         },
     existing: [...existing],
     unresolved: [...unresolved]
+  }
+}
+
+const stem = (path: string): string => baseName(path).replace(/\.[^.]*$/, '')
+
+/** `path` relative to the folder of `from` (both normalized, of the same root). */
+function relativePath(from: string, path: string): string {
+  const dir = dirOf(from).split('/').slice(0, -1)
+  const parts = path.split('/')
+  let common = 0
+  while (common < dir.length && common < parts.length - 1 && dir[common] === parts[common]) common++
+  return [...dir.slice(common).map(() => '..'), ...parts.slice(common)].join('/')
+}
+
+export interface IdlProject {
+  project: Project
+  /** What was left out or approximated, included files found nowhere. */
+  warnings: string[]
+  /** Included files found nowhere. */
+  missing: string[]
+}
+
+/**
+ * The project an IDL file stands for, to depend on it like on a project file: its definitions,
+ * its components as modules, and the files it includes as its dependencies (`indirect` those it
+ * includes through others), their definitions being theirs. `files`: the file (`path`) and those
+ * it may include, by path.
+ */
+export function idlProject(path: string, files: ReadonlyMap<string, string>): IdlProject {
+  const all = normalizeFiles(files)
+  const main = normalizePath(path)
+  const text = all.get(main)
+  if (text === undefined) throw new IdlError(`${baseName(main)}: not read`)
+  const idl = parseIdl(text, { file: main, files: all })
+  const project: Project = { ...emptyProject(), name: stem(main) }
+  const { clip, unresolved } = idlImport(idl, project, undefined, true)
+  if (clip) pasteClip(project, clip, { parent: null, at: { x: 0, y: 0 } })
+
+  // Included files, direct ones first.
+  const reached: string[] = []
+  const queue = [main]
+  while (queue.length)
+    for (const f of idl.includes[queue.shift()!] ?? [])
+      if (f !== main && !reached.includes(f)) {
+        reached.push(f)
+        queue.push(f)
+      }
+  const deps = new Map<string, Dependency>()
+  for (const f of reached)
+    deps.set(f, {
+      id: newId(),
+      name: uniqueName(
+        dependencyName(stem(f)),
+        [...deps.values()].map((x) => x.name)
+      ),
+      file: relativePath(main, f),
+      uses: [],
+      indirect: !(idl.includes[main] ?? []).includes(f),
+      shared: [],
+      modules: []
+    })
+  for (const [f, dep] of deps) dep.uses = (idl.includes[f] ?? []).flatMap((g) => deps.get(g)?.name ?? [])
+  project.dependencies = [...deps.values()]
+  for (const e of [...project.types, ...project.interfaces, ...project.consts]) {
+    const dep = deps.get(idl.origins[e.name] ?? main)
+    if (dep) e.dependency = dep.id
+  }
+  // Components of included files are modules of their own project.
+  const theirs = new Set(
+    project.modules.filter((m) => deps.has(idl.origins[m.name] ?? main)).map((m) => m.id)
+  )
+  if (theirs.size) {
+    project.modules = project.modules.filter((m) => !theirs.has(m.id))
+    for (const m of project.modules) if (m.bases) m.bases = m.bases.filter((b) => !theirs.has(b))
+  }
+  return {
+    project,
+    warnings: [
+      ...idl.warnings,
+      ...unresolved.map((n) => `${n} is defined in none of the files: added empty`)
+    ],
+    missing: idl.missing
   }
 }

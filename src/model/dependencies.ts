@@ -402,12 +402,36 @@ export function addDependency(
   file: string,
   self: string | null
 ): DependencyResult {
+  return addDependencies(d, [{ project: source, file }], self)
+}
+
+/** A project read from its file (relative to the project depending on it). */
+export interface DependencySource {
+  project: Project
+  file: string
+  /** Read for the dependencies it uses: depended on only through them (unless it already is). */
+  indirect?: boolean
+}
+
+/**
+ * Depend on several projects at once (see `addDependency`). The dependencies they use come from
+ * `sources` when there, from their snapshot in the projects using them otherwise.
+ */
+export function addDependencies(
+  d: Project,
+  sources: DependencySource[],
+  self: string | null
+): DependencyResult {
   const sync = new Sync(d, self)
-  const dep = sync.dependencyFor(file, source.name)
-  if (!dep) return sync.result
-  dep.indirect = false
-  sync.take(dep, source)
-  sync.nested(dep, source, dep.file)
+  const taken: [Dependency, Project][] = []
+  for (const s of sources) {
+    const dep = sync.dependencyFor(s.file, s.project.name)
+    if (!dep) continue
+    if (!s.indirect) dep.indirect = false
+    sync.take(dep, s.project)
+    taken.push([dep, s.project])
+  }
+  for (const [dep, source] of taken) sync.nested(dep, source, dep.file)
   return sync.finish()
 }
 

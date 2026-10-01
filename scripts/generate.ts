@@ -14,6 +14,7 @@ import { loadTemplateSet, type TemplateSet } from '../src/renderer/src/codegen/t
 import { snake } from '../src/renderer/src/codegen/filters'
 import { readBuiltin } from './builtinTemplates'
 import { dependencyName } from '../src/renderer/src/model/dependencies'
+import { idlProject, readIdlIncludes } from '../src/renderer/src/model/idl'
 import { formatFromPath, loadText } from '../src/renderer/src/model/serialize'
 import type { Project } from '../src/renderer/src/model/types'
 
@@ -25,11 +26,22 @@ Options:
   -o, --out <dir>        output directory (default: generated/<project> next to the project file)
   -t, --templates <dir>  template set (default: <out>/.scaffold/templates if present, else cpp17)
   -d, --deps             also generate the dependencies, each in a sibling directory of <out>
+                         (an IDL file stands for a project: its definitions, its includes as dependencies)
   -f, --force            overwrite files changed outside their user sections
   -p, --prune            delete the files no longer generated (user code kept in .orphans files)
   -n, --dry-run          report only, write nothing
   -v, --version
   -h, --help`
+
+/** A project file, or an IDL file with the files it includes. */
+async function loadProject(file: string): Promise<Project> {
+  const text = await readFile(file, 'utf8')
+  if (!/\.idl$/i.test(file)) return loadText(text, formatFromPath(file))
+  const files = await readIdlIncludes(new Map([[file, text]]), (p) => readOrNull(p).catch(() => null))
+  const { project, warnings } = idlProject(file, files)
+  for (const w of warnings) console.error(`${relative(process.cwd(), file)}: warning: ${w}`)
+  return project
+}
 
 async function readOrNull(path: string): Promise<string | null> {
   try {
@@ -91,7 +103,7 @@ async function main(): Promise<number> {
     done.add(file)
     let project: Project
     try {
-      project = loadText(await readFile(file, 'utf8'), formatFromPath(file))
+      project = await loadProject(file)
     } catch (e) {
       return fail(file, e)
     }

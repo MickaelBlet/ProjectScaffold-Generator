@@ -5,6 +5,7 @@ import { produce } from 'immer'
 import { describe, expect, it } from 'vitest'
 import { fromFile, toFile } from '@/model/serialize'
 import {
+  addDependencies,
   addDependency,
   applyDependencyRenames,
   dependencyName,
@@ -156,6 +157,53 @@ describe('dependencies', () => {
     expect(dependencyOf(p, meters.id)?.name).toBe('Units')
     expect(vec3.kind === 'struct' && vec3.fields[0]!.type).toEqual({ kind: 'ref', id: meters.id })
     expect(errors(p)).toEqual([])
+  })
+
+  it('adds several dependencies at once, the dependencies they use from their own files', () => {
+    // Units as read from its file: newer than the snapshot Common has of it.
+    const newer = produce(units, (d) => {
+      d.types.push({
+        id: 'feet',
+        name: 'Feet',
+        description: '',
+        kind: 'alias',
+        type: d.types[0]!.kind === 'alias' ? d.types[0]!.type : { kind: 'primitive', name: 'float32' }
+      })
+    })
+    let r!: DependencyResult
+    const p = produce(station(), (d) => {
+      r = addDependencies(
+        d,
+        [
+          { project: common, file: 'lib/common.scaffold.yaml' },
+          { project: newer, file: 'lib/units.scaffold.yaml', indirect: true }
+        ],
+        'station.scaffold.yaml'
+      )
+    })
+    expect(r.conflicts).toEqual([])
+    expect(p.dependencies.map((x) => [x.name, x.uses, x.indirect])).toEqual([
+      ['Common', ['Units'], false],
+      ['Units', [], true]
+    ])
+    expect(p.types.map((t) => t.name).sort()).toEqual(['Feet', 'Meters', 'Vec3'])
+
+    // Both picked: both direct.
+    const q = produce(station(), (d) => {
+      addDependencies(
+        d,
+        [
+          { project: units, file: 'lib/units.scaffold.yaml' },
+          { project: common, file: 'lib/common.scaffold.yaml' }
+        ],
+        'station.scaffold.yaml'
+      )
+    })
+    expect(q.dependencies.map((x) => [x.name, x.uses, x.indirect])).toEqual([
+      ['Units', [], false],
+      ['Common', ['Units'], false]
+    ])
+    expect(errors(q)).toEqual([])
   })
 
   it('round-trips through the file format, matching the JSON Schema', () => {

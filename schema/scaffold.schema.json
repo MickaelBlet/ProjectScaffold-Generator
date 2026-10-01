@@ -276,7 +276,7 @@
               },
               "file": {
                 "type": "string",
-                "description": "file of the other project, relative to this one"
+                "description": "file of the other project (project file or IDL file), relative to this one"
               },
               "uses": {
                 "description": "dependencies of this list whose types and interfaces this one uses",

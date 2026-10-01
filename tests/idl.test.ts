@@ -1,6 +1,15 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { IdlError, idlImport, parseIdl, parseIdlFiles, readIdlIncludes, type IdlFile } from '@/model/idl'
+import {
+  IdlError,
+  idlImport,
+  idlProject,
+  parseIdl,
+  parseIdlFiles,
+  readIdlIncludes,
+  type IdlFile
+} from '@/model/idl'
+import { addDependency, dependencyOf } from '@/model/dependencies'
 import { pasteClip } from '@/model/clipboard'
 import { emptyProject } from '@/model/project'
 import { printTypeExpr, printTypeRef } from '@/model/typeExpr'
@@ -294,6 +303,40 @@ describe('IDL import', () => {
     const files = await readIdlIncludes(new Map([['/w/idl/main.idl', disk['/w/idl/main.idl']!]]), read)
     expect([...files.keys()].sort()).toEqual(['/w/idl/inc/b.idl', '/w/idl/main.idl', '/w/shared.idl'])
     expect(parseIdlFiles(files).types.map((x) => x.name)).toEqual(['B', 'S'])
+  })
+
+  it('reads an IDL file as a project, its includes as dependencies', () => {
+    const files = new Map([
+      ['idl/main.idl', '#include "inc/a.idl"\nstruct M { A a; B b; };\ncomponent Main { provides IA ia; };'],
+      [
+        'idl/inc/a.idl',
+        '#include "../b.idl"\nstruct A { B b; };\ninterface IA { void go(); };\ncomponent Other {};'
+      ],
+      ['idl/b.idl', 'struct B { long y; };\nconst long MAX = 3;']
+    ])
+    const { project: p, warnings } = idlProject('idl/main.idl', files)
+    expect(warnings).toEqual([])
+    expect(p.name).toBe('main')
+    expect(p.dependencies.map((x) => [x.name, x.file, x.uses, x.indirect])).toEqual([
+      ['a', 'inc/a.idl', ['b'], false],
+      ['b', 'b.idl', [], true]
+    ])
+    const owner = (name: string) =>
+      dependencyOf(p, [...p.types, ...p.interfaces, ...p.consts].find((e) => e.name === name)!.id)?.name
+    expect(['M', 'A', 'IA', 'B', 'MAX'].map(owner)).toEqual([undefined, 'a', 'a', 'b', 'b'])
+    // Components of included files belong to their own project.
+    expect(p.modules.map((m) => m.name)).toEqual(['Main'])
+    expect(validate(p).filter((x) => x.severity === 'error')).toEqual([])
+
+    // Depended on like a project file: the files it includes come with it.
+    const d = emptyProject()
+    addDependency(d, p, 'idl/main.idl', null)
+    expect(d.dependencies.map((x) => [x.name, x.file, x.indirect])).toEqual([
+      ['main', 'idl/main.idl', false],
+      ['a', 'idl/inc/a.idl', true],
+      ['b', 'idl/b.idl', true]
+    ])
+    expect(d.types.map((t) => t.name).sort()).toEqual(['A', 'B', 'M'])
   })
 
   it('resolves scoped names and qualifies names several modules use', () => {
