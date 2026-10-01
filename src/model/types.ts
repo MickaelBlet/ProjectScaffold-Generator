@@ -124,6 +124,25 @@ export interface BitmaskDef extends Owned {
   flags: BitmaskFlag[]
 }
 
+/** Case of a union: held when the discriminator is one of its labels (or none's, for the default case). */
+export interface UnionCase extends Field {
+  /** Discriminator values selecting it: integers, characters, booleans or enum value names. */
+  labels: Value[]
+  /** Held for the discriminator values no case lists. */
+  isDefault: boolean
+}
+
+/** Discriminated union: one of its cases, selected by the discriminator. */
+export interface UnionDef extends Owned {
+  id: Id
+  kind: 'union'
+  name: string
+  description: string
+  /** Integer primitive, bool, char or enum (or an alias of one). */
+  discriminator: TypeRef
+  cases: UnionCase[]
+}
+
 export interface AliasDef extends Owned {
   id: Id
   kind: 'alias'
@@ -140,7 +159,7 @@ export interface PrimitiveDef extends Owned {
   description: string
 }
 
-export type TypeDef = StructDef | EnumDef | BitmaskDef | AliasDef | PrimitiveDef
+export type TypeDef = StructDef | EnumDef | BitmaskDef | UnionDef | AliasDef | PrimitiveDef
 
 export const PARAM_DIRECTIONS = ['in', 'out', 'inout'] as const
 /** `in`: caller → callee. `out`: callee → caller. `inout`: both ways. */

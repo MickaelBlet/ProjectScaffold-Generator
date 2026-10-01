@@ -69,6 +69,10 @@ public:
 
     Access access(Access a) override { return a; }
 
+    Command command(const Command& c) override { return c; }
+
+    Item item(const Item& i) override { return i; }
+
     Badge badge(const Badge& b) override { return b; }
 
 private:
@@ -149,6 +153,22 @@ int call(EchoProxy& proxy, const std::string& transport)
 
     check("bitmask", proxy.access(Access::Write | Access::Exec) == (Access::Write | Access::Exec));
     check("bitmask default", has(Badge{}.access, Access::Read | Access::Exec) && !has(Badge{}.access, Access::Write));
+    Command c;
+    check("union default", c._d() == Mode::Idle && c.note().empty());
+    c.speed(2.5);
+    check("union", bytes(proxy.command(c)) == bytes(c) && proxy.command(c).speed() == 2.5);
+    c._default(Mode::Fault);
+    check("union, no case", proxy.command(c)._d() == Mode::Fault);
+    check("union field default", Badge{}.command._d() == Mode::Run && Badge{}.command.speed() == 1.5);
+    Item item;
+    item.number(5, 2);
+    check("union label", proxy.item(item)._d() == 2 && proxy.item(item).number() == 5);
+    item.text("x");
+    check("union default case", item._d() == 0 && proxy.item(item).text() == "x");
+    item.text("y", 9);
+    check("union default case label", proxy.item(item)._d() == 9 && proxy.item(item).text() == "y");
+    item.names({"a", "b"});
+    check("union negative label", proxy.item(item)._d() == -3 && proxy.item(item).names() == Names{"a", "b"});
     check("bounds", proxy.names({"a", "bcde"}) == Names{"a", "bcde"});
     const Badge badge{"ab", {{1, {7, 8}}}};
     check("bounds of fields", bytes(proxy.badge(badge)) == bytes(badge));
@@ -163,6 +183,11 @@ int call(EchoProxy& proxy, const std::string& transport)
     rejected("bound of a string", [&] { proxy.names({"abcde"}); });
     rejected("bound of a vector", [&] { proxy.names({"a", "b", "c", "d"}); });
     rejected("bound of a field", [&] { proxy.badge(Badge{"abcde", {}}); });
+    rejected("bound of a union case", [&] {
+        Item i;
+        i.names({"abcde"});
+        proxy.item(i);
+    });
     rejected("bound of a map value", [&] { proxy.badge(Badge{"a", {{1, {1, 2, 3}}}}); });
     return failures ? 1 : 0;
 }

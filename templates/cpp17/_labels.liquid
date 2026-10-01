@@ -1,0 +1,13 @@
+{%- comment -%}
+  C++ test of discriminator `d` against the labels of a union case: `d == 1 || d == 2`.
+  Parameters: c (the case), t (the discriminator type), d (expression).
+{%- endcomment -%}
+{%- liquid
+  for l in c.labels
+    unless forloop.first
+      echo ' || '
+    endunless
+    echo d | append: ' == '
+    render '_value', v: l, t: t
+  endfor
+-%}

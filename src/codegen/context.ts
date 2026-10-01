@@ -78,9 +78,26 @@ export type GenType = Owned & {
     | { kind: 'enum'; underlying: string; values: { name: string; value: number }[] }
     /** `value`: `1 << bit`, as decimal text (64-bit values do not fit in numbers). */
     | { kind: 'bitmask'; underlying: string; flags: { name: string; bit: number; value: string }[] }
+    | { kind: 'union'; discriminator: GenTypeRef; cases: GenUnionCase[]; hasDefault: boolean }
     | { kind: 'alias'; type: GenTypeRef }
     | { kind: 'primitive' }
   )
+
+export interface GenUnionCase {
+  name: string
+  type: GenTypeRef
+  description: string
+  /** Discriminator values selecting it (integers, characters, booleans, enum value names). */
+  labels: Value[]
+  isDefault: boolean
+  /**
+   * Discriminator value set along with the case by default: its first label, or for the default
+   * case a value no case lists; null when there is none.
+   */
+  label: Value | null
+  /** Position among the cases, from 1. */
+  index: number
+}
 
 export interface GenParam {
   name: string
@@ -338,10 +355,33 @@ export interface GenContext {
 export function buildContext(file: FileProject): GenContext {
   const warnings: string[] = []
   const typeOwner = new Map<string, { kind: TypeKind; dependency: string | null }>()
-  for (const t of file.types) typeOwner.set(t.name, { kind: t.kind, dependency: null })
+  const fileTypes = new Map<string, FileTypeDef>()
+  for (const t of file.types) {
+    typeOwner.set(t.name, { kind: t.kind, dependency: null })
+    fileTypes.set(t.name, t)
+  }
   for (const d of file.dependencies ?? [])
     for (const t of d.types)
-      if (!typeOwner.has(t.name)) typeOwner.set(t.name, { kind: t.kind, dependency: d.name })
+      if (!typeOwner.has(t.name)) {
+        typeOwner.set(t.name, { kind: t.kind, dependency: d.name })
+        fileTypes.set(t.name, t)
+      }
+
+  /** A discriminator value none of `used` (labels as text) is: for the default case of a union. */
+  const unusedLabel = (t: TypeRefOf<{ name: string }>, used: Set<string>, depth = 0): Value | null => {
+    if (t.kind === 'ref') {
+      const def = fileTypes.get(t.name)
+      if (def?.kind === 'alias' && depth < 32) return unusedLabel(def.type, used, depth + 1)
+      return def?.kind === 'enum' ? (def.values.find((v) => !used.has(v.name))?.name ?? null) : null
+    }
+    if (t.kind !== 'primitive') return null
+    if (t.name === 'bool') return [true, false].find((b) => !used.has(String(b))) ?? null
+    if (t.name === 'char') {
+      for (let c = 32; c < 127; c++) if (!used.has(String.fromCharCode(c))) return String.fromCharCode(c)
+      return null
+    }
+    for (let n = 0; ; n++) if (!used.has(String(n))) return n
+  }
 
   const ref = (t: TypeRefOf<{ name: string }>): GenTypeRef =>
     withBounds(
@@ -389,6 +429,24 @@ export function buildContext(file: FileProject): GenContext {
           underlying: t.underlying,
           flags: t.flags.map((f) => ({ ...f, value: (1n << BigInt(f.bit)).toString() }))
         }
+      case 'union': {
+        const used = new Set(t.cases.flatMap((c) => (c.labels ?? []).map(String)))
+        return {
+          ...base,
+          kind: 'union',
+          discriminator: ref(t.discriminator),
+          hasDefault: t.cases.some((c) => c.default),
+          cases: t.cases.map((c, i) => ({
+            name: c.name,
+            type: ref(c.type),
+            description: c.description ?? '',
+            labels: [...(c.labels ?? [])],
+            isDefault: c.default ?? false,
+            label: c.labels?.[0] ?? (c.default ? unusedLabel(t.discriminator, used) : null),
+            index: i + 1
+          }))
+        }
+      }
       case 'alias':
         return { ...base, kind: 'alias', type: ref(t.type) }
       case 'primitive':
@@ -521,7 +579,9 @@ export function buildContext(file: FileProject): GenContext {
         ? usesOf(t.fields.map((f) => f.type))
         : t.kind === 'alias'
           ? usesOf([t.type])
-          : usesOf([], t.kind === 'enum' || t.kind === 'bitmask' ? [t.underlying] : [])
+          : t.kind === 'union'
+            ? usesOf([t.discriminator, ...t.cases.map((c) => c.type)], t.cases.length ? ['variant'] : [])
+            : usesOf([], t.kind === 'enum' || t.kind === 'bitmask' ? [t.underlying] : [])
   for (const i of allInterfaces) i.uses = usesOf(i.messages.flatMap(messageRefs))
   for (const m of modules)
     m.uses = usesOf([...m.attributes.map((a) => a.type), ...m.methods.flatMap(messageRefs)])

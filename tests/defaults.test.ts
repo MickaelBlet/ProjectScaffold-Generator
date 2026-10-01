@@ -69,6 +69,17 @@ const types: TypeDef[] = [
       { id: 'pw', name: 'Write', bit: 1 }
     ]
   },
+  {
+    id: 'Shape',
+    kind: 'union',
+    name: 'Shape',
+    description: '',
+    discriminator: prim('uint8'),
+    cases: [
+      { id: 'c', name: 'radius', type: prim('float32'), description: '', labels: [1], isDefault: false },
+      { id: 'v', name: 'corner', type: ref('Vec'), description: '', labels: [], isDefault: true }
+    ]
+  },
   { id: 'Speed', kind: 'alias', name: 'Speed', description: '', type: prim('float32') },
   { id: 'Duration', kind: 'primitive', name: 'Duration', description: '' }
 ]
@@ -150,6 +161,16 @@ describe('default values', () => {
     expect(valueFlags(ref('Perm'), types)).toEqual(['Read', 'Write'])
     expect(valueFlags(prim('uint8'), types)).toBeNull()
     expect(valueExample(ref('Perm'), types)).toEqual(['Read'])
+  })
+
+  it('checks union values: one case and its value', () => {
+    expect(errors('{radius: 2}', ref('Shape'))).toEqual([])
+    expect(errors('{corner: {x: 1}}', ref('Shape'))).toEqual(["corner: Missing field 'y' of Vec"])
+    expect(errors('{side: 1}', ref('Shape'))).toEqual(["Unknown case 'side' of Shape"])
+    expect(errors('{radius: 1, corner: {}}', ref('Shape'))).toEqual([
+      'Expected a mapping of one Shape case (case: value), got a mapping'
+    ])
+    expect(valueExample(ref('Shape'), types)).toEqual({ radius: 0 })
   })
 
   it('keeps custom primitive values opaque', () => {

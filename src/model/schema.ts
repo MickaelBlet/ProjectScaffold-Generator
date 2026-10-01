@@ -60,7 +60,7 @@ const ValueField = Field.extend({
     .json()
     .optional()
     .describe(
-      'default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names; any value for a custom primitive'
+      'default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive'
     )
 })
 
@@ -88,6 +88,25 @@ const TypeDef = z
         flags: z.array(z.object({ name: Identifier, bit: z.int().nonnegative().describe('value: 1 << bit') }))
       })
       .describe('set of flags, combined with |'),
+    z
+      .object({
+        kind: z.literal('union'),
+        name: Identifier,
+        description: Description,
+        discriminator: FileTypeRefSchema.describe('integer primitive, bool, char or enum'),
+        cases: z.array(
+          Field.extend({
+            labels: z
+              .array(z.union([z.int(), z.string(), z.boolean()]))
+              .optional()
+              .describe(
+                'discriminator values selecting the case: integers, characters, booleans, enum value names'
+              ),
+            default: z.boolean().optional().describe('held for the discriminator values no case lists')
+          })
+        )
+      })
+      .describe('discriminated union: one of its cases, selected by the discriminator'),
     z.object({
       kind: z.literal('alias'),
       name: Identifier,

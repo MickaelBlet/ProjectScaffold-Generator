@@ -58,6 +58,12 @@ class Echo(EchoHandler):
     def access(self, a):
         return a
 
+    def command(self, c):
+        return c
+
+    def item(self, i):
+        return i
+
     def badge(self, b):
         return b
 
@@ -102,12 +108,20 @@ def call(proxy: EchoProxy, transport: str) -> None:
     check('pick none', proxy.pick(m, data.Mode.Run) is None and proxy.pick(m, data.Mode.Fault) is None)
     check('bitmask', proxy.access(data.Access.Write | data.Access.Exec) == data.Access.Write | data.Access.Exec)
     check('bitmask default', data.Badge().access == data.Access.Read | data.Access.Exec)
+    check('union default', data.Command() == data.Command(data.Mode.Idle, ''))
+    c = data.Command(data.Mode.Run, 2.5)
+    check('union', proxy.command(c) == c)
+    check('union, no case', proxy.command(data.Command(data.Mode.Fault, None)) == data.Command(data.Mode.Fault, None))
+    check('union field default', data.Badge().command == data.Command(data.Mode.Run, 1.5))
+    for item in [data.Item(2, 5), data.Item(0, 'x'), data.Item(9, 'y'), data.Item(-3, ['a', 'b'])]:
+        check(f'union {item}', proxy.item(item) == item)
     check('bounds', proxy.names(['a', 'bcde']) == ['a', 'bcde'])
     badge = data.Badge('ab', {1: b'\x07\x08'})
     check('bounds of fields', proxy.badge(badge) == badge)
     for what, bad in [('bound of a string', lambda: proxy.names(['abcde'])),
                       ('bound of a vector', lambda: proxy.names(['a', 'b', 'c', 'd'])),
                       ('bound of a field', lambda: proxy.badge(data.Badge('abcde', {}))),
+                      ('bound of a union case', lambda: proxy.item(data.Item(-3, ['abcde']))),
                       ('bound of a map value', lambda: proxy.badge(data.Badge('a', {1: b'123'})))]:
         try:
             bad()

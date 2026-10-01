@@ -160,6 +160,8 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
         underlying: t.underlying,
         flags: t.flags.map((v) => ({ ...v, id: newId() }))
       })
+    else if (t.kind === 'union')
+      d.types.push({ ...base, kind: 'union', discriminator: ref(t.discriminator), cases: t.cases.map(field) })
     else if (t.kind === 'alias') d.types.push({ ...base, kind: 'alias', type: ref(t.type) })
     else d.types.push({ ...base, kind: 'primitive' })
     pasted.push(base.id)

@@ -97,6 +97,18 @@
           echo ' | '
         endunless
       endfor
+    when 'union'
+      # The case of the one-entry mapping, set by a lambda.
+      for entry in v
+        assign c = def.cases | where: 'name', entry[0] | first
+        echo '[] { '
+        render '_type', t: t
+        echo ' u; u.'
+        render '_id', name: c.name
+        echo '('
+        render '_value', v: entry[1], t: c.type
+        echo '); return u; }()'
+      endfor
     when 'alias'
       render '_value', v: v, t: def.type
     when 'struct'

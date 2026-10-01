@@ -152,6 +152,10 @@ export function valueExample(t: TypeRef, types: readonly TypeDef[]): Value {
             return def.values[0]?.name ?? null
           case 'bitmask':
             return def.flags[0] ? [def.flags[0].name] : []
+          case 'union': {
+            const c = def.cases[0]
+            return c ? { [c.name]: example(c.type, inner) } : null
+          }
           case 'struct':
             return Object.fromEntries(def.fields.map((f) => [f.name, f.default ?? example(f.type, inner)]))
         }
@@ -243,6 +247,16 @@ export function valueErrors(v: Value, t: TypeRef, types: readonly TypeDef[]): st
               at(`${path}[${i}]`, `Expected a flag of ${def.name} (${names.join(', ')}), got ${describe(e)}`)
             else if (v.indexOf(e) < i) at(path, `Duplicate flag ${e}`)
           })
+          return
+        }
+        if (def.kind === 'union') {
+          const entries = isMapping(v) ? Object.entries(v) : []
+          const [name, e] = entries[0] ?? []
+          if (entries.length !== 1 || name === undefined || e === undefined)
+            return at(path, `Expected a mapping of one ${def.name} case (case: value), got ${describe(v)}`)
+          const c = def.cases.find((x) => x.name === name)
+          if (!c) return at(path, `Unknown case '${name}' of ${def.name}`)
+          check(e, c.type, path ? `${path}.${name}` : name, seen)
           return
         }
         if (!isMapping(v)) return at(path, `Expected a mapping of ${def.name} fields, got ${describe(v)}`)

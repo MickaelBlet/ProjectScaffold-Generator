@@ -962,7 +962,14 @@ class Parser {
   private constValue(name: string): ConstValue | undefined {
     if (name === 'TRUE') return true
     if (name === 'FALSE') return false
-    const q = this.lookup(name, this.scope, (k) => k === 'const' || k === 'enumerator')
+    const constant = (k: DeclKind): boolean => k === 'const' || k === 'enumerator'
+    // Enumerators are in the scope of their enum's, also written `Enum::VALUE`.
+    const parts = name.split('::')
+    const q =
+      this.lookup(name, this.scope, constant) ??
+      (parts.length > 1
+        ? this.lookup([...parts.slice(0, -2), parts.at(-1)].join('::'), this.scope, constant)
+        : undefined)
     return q === undefined ? undefined : this.consts.get(q)
   }
 
@@ -1422,7 +1429,7 @@ class Parser {
     this.add({ q, simple: name, kind: 'type', def: { kind: 'struct', name, description, fields }, needs: [] })
   }
 
-  /** Union: a struct with the discriminator and an optional field per case. */
+  /** Union: its discriminator and cases, with their labels. */
   private union(first: Token): string {
     this.expect('union')
     const name = this.name()
@@ -1439,41 +1446,42 @@ class Parser {
     this.expect('{')
     this.forward(q, 'type')
     this.scope.push(name)
-    const fields: FileField[] = []
+    const cases: Extract<FileTypeDef, { kind: 'union' }>['cases'] = []
     while (!this.accept('}')) {
-      const labels: string[] = []
+      const labels: (number | string | boolean)[] = []
+      let isDefault = false
       while (this.is('case') || this.is('default')) {
-        if (this.accept('default')) labels.push('default')
+        if (this.accept('default')) isDefault = true
         else {
           this.next()
-          labels.push(
-            this.until(':')
-              .map((t) => t.text)
-              .join(' ')
-          )
+          const v = this.evaluate(this.until(':'))
+          labels.push(typeof v === 'bigint' ? (Number.isSafeInteger(Number(v)) ? Number(v) : String(v)) : v)
         }
         this.expect(':')
       }
-      if (!labels.length) this.fail(this.peek(), "'case' or 'default'")
+      if (!labels.length && !isDefault) this.fail(this.peek(), "'case' or 'default'")
       const member = this.peek()!
       const anns = this.annotations()
       const type = this.typeSpec()
       const [d] = this.declarators(type, false)
       const end = this.expect(';')
-      const when = labels.includes('default') ? 'by default' : `for ${labels.join(', ')}`
-      fields.push({
+      cases.push({
         name: d!.name,
-        type: { kind: 'optional', of: d!.type },
-        description: joinLines(this.describe(member.doc || end.trail || member.trail, anns), `Set ${when}.`)
+        type: d!.type,
+        description: this.describe(member.doc || end.trail || member.trail, anns),
+        ...(labels.length ? { labels } : {}),
+        ...(isDefault ? { default: true } : {})
       })
     }
     this.scope.pop()
-    let dname = 'discriminator'
-    while (fields.some((f) => f.name === dname)) dname += '_'
-    fields.unshift({ name: dname, type: discriminator, description: 'Selects the field that is set.' })
-    this.warn(first, `union ${q} imported as a struct: discriminator and one optional field per case`)
     const description = first.doc || this.endTrail() || first.trail
-    this.add({ q, simple: name, kind: 'type', def: { kind: 'struct', name, description, fields }, needs: [] })
+    this.add({
+      q,
+      simple: name,
+      kind: 'type',
+      def: { kind: 'union', name, description, discriminator, cases },
+      needs: []
+    })
     return q
   }
 
@@ -2026,7 +2034,10 @@ class Parser {
         for (const p of e.def.ports) p.interface = p.interface && other(p.interface)
         e.def.bases = e.def.bases.map(other)
       } else if (e.def.kind === 'struct') for (const f of e.def.fields) f.type = ref(f.type)
-      else if (e.def.kind === 'alias') e.def.type = ref(e.def.type)
+      else if (e.def.kind === 'union') {
+        e.def.discriminator = ref(e.def.discriminator)
+        for (const c of e.def.cases) c.type = ref(c.type)
+      } else if (e.def.kind === 'alias') e.def.type = ref(e.def.type)
     }
   }
 
@@ -2151,6 +2162,8 @@ function usedNames(e: FileTypeDef | FileInterface, needs: string[] = []): string
   const names = [...needs]
   if ('messages' in e) messageNames(e.messages, names)
   else if (e.kind === 'struct') for (const f of e.fields) refNames(f.type, names)
+  else if (e.kind === 'union')
+    for (const t of [e.discriminator, ...e.cases.map((c) => c.type)]) refNames(t, names)
   else if (e.kind === 'alias') refNames(e.type, names)
   return names
 }
@@ -2272,6 +2285,13 @@ export function idlImport(idl: IdlFile, target: Project, only?: string[]): IdlIm
         kind: 'enum',
         underlying: e.underlying,
         values: e.values.map((v) => ({ ...v, id: newId() }))
+      })
+    else if (e.kind === 'union')
+      types.push({
+        ...base,
+        kind: 'union',
+        discriminator: ref(e.discriminator),
+        cases: e.cases.map((c) => ({ ...field(c), labels: c.labels ?? [], isDefault: c.default ?? false }))
       })
     else if (e.kind === 'bitmask')
       types.push({

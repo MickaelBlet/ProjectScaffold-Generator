@@ -74,6 +74,22 @@
       render '_py_id', name: t.name
       echo '.'
       render '_py_id', name: v
+    when 'union'
+      # The case of the one-entry mapping, with its first label.
+      for entry in v
+        assign c = def.cases | where: 'name', entry[0] | first
+        echo prefix
+        render '_py_id', name: t.name
+        echo '('
+        if c.label == nil
+          echo 'None'
+        else
+          render '_py_value', v: c.label, t: def.discriminator, prefix: prefix
+        endif
+        echo ', '
+        render '_py_value', v: entry[1], t: c.type, prefix: prefix
+        echo ')'
+      endfor
     when 'bitmask'
       if v.size == 0
         echo prefix

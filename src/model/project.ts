@@ -517,6 +517,10 @@ export function* allTypeRefs(p: Project): Generator<{ ref: TypeRef; where: strin
     if (t.kind === 'struct')
       for (const f of t.fields) yield { ref: f.type, where: `${t.name}.${f.name}`, owner }
     if (t.kind === 'alias') yield { ref: t.type, where: t.name, owner }
+    if (t.kind === 'union') {
+      yield { ref: t.discriminator, where: `${t.name} discriminator`, owner }
+      for (const c of t.cases) yield { ref: c.type, where: `${t.name}.${c.name}`, owner }
+    }
   }
   for (const i of p.interfaces) {
     const owner = { kind: 'interface', id: i.id } as const

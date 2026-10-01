@@ -26,7 +26,9 @@ module Robot {
     string<16> frame;
   };
 
+  enum Shape { CIRCLE, SQUARE, LINE };
   union Payload switch (long) { case 1: case 2: long a; default: string b; };
+  union Figure switch (Shape) { case CIRCLE: double radius; case Shape::SQUARE: Vec3 side; };
 
   exception Busy { string reason; };
 
@@ -98,18 +100,25 @@ describe('IDL import', () => {
       ['heading', 'optional<float32>', 'degrees'],
       ['frame', 'string<16>', undefined]
     ])
-    expect(fields(idl, 'Payload')).toEqual(['int32 discriminator', 'optional<int32> a', 'optional<string> b'])
-    const payload = typeNamed(idl, 'Payload')
-    expect(payload?.kind === 'struct' && payload.fields.map((f) => f.description)).toEqual([
-      'Selects the field that is set.',
-      'Set for 1, 2.',
-      'Set by default.'
-    ])
+    expect(typeNamed(idl, 'Payload')).toEqual({
+      kind: 'union',
+      name: 'Payload',
+      description: '',
+      discriminator: { kind: 'primitive', name: 'int32' },
+      cases: [
+        { name: 'a', type: { kind: 'primitive', name: 'int32' }, description: '', labels: [1, 2] },
+        { name: 'b', type: { kind: 'primitive', name: 'string' }, description: '', default: true }
+      ]
+    })
+    expect(typeNamed(idl, 'Figure')).toMatchObject({
+      discriminator: { kind: 'ref', name: 'Shape' },
+      cases: [
+        { name: 'radius', labels: ['CIRCLE'] },
+        { name: 'side', labels: ['SQUARE'], type: { kind: 'ref', name: 'Vec3' } }
+      ]
+    })
     expect(fields(idl, 'Busy')).toEqual(['string reason'])
-    expect(idl.warnings).toEqual([
-      'Line 2: base.idl not found',
-      'Line 21: union Robot::Payload imported as a struct: discriminator and one optional field per case'
-    ])
+    expect(idl.warnings).toEqual(['Line 2: base.idl not found'])
     expect(idl.missing).toEqual(['base.idl'])
   })
 

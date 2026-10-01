@@ -3,7 +3,7 @@ import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { fromFile } from '@/model/serialize'
 import { validate } from '@/model/validate'
-import type { EnumDef, Project, StructDef } from '@/model/types'
+import type { EnumDef, Project, StructDef, UnionDef } from '@/model/types'
 
 const example = YAML.parse(readFileSync('examples/robot.scaffold.yaml', 'utf8'))
 /** The example, with the types and interfaces of its dependencies made its own: edited and checked here. */
@@ -50,6 +50,45 @@ describe('validate', () => {
       "Bitmask 'Bits': bit 0 used more than once",
       "Bitmask 'Bits': C (bit 8) does not fit in uint8"
     ])
+  })
+
+  it('checks unions: discriminator, labels, default case, cycles', () => {
+    const p = load()
+    const mode = type<EnumDef>(p, 'Mode')
+    const u: UnionDef = {
+      id: 'u',
+      kind: 'union',
+      name: 'U',
+      description: '',
+      discriminator: { kind: 'ref', id: mode.id },
+      cases: [
+        {
+          id: 'a',
+          name: 'a',
+          type: { kind: 'primitive', name: 'int32' },
+          description: '',
+          labels: ['Idle'],
+          isDefault: false
+        },
+        { id: 'b', name: 'b', type: { kind: 'ref', id: 'u' }, description: '', labels: [], isDefault: false }
+      ]
+    }
+    p.types.push(u)
+    expect(messages(p)).toEqual([
+      "Union 'U': case 'b' has no label",
+      "Union 'U' contains itself by value (use vector, list, map or set to break the cycle)"
+    ])
+    const b = u.cases[1]!
+    b.type = { kind: 'vector', of: { kind: 'ref', id: 'u' } }
+    b.labels = ['Idle', 'Nope']
+    expect(messages(p)).toEqual([
+      "Union 'U': label of case 'b': Expected a value of Mode (Idle, Run, Fault), got text Nope",
+      "Union 'U': label Idle used by several cases"
+    ])
+    b.labels = []
+    b.isDefault = true
+    u.discriminator = { kind: 'primitive', name: 'float32' }
+    expect(messages(p)).toEqual(["Union 'U': discriminator must be an integer, bool, char or enum"])
   })
 
   it('flags duplicate names in lists', () => {

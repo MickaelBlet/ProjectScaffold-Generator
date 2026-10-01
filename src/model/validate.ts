@@ -17,6 +17,7 @@ import { valueErrors } from './defaults'
 import { binariesOf, crosses } from './binaries'
 import { DEFAULT_HOST, foreignFields } from './transports'
 import {
+  INT_PRIMITIVES,
   INT_RANGES,
   TRANSPORTS,
   type Id,
@@ -139,6 +140,44 @@ export function validate(p: Project): Problem[] {
             )
         break
       }
+      case 'union': {
+        checkTypeRef(t.discriminator, target, `${t.name} discriminator`)
+        const d = resolve(t.discriminator)
+        const valid =
+          d?.kind === 'enum' ||
+          (d?.kind === 'primitive' &&
+            (d.name === 'bool' ||
+              d.name === 'char' ||
+              (INT_PRIMITIVES as readonly string[]).includes(d.name)))
+        if (d && !valid)
+          push('error', target, `Union '${t.name}': discriminator must be an integer, bool, char or enum`)
+        if (!t.cases.length) push('warning', target, `Union '${t.name}' has no cases`)
+        for (const n of duplicates(t.cases.map((c) => c.name)))
+          push('error', target, `Union '${t.name}': duplicate case '${n}'`)
+        if (t.cases.filter((c) => c.isDefault).length > 1)
+          push('error', target, `Union '${t.name}': more than one default case`)
+        for (const c of t.cases) {
+          checkTypeRef(c.type, target, `${t.name}.${c.name}`)
+          if (!c.labels.length && !c.isDefault)
+            push('error', target, `Union '${t.name}': case '${c.name}' has no label`)
+          if (valid)
+            for (const l of c.labels)
+              for (const e of valueErrors(l, t.discriminator, p.types))
+                push('error', target, `Union '${t.name}': label of case '${c.name}': ${e}`)
+        }
+        const labels = t.cases.flatMap((c) => c.labels.map(String))
+        for (const n of duplicates(labels))
+          push('error', target, `Union '${t.name}': label ${n} used by several cases`)
+        const all =
+          d?.kind === 'enum'
+            ? d.values.map((v) => v.name)
+            : d?.kind === 'primitive' && d.name === 'bool'
+              ? ['true', 'false']
+              : null
+        if (t.cases.some((c) => c.isDefault) && all?.every((v) => labels.includes(v)))
+          push('warning', target, `Union '${t.name}': the default case is never held, every value has a case`)
+        break
+      }
       case 'alias':
         checkTypeRef(t.type, target, t.name)
         if (t.type.kind === 'ref' && types.has(t.type.id) && resolve(t.type, new Set([t.id])) === null)
@@ -147,7 +186,7 @@ export function validate(p: Project): Problem[] {
     }
   }
 
-  // Structs containing themselves by value (through fields, arrays, optionals and aliases).
+  // Structs and unions containing themselves by value (through fields, cases, arrays, optionals and aliases).
   const byValue = (t: TypeRef, out: Set<Id>, seenAlias = new Set<Id>()): void => {
     switch (t.kind) {
       case 'array':
@@ -156,7 +195,7 @@ export function validate(p: Project): Problem[] {
         break
       case 'ref': {
         const def = types.get(t.id)
-        if (def?.kind === 'struct') out.add(def.id)
+        if (def?.kind === 'struct' || def?.kind === 'union') out.add(def.id)
         else if (def?.kind === 'alias' && !seenAlias.has(def.id)) {
           seenAlias.add(def.id)
           byValue(def.type, out, seenAlias)
@@ -167,9 +206,9 @@ export function validate(p: Project): Problem[] {
   }
   const edges = new Map<Id, Set<Id>>()
   for (const t of p.types) {
-    if (t.kind !== 'struct') continue
+    if (t.kind !== 'struct' && t.kind !== 'union') continue
     const out = new Set<Id>()
-    for (const f of t.fields) byValue(f.type, out)
+    for (const f of t.kind === 'struct' ? t.fields : t.cases) byValue(f.type, out)
     edges.set(t.id, out)
   }
   const state = new Map<Id, 'visiting' | 'done'>()
@@ -185,12 +224,14 @@ export function validate(p: Project): Problem[] {
     state.set(id, 'done')
   }
   for (const id of edges.keys()) visit(id, [])
-  for (const id of cyclic)
+  for (const id of cyclic) {
+    const t = types.get(id)!
     push(
       'error',
       { kind: 'type', id },
-      `Struct '${types.get(id)!.name}' contains itself by value (use vector, list, map or set to break the cycle)`
+      `${t.kind === 'union' ? 'Union' : 'Struct'} '${t.name}' contains itself by value (use vector, list, map or set to break the cycle)`
     )
+  }
 
   /** Parameters and return type of an interface message or a module method. */
   const checkMessage = (m: Message, target: ProblemTarget, where: string): void => {

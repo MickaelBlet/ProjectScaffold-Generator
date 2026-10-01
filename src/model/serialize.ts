@@ -146,6 +146,18 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           underlying: t.underlying,
           flags: t.flags.map((v) => ({ name: v.name, bit: v.bit }))
         }
+      case 'union':
+        return {
+          kind: 'union',
+          name: t.name,
+          description: opt(t.description),
+          discriminator: ref(t.discriminator),
+          cases: t.cases.map((c) => ({
+            ...field(c),
+            ...(c.labels.length ? { labels: c.labels as (number | string | boolean)[] } : {}),
+            ...(c.isDefault ? { default: true } : {})
+          }))
+        }
       case 'alias':
         return { kind: 'alias', name: t.name, description: opt(t.description), type: ref(t.type) }
       case 'primitive':
@@ -482,6 +494,19 @@ export function fromFile(data: unknown, prev?: Project): Project {
           kind: 'bitmask',
           underlying: t.underlying,
           flags: t.flags.map((v, j) => ({ id: flags[j]?.id ?? newId(), name: v.name, bit: v.bit }))
+        }
+      }
+      case 'union': {
+        const cases = named(was?.kind === 'union' ? was.cases : [], t.cases)
+        return {
+          ...base,
+          kind: 'union',
+          discriminator: ref(t.discriminator, `${t.name} discriminator`, [...at, 'discriminator']),
+          cases: t.cases.map((c, j) => ({
+            ...field(c, t.name, cases[j], [...at, 'cases', j]),
+            labels: c.labels ?? [],
+            isDefault: c.default ?? false
+          }))
         }
       }
       case 'alias':

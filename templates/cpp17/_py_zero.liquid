@@ -38,6 +38,10 @@
         else
           echo '0'
         endif
+      when 'union'
+        echo prefix
+        render '_py_id', name: t.name
+        echo '()'
       when 'bitmask'
         echo prefix
         render '_py_id', name: t.name

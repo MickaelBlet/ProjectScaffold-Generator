@@ -93,7 +93,10 @@ function rebind(e: Entity, idOf: (id: Id) => Id): void {
       if (m.returns) m.returns = ref(m.returns)
     }
   else if (e.kind === 'struct') for (const f of e.fields) f.type = ref(f.type)
-  else if (e.kind === 'alias') e.type = ref(e.type)
+  else if (e.kind === 'union') {
+    e.discriminator = ref(e.discriminator)
+    for (const c of e.cases) c.type = ref(c.type)
+  } else if (e.kind === 'alias') e.type = ref(e.type)
 }
 
 /** Whether something outside `inside` (ids) uses a type or interface. */

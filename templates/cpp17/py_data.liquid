@@ -31,6 +31,21 @@ class {% render '_py_id', name: t.name %}(IntFlag):
 {% else %}
     pass
 {% endfor %}
+{% when 'union' %}
+
+
+@dataclass
+class {% render '_py_id', name: t.name %}:
+{{ t.description | doc_comment: '    # ' }}
+    # `d`: the discriminator; `value`: the case it selects ({% for c in t.cases %}{{ c.name }}{% unless forloop.last %}, {% endunless %}{% endfor %}), None for none.
+{% assign first = t.cases | first %}
+{% if first and first.label != nil %}
+    d: Any = _field(default_factory=lambda: {% render '_py_value', v: first.label, t: t.discriminator, prefix: '' %})
+    value: Any = _field(default_factory=lambda: {% render '_py_zero', t: first.type, prefix: '' %})
+{% else %}
+    d: Any = _field(default_factory=lambda: {% render '_py_zero', t: t.discriminator, prefix: '' %})
+    value: Any = None
+{% endif %}
 {% when 'struct' %}
 
 
@@ -65,6 +80,56 @@ def encode_{{ t.name }}(w: Writer, v: int) -> None:
 
 def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
     return {% render '_py_id', name: t.name %}(r.{{ t.underlying }}())
+{% when 'union' %}
+{% assign fallback = nil %}
+{% for c in t.cases %}
+{% if c.isDefault %}
+{% assign fallback = c %}
+{% endif %}
+{% endfor %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {% render '_py_id', name: t.name %}) -> None:
+{% capture statement %}{% render '_py_encode', t: t.discriminator, v: 'v.d', w: 'w', prefix: '' %}{% endcapture -%}
+{% # The discriminator, then the case it selects. %}
+    {{ statement }}
+{% assign branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels.size > 0 %}
+{% capture test %}{% render '_py_labels', c: c, t: t.discriminator, d: 'v.d', prefix: '' %}{% endcapture -%}
+{% capture statement %}{% render '_py_encode', t: c.type, v: 'v.value', w: 'w', prefix: '' %}{% endcapture -%}
+{% # Its labels. %}
+    {{ branch }} {{ test }}:
+        {{ statement }}
+{% assign branch = 'elif' %}
+{% endif %}
+{% endfor %}
+{% if fallback %}
+{% capture statement %}{% render '_py_encode', t: fallback.type, v: 'v.value', w: 'w', prefix: '' %}{% endcapture -%}
+{% if branch == 'if' %}
+    {{ statement }}
+{% else %}
+    else:
+        {{ statement }}
+{% endif %}
+{% endif %}
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    d = {% render '_py_decode', t: t.discriminator, r: 'r', prefix: '' %}
+{% for c in t.cases %}
+{% if c.labels.size > 0 %}
+{% capture test %}{% render '_py_labels', c: c, t: t.discriminator, d: 'd', prefix: '' %}{% endcapture -%}
+{% # Its labels. %}
+    if {{ test }}:
+        return {% render '_py_id', name: t.name %}(d, {% render '_py_decode', t: c.type, r: 'r', prefix: '' %})
+{% endif %}
+{% endfor %}
+{% if fallback %}
+    return {% render '_py_id', name: t.name %}(d, {% render '_py_decode', t: fallback.type, r: 'r', prefix: '' %})
+{% else %}
+    return {% render '_py_id', name: t.name %}(d, None)
+{% endif %}
 {% when 'struct' %}
 
 

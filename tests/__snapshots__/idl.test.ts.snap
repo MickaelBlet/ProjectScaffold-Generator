@@ -49,11 +49,9 @@ exports[`IDL import > imports examples/idl/sensors_dds.idl 1`] = `
     "struct Header",
     "struct Scan",
     "struct Status",
-    "struct Reading",
+    "union Reading",
   ],
-  "warnings": [
-    "Line 50: union Sensors::Reading imported as a struct: discriminator and one optional field per case",
-  ],
+  "warnings": [],
 }
 `;
 
@@ -75,7 +73,6 @@ exports[`IDL import > imports examples/idl/tank_ccm.idl 1`] = `
     "struct Stuck",
   ],
   "warnings": [
-    "Line 50 of sensors_dds.idl: union Sensors::Reading imported as a struct: discriminator and one optional field per case",
     "Line 53: home Plant::TankHome left out",
   ],
 }

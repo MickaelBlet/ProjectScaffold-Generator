@@ -702,7 +702,7 @@
                     "type": "string"
                   },
                   "default": {
-                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names; any value for a custom primitive",
+                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive",
                     "$ref": "#/$defs/__schema0"
                   }
                 },
@@ -828,6 +828,78 @@
             "flags"
           ],
           "description": "set of flags, combined with |"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "union"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "discriminator": {
+              "description": "integer primitive, bool, char or enum",
+              "$ref": "#/$defs/TypeRef"
+            },
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "labels": {
+                    "description": "discriminator values selecting the case: integers, characters, booleans, enum value names",
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  },
+                  "default": {
+                    "description": "held for the discriminator values no case lists",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "discriminator",
+            "cases"
+          ],
+          "description": "discriminated union: one of its cases, selected by the discriminator"
         },
         {
           "type": "object",
@@ -1195,7 +1267,7 @@
                 "type": "string"
               },
               "default": {
-                "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names; any value for a custom primitive",
+                "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive",
                 "$ref": "#/$defs/__schema0"
               },
               "static": {

@@ -14,6 +14,8 @@
       assign std = std | append: '<cstdint>,<vector>,'
     when 'string', 'array', 'vector', 'list', 'set', 'optional', 'map'
       assign std = std | append: '<' | append: b | append: '>,'
+    when 'variant'
+      assign std = std | append: '<utility>,<variant>,'
     endcase
   endfor
   for t in e.uses.types

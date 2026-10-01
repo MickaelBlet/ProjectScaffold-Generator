@@ -236,6 +236,8 @@ describe('generation context', () => {
     expect(ctx.remoteTypes.map((t) => t.name)).toEqual([
       'Access',
       'Badge',
+      'Command',
+      'Item',
       'Mode',
       'Names',
       'Numbers',
@@ -244,6 +246,14 @@ describe('generation context', () => {
       'Tree',
       'Vec3'
     ])
+    // Unions: the label set with each case, a free one for the default case.
+    const item = ctx.types.find((t) => t.name === 'Item')!
+    expect(item.kind === 'union' && item.cases.map((c) => [c.name, c.label, c.index])).toEqual([
+      ['number', 1, 1],
+      ['names', -3, 2],
+      ['text', 0, 3]
+    ])
+    expect(item.uses.builtins).toEqual(['int16', 'int32', 'string', 'variant'])
     const scale = ctx.interfaces.find((i) => i.name === 'Echo')!.messages.find((m) => m.name === 'scale')!
     expect(scale.inputs.map((p) => p.name)).toEqual(['v', 'factor'])
     expect(scale.outputs.map((p) => p.name)).toEqual(['v'])

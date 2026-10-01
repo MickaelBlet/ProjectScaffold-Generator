@@ -12,7 +12,7 @@
 namespace {{ project.ident | snake }}::remote {
 
 {% for t in remoteTypes %}
-{% if t.kind == 'struct' %}
+{% if t.kind == 'struct' or t.kind == 'union' %}
 inline void encode(Writer& w, const {% render '_qualified', e: t %}& v);
 inline void decode(Reader& r, {% render '_qualified', e: t %}& v);
 {% endif %}
@@ -50,6 +50,95 @@ inline void decode(Reader& r, {% render '_qualified', e: t %}& v)
     (void)r;
     (void)v;
 {% endfor %}
+}
+{% when 'union' %}
+{% assign fallback = nil %}
+{% for c in t.cases %}
+{% if c.isDefault %}
+{% assign fallback = c %}
+{% endif %}
+{% endfor %}
+{% capture disc %}{% render '_type', t: t.discriminator %}{% endcapture -%}
+{% # The discriminator, then the case it selects. %}
+
+inline void encode(Writer& w, const {% render '_qualified', e: t %}& v)
+{
+    const {{ disc }} d = v._d();
+    encode(w, d);
+{% assign branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels.size > 0 %}
+{% capture test %}{% render '_labels', c: c, t: t.discriminator, d: 'd' %}{% endcapture -%}
+{% capture value %}v.{% render '_id', name: c.name %}(){% endcapture -%}
+{% capture check %}{% render '_bounds', t: c.type, v: value, depth: 0 %}{% endcapture -%}
+{% # Its labels. %}
+    {{ branch }} ({{ test }}) {
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+        encode(w, {{ value }});
+{% assign branch = '} else if' %}
+{% endif %}
+{% endfor %}
+{% if fallback %}
+{% capture value %}v.{% render '_id', name: fallback.name %}(){% endcapture -%}
+{% capture check %}{% render '_bounds', t: fallback.type, v: value, depth: 0 %}{% endcapture -%}
+{% if branch == 'if' %}
+{% if check != '' %}
+    {{ check }}
+{% endif %}
+    encode(w, {{ value }});
+{% else %}
+    } else {
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+        encode(w, {{ value }});
+    }
+{% endif %}
+{% elsif branch != 'if' %}
+    }
+{% endif %}
+}
+
+inline void decode(Reader& r, {% render '_qualified', e: t %}& v)
+{
+    {{ disc }} d{};
+    decode(r, d);
+{% assign branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels.size > 0 %}
+{% capture test %}{% render '_labels', c: c, t: t.discriminator, d: 'd' %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: c.type, v: 'x', depth: 0 %}{% endcapture -%}
+{% # Its labels. %}
+    {{ branch }} ({{ test }}) {
+        {% render '_type', t: c.type %} x{};
+        decode(r, x);
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+        v.{% render '_id', name: c.name %}(std::move(x), d);
+{% assign branch = '} else if' %}
+{% endif %}
+{% endfor %}
+{% if branch != 'if' %}
+    } else {
+{% endif %}
+{% if fallback %}
+{% capture check %}{% render '_bounds', t: fallback.type, v: 'x', depth: 0 %}{% endcapture -%}
+{% # The default case. %}
+        {% render '_type', t: fallback.type %} x{};
+        decode(r, x);
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+        v.{% render '_id', name: fallback.name %}(std::move(x), d);
+{% else %}
+        v._default(d);
+{% endif %}
+{% if branch != 'if' %}
+    }
+{% endif %}
 }
 {% when 'primitive' %}
 

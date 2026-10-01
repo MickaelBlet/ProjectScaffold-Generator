@@ -198,6 +198,51 @@ types:
         bit: 1
       - name: Exec
         bit: 7
+  - kind: union
+    name: Command
+    description: Enum discriminator, no default case
+    discriminator:
+      kind: ref
+      name: Mode
+    cases:
+      - name: note
+        type:
+          kind: primitive
+          name: string
+          max: 8
+        labels:
+          - Idle
+      - name: speed
+        type:
+          kind: primitive
+          name: float64
+        labels:
+          - Run
+  - kind: union
+    name: Item
+    description: Integer discriminator, default case
+    discriminator:
+      kind: primitive
+      name: int16
+    cases:
+      - name: number
+        type:
+          kind: primitive
+          name: int32
+        labels:
+          - 1
+          - 2
+      - name: names
+        type:
+          kind: ref
+          name: Names
+        labels:
+          - -3
+      - name: text
+        type:
+          kind: primitive
+          name: string
+        default: true
   - kind: struct
     name: Badge
     fields:
@@ -224,6 +269,12 @@ types:
         default:
           - Read
           - Exec
+      - name: command
+        type:
+          kind: ref
+          name: Command
+        default:
+          speed: 1.5
 interfaces:
   - name: Echo
     description: Every call sends its arguments back
@@ -335,6 +386,24 @@ interfaces:
         returns:
           kind: ref
           name: Access
+      - name: command
+        params:
+          - name: c
+            type:
+              kind: ref
+              name: Command
+        returns:
+          kind: ref
+          name: Command
+      - name: item
+        params:
+          - name: i
+            type:
+              kind: ref
+              name: Item
+        returns:
+          kind: ref
+          name: Item
       - name: badge
         params:
           - name: b

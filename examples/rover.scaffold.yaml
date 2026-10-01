@@ -104,6 +104,26 @@ types:
         value: 1
       - name: Failed
         value: 2
+  - kind: union
+    name: Diagnosis
+    description: Why the health is not Ok
+    discriminator:
+      kind: ref
+      name: Health
+    cases:
+      - name: reason
+        type:
+          kind: primitive
+          name: string
+        labels:
+          - Degraded
+      - name: code
+        type:
+          kind: primitive
+          name: uint32
+        description: Error code of the failed part
+        labels:
+          - Failed
 interfaces:
   - name: FrameSink
     description: Receives camera frames
