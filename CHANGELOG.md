@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Project text (_Edit as text_, Alt+U): a real code editor (CodeMirror) in place of the plain text field: folding, search and replace (Ctrl+F), multiple cursors, bracket matching, completion in a popup that follows the text, problems underlined and marked in the gutter. Undo in the text undoes typing; the app's global shortcuts (save, palette…) still work from it.
 - Inspector: entries of every list (fields, parameters, attributes, ports, enum values, flags, transports, metadata, binaries, references) are rounded blocks, every other one shaded. Columns of buttons and numbers in tables take the width of their content.
-- Explorer: the buttons of a section header stay on the right of its title, on the same line, taking the width they need; a title too long for the rest is cut with an ellipsis.
+- Explorer: the buttons of a section header stay on the right of its title, wrapping onto more lines there when the panel is narrow; the title stays whole.
 
 ### Fixed
 
