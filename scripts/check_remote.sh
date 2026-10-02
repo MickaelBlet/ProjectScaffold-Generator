@@ -13,7 +13,8 @@ work=${1:-$(mktemp -d)}
 mkdir -p "$work"
 npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t "$set" -o "$work/relay" --force >/dev/null
 # Unused parameters: the generated handlers are empty.
-cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" \
+# interop.cpp in the standard of the set (cpp11 -> C++11).
+cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" -DCMAKE_CXX_STANDARD="${set#cpp}" \
   -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" >/dev/null
 cmake --build "$work/build" -j >/dev/null
 

@@ -1,0 +1,11 @@
+{%- comment -%}
+  Arguments passing the parameters on: `pose, tags`. Parameter: params.
+{%- endcomment -%}
+{%- liquid
+  for p in params
+    render '_id', name: p.name
+    unless forloop.last
+      echo ', '
+    endunless
+  endfor
+-%}

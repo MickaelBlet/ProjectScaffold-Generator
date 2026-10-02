@@ -1,0 +1,133 @@
+{%- comment -%}
+  Python literal of a default value of the model (as in the YAML file) of type t.
+  Parameters: v, t, prefix.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    case t.name
+    when 'bool'
+      if v == true or v == 'true'
+        echo 'True'
+      else
+        echo 'False'
+      endif
+    when 'char', 'string', 'bytes'
+      assign text = v | append: '' | replace: '\\', '\\\\' | replace: "'", "\\'" | replace: '\n', '\\n' | replace: '\t', '\\t'
+      if t.name == 'bytes'
+        echo 'b'
+      endif
+      echo "'" | append: text | append: "'"
+    when 'float32', 'float64'
+      assign number = v | append: ''
+      echo number
+      unless number contains '.' or number contains 'e'
+        echo '.0'
+      endunless
+    else
+      echo v
+    endcase
+  when 'optional'
+    if v == nil
+      echo 'None'
+    else
+      render '_py_value', v: v, t: t.of, prefix: prefix
+    endif
+  when 'set'
+    if v.size == 0
+      echo 'set()'
+    else
+      echo '{'
+      for item in v
+        render '_py_value', v: item, t: t.of, prefix: prefix
+        unless forloop.last
+          echo ', '
+        endunless
+      endfor
+      echo '}'
+    endif
+  when 'array', 'vector', 'list'
+    echo '['
+    for item in v
+      render '_py_value', v: item, t: t.of, prefix: prefix
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+    echo ']'
+  when 'map'
+    echo '{'
+    for entry in v
+      render '_py_value', v: entry[0], t: t.key, prefix: prefix
+      echo ': '
+      render '_py_value', v: entry[1], t: t.value, prefix: prefix
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+    echo '}'
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    case def.kind
+    when 'enum'
+      echo prefix
+      render '_py_id', name: t.name
+      echo '.'
+      render '_py_id', name: v
+    when 'union'
+      # The case of the one-entry mapping, with its first label.
+      for entry in v
+        assign c = def.cases | where: 'name', entry[0] | first
+        echo prefix
+        render '_py_id', name: t.name
+        echo '('
+        if c.label == nil
+          echo 'None'
+        else
+          render '_py_value', v: c.label, t: def.discriminator, prefix: prefix
+        endif
+        echo ', '
+        render '_py_value', v: entry[1], t: c.type, prefix: prefix
+        echo ')'
+      endfor
+    when 'bitmask'
+      if v.size == 0
+        echo prefix
+        render '_py_id', name: t.name
+        echo '(0)'
+      endif
+      for flag in v
+        echo prefix
+        render '_py_id', name: t.name
+        echo '.'
+        render '_py_id', name: flag
+        unless forloop.last
+          echo ' | '
+        endunless
+      endfor
+    when 'alias'
+      render '_py_value', v: v, t: def.type, prefix: prefix
+    when 'struct'
+      # The fields given; the others keep their defaults.
+      echo prefix
+      render '_py_id', name: t.name
+      echo '('
+      assign first = true
+      for f in def.fields
+        assign given = v[f.name]
+        if given != nil
+          unless first
+            echo ', '
+          endunless
+          assign first = false
+          render '_py_id', name: f.name
+          echo '='
+          render '_py_value', v: given, t: f.type, prefix: prefix
+        endif
+      endfor
+      echo ')'
+    else
+      echo v
+    endcase
+  endcase
+-%}

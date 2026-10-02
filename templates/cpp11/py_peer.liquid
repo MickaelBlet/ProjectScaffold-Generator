@@ -1,0 +1,102 @@
+{% include '_py_banner' %}
+{%- liquid
+  assign ns = project.ident | snake
+  assign binary = system.binary.name
+  assign faces = system.proxies | map: 'interface'
+  assign more = system.stubs | map: 'interface'
+  assign faces = faces | concat: more | uniq
+  assign generated = 'tcp,udp,http,websocket,shm' | split: ','
+-%}
+"""Stands in for binary {{ binary }} of {{ project.name }}, to test the other binaries: serves the calls
+{{ binary }} receives, makes those it sends.
+
+    python -m {{ ns }}.peers.{{ binary | snake }}    # from the python/ directory; Ctrl-C stops
+"""
+from __future__ import annotations
+
+import logging
+import time
+from typing import List, Optional
+
+from .. import links
+from ..transport import Server
+{% for i in faces %}
+from ..remote.{% capture module %}{{ i.name | snake }}{% endcapture %}{% render '_py_id', name: module %} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
+{% endfor %}
+{% user 'imports' %}
+{% enduser %}
+
+
+class {{ binary }}Peer:
+{{ system.binary.description | doc_comment: '    # ' }}
+    """Binary {{ binary }}: one handler per link it receives (default: logging ones), one proxy per link it
+    calls (connecting on the first call). serve() starts receiving, close() stops."""
+
+    def __init__(self{% for r in system.stubs %}{% if generated contains r.link.constraints.remote.transport %}, {% render '_py_id', name: r.link.name %}: Optional[{{ r.interface.name }}Handler] = None{% endif %}{% endfor %}) -> None:
+{% for r in system.stubs %}
+        # {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ r.link.constraints.remote.transport }}
+{% if generated contains r.link.constraints.remote.transport %}
+        self.{{ r.link.name }}_handler = {% render '_py_id', name: r.link.name %} if {% render '_py_id', name: r.link.name %} is not None else {{ r.interface.name }}Handler()
+{% else %}
+        # Transport not generated: receive its frames into {{ r.interface.name }}Stub(handler) yourself.
+{% endif %}
+{% endfor %}
+{% for r in system.proxies %}
+        # {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ r.link.constraints.remote.transport }}
+{% if generated contains r.link.constraints.remote.transport %}
+        self.{{ r.link.name }} = {{ r.interface.name }}Proxy.connect(links.{{ r.link.name | constant }})
+{% else %}
+        # Transport not generated: give {{ r.interface.name }}Proxy a Channel of your own.
+{% endif %}
+{% endfor %}
+        self._servers: List[Server] = []
+        {% user 'init' %}
+        {% enduser %}
+
+    def serve(self) -> {{ binary }}Peer:
+        """Starts receiving the calls of the other binaries."""
+        if not self._servers:
+            self._servers = [
+{% for r in system.stubs %}
+{% if generated contains r.link.constraints.remote.transport %}
+                {{ r.interface.name }}Stub.serve(links.{{ r.link.name | constant }}, self.{{ r.link.name }}_handler),
+{% endif %}
+{% endfor %}
+            ]
+        return self
+
+    def close(self) -> None:
+        for server in self._servers:
+            server.close()
+        self._servers = []
+{% for r in system.proxies %}
+{% if generated contains r.link.constraints.remote.transport %}
+        self.{{ r.link.name }}.close()
+{% endif %}
+{% endfor %}
+
+    def __enter__(self) -> {{ binary }}Peer:
+        return self.serve()
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    {% user 'peer' %}
+    {% enduser %}
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s: %(message)s')
+    with {{ binary }}Peer() as peer:
+        {% user 'main' %}
+        print('{{ binary }} peer running; Ctrl-C stops')
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        {% enduser %}
+
+
+if __name__ == '__main__':
+    main()

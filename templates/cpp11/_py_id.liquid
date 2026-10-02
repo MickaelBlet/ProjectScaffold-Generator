@@ -1,0 +1,10 @@
+{%- comment -%}
+  A model name as a Python identifier: keywords (and `self`) get a trailing `_`. Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  assign keywords = 'False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return self try while with yield' | split: ' '
+  echo name
+  if keywords contains name
+    echo '_'
+  endif
+-%}

@@ -1,0 +1,25 @@
+{%- comment -%}
+  Settings of a link's transport set in the project, as text: `broker 10.0.0.1:1883, topic rover, qos=1`
+  (empty when none). Parameter: s (a link's `constraints.remote.settings`).
+{%- endcomment -%}
+{%- liquid
+  assign parts = ''
+  assign ends = 'client,server,broker' | split: ','
+  for e in ends
+    assign at = s[e]
+    if at.host != nil or at.port != nil
+      assign parts = parts | append: '|' | append: e | append: ' ' | append: at.host | append: ':' | append: at.port
+    endif
+  endfor
+  assign scalars = 'path,name,capacity,socket,topic,interface,id,device,baud' | split: ','
+  for k in scalars
+    assign v = s[k]
+    if v != nil
+      assign parts = parts | append: '|' | append: k | append: ' ' | append: v
+    endif
+  endfor
+  for o in s.options
+    assign parts = parts | append: '|' | append: o.name | append: '=' | append: o.value
+  endfor
+  echo parts | remove_first: '|' | split: '|' | join: ', '
+-%}
