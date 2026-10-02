@@ -543,8 +543,8 @@ editor:
       width: 200
       height: 100
     Supervisor:
-      x: 120
-      y: 20
-      width: 300
-      height: 100
+      x: 87
+      y: 9
+      width: 364
+      height: 101
   orientation: vertical
