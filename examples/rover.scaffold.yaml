@@ -132,29 +132,6 @@ types:
         description: Error code of the failed part
         labels:
           - Failed
-constants:
-  - name: MaxSpeed
-    description: m/s
-    type:
-      kind: primitive
-      name: float32
-    value: 2.5
-  - name: FullColor
-    type:
-      kind: ref
-      name: Channels
-    value:
-      - Red
-      - Green
-      - Blue
-  - name: Stop
-    description: Command stopping the rover
-    type:
-      kind: ref
-      name: Command
-    value:
-      speed: 0
-      turn: 0
 interfaces:
   - name: FrameSink
     description: Receives camera frames
@@ -204,6 +181,29 @@ interfaces:
         returns:
           kind: ref
           name: Health
+constants:
+  - name: MaxSpeed
+    description: m/s
+    type:
+      kind: primitive
+      name: float32
+    value: 2.5
+  - name: FullColor
+    type:
+      kind: ref
+      name: Channels
+    value:
+      - Red
+      - Green
+      - Blue
+  - name: Stop
+    description: Command stopping the rover
+    type:
+      kind: ref
+      name: Command
+    value:
+      speed: 0
+      turn: 0
 modules:
   - name: Camera
     description: Captures frames
@@ -465,8 +465,12 @@ links:
         enabled: true
         transport: tcp
         settings:
-          client: { host: 192.168.1.20, port: 5600 }
-          server: { host: 0.0.0.0, port: 5600 }
+          client:
+            host: 192.168.1.20
+            port: 5600
+          server:
+            host: 0.0.0.0
+            port: 5600
   - name: supervise_motors
     from:
       module: Supervisor
