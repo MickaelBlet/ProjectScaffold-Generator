@@ -482,6 +482,8 @@ export interface Project {
   name: string
   description: string
   metadata: Metadata
+  /** Built-in template set generating the code; none: the default one. */
+  templates?: string
   /** Transports offered for remote links, besides `TRANSPORTS`. */
   transports: string[]
   /** Defaults of the addresses of the remote links. */

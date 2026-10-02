@@ -10,12 +10,13 @@ import {
   templateSetFor,
   type OutputDir
 } from '../src/renderer/src/codegen/run'
-import { loadTemplateSet, type TemplateSet } from '../src/renderer/src/codegen/templateSet'
+import { loadTemplateSet, MANIFEST, type TemplateSet } from '../src/renderer/src/codegen/templateSet'
 import { snake } from '../src/renderer/src/codegen/filters'
 import { readBuiltin } from './builtinTemplates'
 import { dependencyName } from '../src/renderer/src/model/dependencies'
 import { idlProject, readIdlIncludes } from '../src/renderer/src/model/idl'
 import { formatFromPath, loadText } from '../src/renderer/src/model/serialize'
+import { DEFAULT_TEMPLATE_SET, isTemplateSet, TEMPLATE_SETS } from '../src/renderer/src/model/templateSets'
 import type { Project } from '../src/renderer/src/model/types'
 
 declare const VERSION: string | undefined // set when bundled
@@ -24,7 +25,9 @@ const USAGE = `Usage: scaffold-gen <project file> [options]   (from the sources:
 
 Options:
   -o, --out <dir>        output directory (default: generated/<project> next to the project file)
-  -t, --templates <dir>  template set (default: <out>/.scaffold/templates if present, else cpp17)
+  -t, --templates <set>  template set: a folder (holding a manifest.yaml), or a built-in one:
+                         ${TEMPLATE_SETS.join(', ')} (default: <out>/.scaffold/templates if present,
+                         else the project's generation.templates, else ${DEFAULT_TEMPLATE_SET})
   -d, --deps             also generate the dependencies, each in a sibling directory of <out>
                          (an IDL file stands for a project: its definitions, its includes as dependencies)
   -f, --force            overwrite files changed outside their user sections
@@ -66,6 +69,19 @@ export function nodeDir(root: string): OutputDir {
 
 const templatesFrom = (dir: string): Promise<TemplateSet> =>
   loadTemplateSet((path) => readOrNull(join(dir, path)))
+
+/** A built-in template set; a name holding no path separator. */
+const builtin = (set: string): Promise<TemplateSet> => loadTemplateSet((path) => readBuiltin(set, path))
+
+/** Template set given by -t: a built-in name (`./<name>` for a folder of that name), else a folder. */
+async function templatesArg(arg: string): Promise<TemplateSet> {
+  if (isTemplateSet(arg)) return builtin(arg)
+  if ((await readOrNull(join(resolve(arg), MANIFEST))) === null)
+    throw new Error(
+      `templates '${arg}': neither a built-in set (${TEMPLATE_SETS.join(', ')}) nor a folder holding a ${MANIFEST}`
+    )
+  return templatesFrom(resolve(arg))
+}
 
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -111,9 +127,17 @@ async function main(): Promise<number> {
     try {
       const input = generationInput(project)
       const dir = nodeDir(outDir)
+      if (project.templates && !isTemplateSet(project.templates))
+        console.error(
+          `${relative(process.cwd(), file)}: warning: unknown template set '${project.templates}', ${DEFAULT_TEMPLATE_SET} used`
+        )
       const set = values.templates
-        ? await templatesFrom(resolve(values.templates))
-        : await templateSetFor(dir, () => loadTemplateSet(readBuiltin))
+        ? await templatesArg(values.templates)
+        : await templateSetFor(dir, () =>
+            builtin(
+              project.templates && isTemplateSet(project.templates) ? project.templates : DEFAULT_TEMPLATE_SET
+            )
+          )
       const report = await generateInto(input, set, dir, options)
       console.log(formatReport(report, `${relative(process.cwd(), file)} -> ${dir.label}`))
       if (report.conflicts.length) failed = true

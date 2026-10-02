@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const OUT = join(ROOT, 'dist-cli')
-const TEMPLATES = join(ROOT, 'templates/cpp17')
+const TEMPLATES = join(ROOT, 'templates')
 const node = resolve(process.argv[2] ?? process.execPath)
 const exe = join(OUT, node.endsWith('.exe') ? 'scaffold-gen.exe' : 'scaffold-gen')
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }
@@ -16,9 +16,14 @@ const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 // Executables built from other node binaries (scaffold-gen, scaffold-gen.exe) are kept.
 mkdirSync(OUT, { recursive: true })
 
-// The built-in template set goes into the bundle, in place of scripts/builtinTemplates.ts.
+// The built-in template sets go into the bundle, in place of scripts/builtinTemplates.ts.
 const files = Object.fromEntries(
-  readdirSync(TEMPLATES).map((f) => [f, readFileSync(join(TEMPLATES, f), 'utf8')])
+  readdirSync(TEMPLATES).flatMap((set) =>
+    readdirSync(join(TEMPLATES, set)).map((f) => [
+      `${set}/${f}`,
+      readFileSync(join(TEMPLATES, set, f), 'utf8')
+    ])
+  )
 )
 const bundle = join(OUT, 'scaffold-gen.cjs')
 await build({
@@ -38,7 +43,7 @@ await build({
         b.onLoad({ filter: /[\\/]scripts[\\/]builtinTemplates\.ts$/ }, () => ({
           loader: 'js',
           contents: `const FILES = ${JSON.stringify(files)}
-export const readBuiltin = async (path) => (Object.hasOwn(FILES, path) ? FILES[path] : null)`
+export const readBuiltin = async (set, path) => (Object.hasOwn(FILES, set + '/' + path) ? FILES[set + '/' + path] : null)`
         }))
       }
     }

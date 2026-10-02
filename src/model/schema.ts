@@ -420,6 +420,18 @@ export const FileProjectSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
     project: z.object({ name: z.string(), description: Description, metadata: Metadata }),
+    generation: z
+      .object({
+        templates: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            'built-in template set generating the code (cpp17 by default): cpp98, cpp11, cpp14, cpp17, cpp20, python'
+          )
+      })
+      .optional()
+      .describe('code generation settings'),
     transports: z
       .array(z.string().min(1))
       .optional()

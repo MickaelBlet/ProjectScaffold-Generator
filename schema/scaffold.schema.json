@@ -32,6 +32,17 @@
             "name"
           ]
         },
+        "generation": {
+          "description": "code generation settings",
+          "type": "object",
+          "properties": {
+            "templates": {
+              "description": "built-in template set generating the code (cpp17 by default): cpp98, cpp11, cpp14, cpp17, cpp20, python",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
         "transports": {
           "description": "custom transports offered for remote links, besides the built-in ones",
           "type": "array",

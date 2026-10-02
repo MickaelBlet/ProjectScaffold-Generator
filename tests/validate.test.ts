@@ -3,6 +3,7 @@ import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { fromFile } from '@/model/serialize'
 import { validate } from '@/model/validate'
+import { TEMPLATE_SETS } from '@/model/templateSets'
 import type { EnumDef, Project, StructDef, UnionDef } from '@/model/types'
 
 const example = YAML.parse(readFileSync('examples/robot.scaffold.yaml', 'utf8'))
@@ -23,6 +24,16 @@ const link = (p: Project, name: string) => p.links.find((l) => l.name === name)!
 const mod = (p: Project, name: string) => p.modules.find((m) => m.name === name)!
 
 describe('validate', () => {
+  it('warns about unknown template sets', () => {
+    const p = load()
+    p.templates = 'cpp17'
+    expect(messages(p, 'warning')).toEqual([])
+    p.templates = 'cobol'
+    expect(messages(p, 'warning')).toEqual([
+      `Unknown template set 'cobol' (built-in: ${TEMPLATE_SETS.join(', ')}): cpp17 used`
+    ])
+  })
+
   it('flags enum values out of range', () => {
     const p = load()
     type<EnumDef>(p, 'Mode').values[0]!.value = 256

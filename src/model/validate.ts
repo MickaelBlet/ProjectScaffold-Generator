@@ -16,6 +16,7 @@ import { isReservedTypeName, walkTypeRef } from './typeExpr'
 import { valueErrors } from './defaults'
 import { binariesOf, crosses } from './binaries'
 import { DEFAULT_HOST, foreignFields } from './transports'
+import { DEFAULT_TEMPLATE_SET, isTemplateSet, TEMPLATE_SETS } from './templateSets'
 import {
   INT_PRIMITIVES,
   INT_RANGES,
@@ -99,6 +100,12 @@ export function validate(p: Project): Problem[] {
 
   // Project
   if (!p.name.trim()) push('warning', { kind: 'project' }, 'Project has no name')
+  if (p.templates !== undefined && !isTemplateSet(p.templates))
+    push(
+      'warning',
+      { kind: 'project' },
+      `Unknown template set '${p.templates}' (built-in: ${TEMPLATE_SETS.join(', ')}): ${DEFAULT_TEMPLATE_SET} used`
+    )
 
   // Types, interfaces & constants namespace
   for (const n of duplicates([...p.types, ...p.interfaces, ...p.consts].map((e) => e.name)))

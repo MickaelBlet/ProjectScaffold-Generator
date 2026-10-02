@@ -104,6 +104,7 @@ Schema: [`schema/scaffold.schema.json`](schema/scaffold.schema.json) (JSON Schem
 ```yaml
 schemaVersion: 1
 project: { name, description?, metadata? }
+generation: { templates? } # built-in template set generating the code (optional, default cpp17)
 binaries: [...] # executables the top-level modules are split into (optional)
 types: [...] # struct | enum | bitmask | union | alias | primitive
 interfaces: [...] # named sets of messages
@@ -203,7 +204,7 @@ All names are identifiers (`[A-Za-z_][A-Za-z0-9_]*`). Types, interfaces and cons
 
 ## Code generation
 
-The code of a project is generated from [LiquidJS](https://liquidjs.com) templates. The built-in set, [`templates/cpp17`](templates/cpp17), writes a C++17 CMake project. Hand-written code goes into **user sections**, kept when the code is generated again:
+The code of a project is generated from [LiquidJS](https://liquidjs.com) templates. Built-in sets live in [`templates/`](templates), one folder each: [`cpp17`](templates/cpp17) (the default) writes a C++17 CMake project. A project picks its built-in set with `generation.templates` (_Inspector › Project › Code generation_, or _File › Code templates…_). Hand-written code goes into **user sections**, kept when the code is generated again:
 
 ```cpp
 bool Controller::setMode(const ::common::Mode mode)
@@ -214,7 +215,7 @@ bool Controller::setMode(const ::common::Mode mode)
 }
 ```
 
-- Command line: `npm run generate -- <project file> [-o <dir>] [-t <template dir>] [--deps] [--force] [--prune] [--dry-run]`. The default output directory is `generated/<project>` next to the project file; `--deps` also generates the dependencies, each in a sibling directory (where the generated `CMakeLists.txt` looks for them). The exit code is not 0 on errors or conflicts. `scripts/build_cli.sh` (or `npm run cli`) builds the same command into a standalone executable, `dist-cli/scaffold-gen` (Node embedded, built-in templates included: `scaffold-gen <project file> [options]`), and a single-file script, `dist-cli/scaffold-gen.cjs` (run with Node 22+); an argument names another Node binary of the same version to embed, such as its Windows `node.exe` (→ `scaffold-gen.exe`).
+- Command line: `npm run generate -- <project file> [-o <dir>] [-t <template set or dir>] [--deps] [--force] [--prune] [--dry-run]`. The default output directory is `generated/<project>` next to the project file; `--deps` also generates the dependencies, each in a sibling directory (where the generated `CMakeLists.txt` looks for them). The exit code is not 0 on errors or conflicts. `scripts/build_cli.sh` (or `npm run cli`) builds the same command into a standalone executable, `dist-cli/scaffold-gen` (Node embedded, built-in templates included: `scaffold-gen <project file> [options]`), and a single-file script, `dist-cli/scaffold-gen.cjs` (run with Node 22+); an argument names another Node binary of the same version to embed, such as its Windows `node.exe` (→ `scaffold-gen.exe`).
 - Editor: _File › Generate code_ (Ctrl+Alt+G) writes into the directory last used for the document, _Generate code into…_ picks another one (Chrome, Edge, the desktop apps; not Firefox / Safari). VS Code: _ProjectScaffold: Generate Code_ writes into `generated/<project>` next to the file (setting `projectScaffold.generate.outputDir`), _Generate Code Into…_ picks another directory, remembered for the file.
 - The project must have no errors (like export). Generating again rewrites only what changed:
   - the content of each user section is carried over by id; sections still holding what was generated in them take the new template's content;
@@ -222,7 +223,7 @@ bool Controller::setMode(const ::common::Mode mode)
   - a file changed **outside** its user sections is left as it is and reported as a conflict (`--force` overwrites it);
   - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files).
   - `.scaffold-gen.json` in the output directory records what was generated (keep it with the code).
-- Templates: _File › Code templates…_ picks the template folder of the document, used until _Default templates_ is picked again (remembered for the document, read again at each generation: edits to the templates apply at once); _Copy the built-in templates into a folder…_ starts a set of one's own from the C++17 one. By default a template set in `<output directory>/.scaffold/templates/` is used instead of the built-in one. Command line: `-t <dir>`; VS Code: _ProjectScaffold: Code Templates…_, or setting `projectScaffold.generate.templates` (folder relative to the project file).
+- Templates: _File › Code templates…_ lists the built-in sets (picking one records it in the project) and picks a template folder for the document, used until a built-in set is picked again (remembered for the document, read again at each generation: edits to the templates apply at once); _Copy the built-in templates into a folder…_ starts a set of one's own from the project's built-in one. A template set in `<output directory>/.scaffold/templates/` is used instead of the built-in one. Command line: `-t <name>` (a built-in set) or `-t <dir>` (`./<name>` for a folder named like a built-in set); VS Code: _ProjectScaffold: Code Templates…_, or setting `projectScaffold.generate.templates` (folder relative to the project file).
 - **Code generation panel** (_Window › Code generation_): the templates generating the document (its template folder, the output directory's `.scaffold/templates`, else the built-in ones) and the files generated into its output directory (from `.scaffold-gen.json`, with their `.orphans` files). Click opens a file in an editor tab (Alt+click: to the side), in the code editor of the project text: Liquid templates are checked as you type (syntax, unknown filters, unclosed `user` sections); in generated files the user sections are shaded, edits elsewhere being conflicts at the next generation. Ctrl+S (or _Save_) writes the file of the active tab; a file changed on disk is read again when its tab is shown, or marked when it holds edits. The built-in templates are read-only: _Copy them into a folder…_ to edit them. In VS Code, files open in VS Code's own editors.
 - [`examples/rover.scaffold.yaml`](examples/rover.scaffold.yaml) is made of modules with ports only (no attributes nor methods): frames, detections, drive commands, lifecycle and health calls between a camera, a perception container (with its content wired through its ports), a planner, motors, a recorder and a supervisor. It is split into two binaries: `Onboard` (the rover) and `Ground` (the supervisor), linked over TCP. `npm run generate -- examples/rover.scaffold.yaml` writes it into `examples/generated/rover`: executables `rover_onboard` and `rover_ground`.
 

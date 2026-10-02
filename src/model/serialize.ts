@@ -239,6 +239,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
   const file: FileProject = {
     schemaVersion: SCHEMA_VERSION,
     project: { name: p.name, description: opt(p.description), metadata: optMeta(p.metadata) },
+    generation: p.templates ? { templates: p.templates } : undefined,
     transports: p.transports.length ? [...p.transports] : undefined,
     remoteDefaults:
       p.remoteDefaults && Object.keys(p.remoteDefaults).length ? clean(p.remoteDefaults) : undefined,
@@ -865,6 +866,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
     name: f.project.name,
     description: f.project.description ?? '',
     metadata: { ...(f.project.metadata ?? {}) },
+    ...(f.generation?.templates ? { templates: f.generation.templates } : {}),
     transports: [...(f.transports ?? [])],
     ...(f.remoteDefaults ? { remoteDefaults: clean(f.remoteDefaults) } : {}),
     binaries,

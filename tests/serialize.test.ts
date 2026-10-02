@@ -43,6 +43,15 @@ describe('serialize', () => {
     expect(toFile(fromFile(example), { editor: false }).transports).toBeUndefined()
   })
 
+  it('round-trips the template set', () => {
+    const p = fromFile(example)
+    p.templates = 'cpp11'
+    const file = toFile(p, { editor: false })
+    expect(file.generation).toEqual({ templates: 'cpp11' })
+    expect(fromFile(file).templates).toBe('cpp11')
+    expect(toFile(fromFile(example), { editor: false }).generation).toBeUndefined()
+  })
+
   it('round-trips transport settings and remote defaults', () => {
     const p = fromFile(example)
     const remote = p.links.find((l) => l.constraints.remote.enabled)!.constraints.remote

@@ -15,10 +15,11 @@ import {
 import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '@/codegen/sections'
 import { parseManifest, type TemplateSet } from '@/codegen/templateSet'
 import { fromFile } from '@/model/serialize'
+import { TEMPLATE_SETS } from '@/model/templateSets'
 import type { FileProject } from '@/model/schema'
 
-const cpp17 = (): TemplateSet => {
-  const dir = 'templates/cpp17'
+const builtin = (set: string): TemplateSet => {
+  const dir = `templates/${set}`
   const manifest = parseManifest(readFileSync(join(dir, 'manifest.yaml'), 'utf8'))
   const files = Object.fromEntries(
     [...manifest.outputs.map((o) => o.template), ...(manifest.partials ?? [])].map((f) => [
@@ -141,7 +142,7 @@ describe('templates', () => {
 describe('C++17 partials', () => {
   const plant = exported('tests/fixtures/plant.scaffold.yaml')
   const ctx = buildContext(plant)
-  const set = cpp17()
+  const set = builtin('cpp17')
   const liquid = createEngine(
     Object.fromEntries(Object.entries(set.files).map(([k, v]) => [k, trimTagLines(v)])),
     { ...ctx, files: [], generator: { name: set.manifest.name, reserved: set.manifest.reserved } }
@@ -287,9 +288,28 @@ describe('generation context', () => {
   })
 })
 
+describe.each(TEMPLATE_SETS)('built-in %s templates', (set) => {
+  const fixtures = [
+    'examples/robot.scaffold.yaml',
+    'examples/rover.scaffold.yaml',
+    'tests/fixtures/plant.scaffold.yaml',
+    'tests/fixtures/relay.scaffold.yaml'
+  ]
+
+  it('name themselves after their folder', () => {
+    expect(builtin(set).manifest.name).toBe(set)
+  })
+
+  it.each(fixtures)('generate %s without warnings', (path) => {
+    const { files, warnings } = generate(exported(path), builtin(set))
+    expect(files.length).toBeGreaterThan(0)
+    expect(warnings).toEqual([])
+  })
+})
+
 describe('C++17 generation', () => {
   it('generates the robot', () => {
-    const { files, warnings } = generate(exported('examples/robot.scaffold.yaml'), cpp17())
+    const { files, warnings } = generate(exported('examples/robot.scaffold.yaml'), builtin('cpp17'))
     expect(files.map((f) => f.path)).toMatchSnapshot()
     expect(files.find((f) => f.path === 'include/robot/core/Controller.hpp')?.text).toMatchSnapshot()
     expect(files.find((f) => f.path === 'src/Core.cpp')?.text).toMatchSnapshot()
@@ -297,7 +317,7 @@ describe('C++17 generation', () => {
   })
 
   it('generates the rover: modules wired by their ports only', () => {
-    const { files, warnings } = generate(exported('examples/rover.scaffold.yaml'), cpp17())
+    const { files, warnings } = generate(exported('examples/rover.scaffold.yaml'), builtin('cpp17'))
     expect(warnings).toEqual([])
     const text = (path: string): string => files.find((f) => f.path === path)!.text
     expect(text('include/rover/Perception.hpp')).toContain(
@@ -308,7 +328,7 @@ describe('C++17 generation', () => {
   })
 
   it('generates one executable per binary, linked through proxies and stubs', () => {
-    const { files, warnings } = generate(exported('examples/rover.scaffold.yaml'), cpp17())
+    const { files, warnings } = generate(exported('examples/rover.scaffold.yaml'), builtin('cpp17'))
     expect(warnings).toEqual([])
     const paths = files.map((f) => f.path)
     expect(paths).toEqual(
@@ -337,7 +357,7 @@ describe('C++17 generation', () => {
   })
 
   it('generates the transports of the links between binaries, and Python peers', () => {
-    const { files, warnings } = generate(exported('tests/fixtures/relay.scaffold.yaml'), cpp17())
+    const { files, warnings } = generate(exported('tests/fixtures/relay.scaffold.yaml'), builtin('cpp17'))
     expect(warnings).toEqual([])
     const paths = files.map((f) => f.path)
     expect(paths).toEqual(
@@ -407,17 +427,17 @@ describe('C++17 generation', () => {
     // Project defaults: hosts of both ends, first port.
     const relay = exported('tests/fixtures/relay.scaffold.yaml')
     relay.remoteDefaults = { client: { host: '10.0.0.2' }, server: { host: '::' }, basePort: 50000 }
-    const moved = generate(relay, cpp17()).files
+    const moved = generate(relay, builtin('cpp17')).files
     const at = (path: string): string => moved.find((f) => f.path === path)!.text
     expect(at('src/ClientSystem.cpp')).toContain('remote::address("RELAY_ECHO_UDP", "10.0.0.2:50001")')
     expect(at('src/ServerSystem.cpp')).toContain('remote::address("RELAY_ECHO_UDP_LISTEN", "[::]:50001")')
     // Without links between binaries: neither transports nor Python.
-    const plain = generate(exported('tests/fixtures/plant.scaffold.yaml'), cpp17()).files.map((f) => f.path)
+    const plain = generate(exported('tests/fixtures/plant.scaffold.yaml'), builtin('cpp17')).files.map((f) => f.path)
     expect(plain.filter((p) => p.includes('remote') || p.startsWith('python/'))).toEqual([])
   })
 
   it('generates types and interfaces of a project without modules', () => {
-    const { files } = generate(exported('examples/common.scaffold.yaml'), cpp17())
+    const { files } = generate(exported('examples/common.scaffold.yaml'), builtin('cpp17'))
     expect(files.map((f) => f.path)).toContain('include/common/interfaces/ITelemetry.hpp')
     expect(files.some((f) => f.path.endsWith('.cpp'))).toBe(false)
     expect(files.find((f) => f.path === 'CMakeLists.txt')?.text).toContain('add_library(common INTERFACE)')
@@ -426,14 +446,14 @@ describe('C++17 generation', () => {
   it('keeps user code across generations', async () => {
     const plant = exported('tests/fixtures/plant.scaffold.yaml')
     const dir = memoryDir()
-    const first = await generateInto(plant, cpp17(), dir)
+    const first = await generateInto(plant, builtin('cpp17'), dir)
     expect(first.conflicts).toEqual([])
     expect(dir.files[RECORD]).toBeDefined()
 
     const store = 'src/plant/Store.cpp'
     dir.files[store] = withSection(dir.files[store]!, 'on.query.get', '    return key == "x";')
     dir.files['src/main.cpp'] = withSection(dir.files['src/main.cpp']!, 'main', '    run(system);')
-    const again = await generateInto(plant, cpp17(), dir)
+    const again = await generateInto(plant, builtin('cpp17'), dir)
     expect(again.written).toEqual([])
 
     // The model changes: a method is added, a port renamed.
@@ -445,7 +465,7 @@ describe('C++17 generation', () => {
     storeModule.ports.find((x) => x.name === 'query')!.name = 'lookup'
     for (const l of next.links)
       if (l.to.module === 'Plant.Store' && l.to.port === 'query') l.to.port = 'lookup'
-    const third = await generateInto(next, cpp17(), dir)
+    const third = await generateInto(next, builtin('cpp17'), dir)
     expect(third.conflicts).toEqual([])
     expect(dir.files['src/main.cpp']).toContain('    run(system);')
     expect(dir.files['src/Client.cpp']).toContain('void Client::start()')
@@ -461,12 +481,12 @@ describe('C++17 generation', () => {
   it('leaves files changed outside their sections alone', async () => {
     const plant = exported('tests/fixtures/plant.scaffold.yaml')
     const dir = memoryDir()
-    await generateInto(plant, cpp17(), dir)
+    await generateInto(plant, builtin('cpp17'), dir)
     dir.files['src/Client.cpp'] += '// hand edit\n'
-    const r = await generateInto(plant, cpp17(), dir)
+    const r = await generateInto(plant, builtin('cpp17'), dir)
     expect(r.conflicts).toEqual([{ path: 'src/Client.cpp', reason: 'changed outside its user sections' }])
     expect(dir.files['src/Client.cpp']).toContain('// hand edit')
-    const forced = await generateInto(plant, cpp17(), dir, { force: true })
+    const forced = await generateInto(plant, builtin('cpp17'), dir, { force: true })
     expect(forced.written).toEqual(['src/Client.cpp'])
     expect(dir.files['src/Client.cpp']).not.toContain('// hand edit')
   })
@@ -474,14 +494,14 @@ describe('C++17 generation', () => {
   it('reports files no longer generated, and prunes them', async () => {
     const plant = exported('tests/fixtures/plant.scaffold.yaml')
     const dir = memoryDir()
-    await generateInto(plant, cpp17(), dir)
+    await generateInto(plant, builtin('cpp17'), dir)
     const next = structuredClone(plant)
     next.modules = next.modules.filter((m) => m.name !== 'Client')
     next.links = next.links.filter((l) => l.from.module !== 'Client' && l.to.module !== 'Client')
     dir.files['src/Client.cpp'] = withSection(dir.files['src/Client.cpp']!, 'constructor', '    hello();')
-    const r = await generateInto(next, cpp17(), dir)
+    const r = await generateInto(next, builtin('cpp17'), dir)
     expect(r.stale).toEqual(['include/plant_demo/Client.hpp', 'src/Client.cpp'])
-    const pruned = await generateInto(next, cpp17(), dir, { prune: true })
+    const pruned = await generateInto(next, builtin('cpp17'), dir, { prune: true })
     expect(pruned.removed).toEqual(['include/plant_demo/Client.hpp', 'src/Client.cpp'])
     expect(dir.files['src/Client.cpp']).toBeUndefined()
     expect(dir.files['src/Client.cpp.orphans']).toContain('hello();')
