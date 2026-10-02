@@ -1,0 +1,180 @@
+{% include '_py_banner' %}
+"""Types of {{ project.name }} (those of its dependencies included), with their encoding (wire.py)."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field as _field
+from enum import IntEnum, IntFlag
+from typing import Any, Dict, List, Optional, Set
+
+from .wire import Reader, Writer, enum
+{% user 'imports' %}
+{% enduser %}
+{% for t in allTypes %}
+{% case t.kind %}
+{% when 'enum' %}
+
+
+class {% render '_py_id', name: t.name %}(IntEnum):
+{{ t.description | doc_comment: '    # ' }}
+{% for v in t.values %}
+    {% render '_py_id', name: v.name %} = {{ v.value }}
+{% else %}
+    pass
+{% endfor %}
+{% when 'bitmask' %}
+
+
+class {% render '_py_id', name: t.name %}(IntFlag):
+{{ t.description | doc_comment: '    # ' }}
+{% for f in t.flags %}
+    {% render '_py_id', name: f.name %} = {{ f.value }}
+{% else %}
+    pass
+{% endfor %}
+{% when 'union' %}
+
+
+@dataclass
+class {% render '_py_id', name: t.name %}:
+{{ t.description | doc_comment: '    # ' }}
+    # `d`: the discriminator; `value`: the case it selects ({% for c in t.cases %}{{ c.name }}{% unless forloop.last %}, {% endunless %}{% endfor %}), None for none.
+{% assign first = t.cases | first %}
+{% if first and first.label != nil %}
+    d: Any = _field(default_factory=lambda: {% render '_py_value', v: first.label, t: t.discriminator, prefix: '' %})
+    value: Any = _field(default_factory=lambda: {% render '_py_zero', t: first.type, prefix: '' %})
+{% else %}
+    d: Any = _field(default_factory=lambda: {% render '_py_zero', t: t.discriminator, prefix: '' %})
+    value: Any = None
+{% endif %}
+{% when 'struct', 'exception' %}
+
+
+@dataclass
+class {% render '_py_id', name: t.name %}{% if t.kind == 'exception' %}(Exception){% endif %}:
+{{ t.description | doc_comment: '    # ' }}
+{% for f in t.fields %}
+{{ f.description | doc_comment: '    # ' }}
+    {% render '_py_id', name: f.name %}: {% render '_py_type', t: f.type, prefix: '' %} = _field(default_factory=lambda: {% if f.hasDefault %}{% render '_py_value', v: f.default, t: f.type, prefix: '' %}{% else %}{% render '_py_zero', t: f.type, prefix: '' %}{% endif %})
+{% else %}
+    pass
+{% endfor %}
+{% endcase %}
+{% endfor %}
+{% for t in allTypes %}
+{% case t.kind %}
+{% when 'enum' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: int) -> None:
+    w.{{ t.underlying }}(int(v))
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    return enum({% render '_py_id', name: t.name %}, r.{{ t.underlying }}())
+{% when 'bitmask' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: int) -> None:
+    w.{{ t.underlying }}(int(v))
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    return {% render '_py_id', name: t.name %}(r.{{ t.underlying }}())
+{% when 'union' %}
+{% assign fallback = nil %}
+{% for c in t.cases %}
+{% if c.isDefault %}
+{% assign fallback = c %}
+{% endif %}
+{% endfor %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {% render '_py_id', name: t.name %}) -> None:
+{% capture statement %}{% render '_py_encode', t: t.discriminator, v: 'v.d', w: 'w', prefix: '' %}{% endcapture -%}
+{% # The discriminator, then the case it selects. %}
+    {{ statement }}
+{% assign branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels.size > 0 %}
+{% capture test %}{% render '_py_labels', c: c, t: t.discriminator, d: 'v.d', prefix: '' %}{% endcapture -%}
+{% capture statement %}{% render '_py_encode', t: c.type, v: 'v.value', w: 'w', prefix: '' %}{% endcapture -%}
+{% # Its labels. %}
+    {{ branch }} {{ test }}:
+        {{ statement }}
+{% assign branch = 'elif' %}
+{% endif %}
+{% endfor %}
+{% if fallback %}
+{% capture statement %}{% render '_py_encode', t: fallback.type, v: 'v.value', w: 'w', prefix: '' %}{% endcapture -%}
+{% if branch == 'if' %}
+    {{ statement }}
+{% else %}
+    else:
+        {{ statement }}
+{% endif %}
+{% endif %}
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    d = {% render '_py_decode', t: t.discriminator, r: 'r', prefix: '' %}
+{% for c in t.cases %}
+{% if c.labels.size > 0 %}
+{% capture test %}{% render '_py_labels', c: c, t: t.discriminator, d: 'd', prefix: '' %}{% endcapture -%}
+{% # Its labels. %}
+    if {{ test }}:
+        return {% render '_py_id', name: t.name %}(d, {% render '_py_decode', t: c.type, r: 'r', prefix: '' %})
+{% endif %}
+{% endfor %}
+{% if fallback %}
+    return {% render '_py_id', name: t.name %}(d, {% render '_py_decode', t: fallback.type, r: 'r', prefix: '' %})
+{% else %}
+    return {% render '_py_id', name: t.name %}(d, None)
+{% endif %}
+{% when 'struct', 'exception' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {% render '_py_id', name: t.name %}) -> None:
+{% for f in t.fields %}
+{% capture value %}
+v.{% render '_py_id', name: f.name -%}
+{% endcapture %}
+{% capture statement %}
+{% render '_py_encode', t: f.type, v: value, w: 'w', prefix: '' %}
+{% endcapture %}
+    {{ statement }}
+{% else %}
+    pass
+{% endfor %}
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_id', name: t.name %}:
+    return {% render '_py_id', name: t.name %}(
+{% for f in t.fields %}
+        {% render '_py_id', name: f.name %}={% render '_py_decode', t: f.type, r: 'r', prefix: '' %},
+{% endfor %}
+    )
+{% when 'alias' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {% render '_py_type', t: t.type, prefix: '' %}) -> None:
+{% capture statement %}
+{% render '_py_encode', t: t.type, v: 'v', w: 'w', prefix: '' %}
+{% endcapture %}
+    {{ statement }}
+
+
+def decode_{{ t.name }}(r: Reader) -> {% render '_py_type', t: t.type, prefix: '' %}:
+    return {% render '_py_decode', t: t.type, r: 'r', prefix: '' %}
+{% when 'primitive' %}
+
+
+{% user 'codec.' | append: t.name %}
+def encode_{{ t.name }}(w: Writer, v: Any) -> None:
+    raise NotImplementedError('{{ t.name }} is a custom type: encode it as its C++ peer does (codec.hpp)')
+
+
+def decode_{{ t.name }}(r: Reader) -> Any:
+    raise NotImplementedError('{{ t.name }} is a custom type: decode it as its C++ peer does (codec.hpp)')
+{% enduser %}
+{% endcase %}
+{% endfor %}

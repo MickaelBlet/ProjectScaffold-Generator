@@ -1,0 +1,148 @@
+{% include '_py_banner' %}
+{%- liquid
+  assign root = project.ident | snake
+  assign generated = 'tcp,udp,http,websocket,shm' | split: ','
+  assign faces = system.proxies | map: 'interface'
+  assign more = system.stubs | map: 'interface'
+  assign faces = faces | concat: more | uniq
+  capture module
+    assign file = system.name | snake
+    render '_py_id', name: file
+  endcapture
+-%}
+"""{% if system.binary %}Binary {{ system.binary.name }} of {{ project.name }}: its top-level modules, wired together and to the other
+binaries{% else %}The top-level modules of {{ project.name }}, wired together{% endif %}.
+
+    python -m {{ root }}.systems.{{ module }}    # Ctrl-C stops
+"""
+from __future__ import annotations
+
+import logging
+import time
+from typing import List
+
+{% for c in system.instances %}
+from {% render '_py_module_path', m: c %} import {% render '_py_class', e: c %}
+{% endfor %}
+{% if faces.size > 0 %}
+from {{ root }} import links  # noqa: F401
+from {{ root }}.transport import Server
+{% for i in faces %}
+from {{ root }}.remote.{% capture file %}{{ i.name | snake }}{% endcapture %}{% render '_py_id', name: file %} import {{ i.name }}Proxy, {{ i.name }}Stub  # noqa: F401
+{% endfor %}
+{% else %}
+from {{ root }}.ports import OutPort  # noqa: F401
+{% endif %}
+{% user 'imports' %}
+{% enduser %}
+
+
+class {{ system.name }}:
+{{ project.description | doc_comment: '    # ' }}
+{% if system.binary %}
+{{ system.binary.description | doc_comment: '    # ' }}
+{% endif %}
+    """serve() starts receiving the calls of the other binaries, close() stops; also a context manager."""
+
+    def __init__(self) -> None:
+{% for c in system.instances %}
+{% if c.abstract %}
+        # Abstract: an instance of a class deriving from it.
+        self.{% render '_py_accessor', name: c.name %}: {% render '_py_class', e: c %} = None  # type: ignore[assignment]
+        {% user 'create.' | append: c.name %}
+        # self.{% render '_py_accessor', name: c.name %} = ConcreteClass()
+        {% enduser %}
+{% else %}
+        self.{% render '_py_accessor', name: c.name %} = {% render '_py_class', e: c %}()
+{% endif %}
+{% endfor %}
+{% for c in system.connections %}
+{% include '_py_connection', connection: c %}
+{% endfor %}
+{% for r in system.proxies %}
+{% assign transport = r.link.constraints.remote.transport | default: 'an unset transport' %}
+        # {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ transport }}
+{{ r.link.description | doc_comment: '        # ' }}
+{% if generated contains r.link.constraints.remote.transport %}
+        self.{{ r.link.name | snake }}_proxy = {{ r.interface.name }}Proxy.connect(links.{{ r.link.name | constant }})
+        {% render '_py_endpoint', x: r.local %}.connect(self.{{ r.link.name | snake }}_proxy)
+{% endif %}
+        {% user 'link.' | append: r.link.name %}
+{% unless generated contains r.link.constraints.remote.transport %}
+        # Connect {% render '_py_endpoint', x: r.local %} to a {{ r.interface.name }}Proxy over a Channel of {{ transport }} to binary {{ r.peer.binary }}.
+{% endunless %}
+        {% enduser %}
+{% endfor %}
+{% for e in system.external %}
+        # {{ e.link.name }}: {{ e.link.from.project | default: project.ident }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project | default: project.ident }}.{{ e.link.to.module }}:{{ e.link.to.port }}
+        {% user 'external.' | append: e.link.name %}
+        # Other project: connect {% render '_py_endpoint', x: e.local %} through a transport{% if e.link.constraints.remote.transport %} ({{ e.link.constraints.remote.transport }}){% endif %}.
+        {% enduser %}
+{% endfor %}
+{% if faces.size > 0 %}
+        self._servers: List[Server] = []
+{% endif %}
+        {% user 'constructor' %}
+        pass
+        {% enduser %}
+
+    def serve(self) -> {{ system.name }}:
+        """Starts receiving the calls of the other binaries."""
+{% if system.stubs.size > 0 %}
+        if not self._servers:
+{% for r in system.stubs %}
+            # {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ r.link.constraints.remote.transport | default: 'an unset transport' }}
+{% if generated contains r.link.constraints.remote.transport %}
+            self._servers.append({{ r.interface.name }}Stub.serve(links.{{ r.link.name | constant }}, {% render '_py_endpoint', x: r.local %}))
+{% else %}
+            # Transport not generated: receive its frames into {{ r.interface.name }}Stub({% render '_py_endpoint', x: r.local %}).
+{% endif %}
+{% endfor %}
+{% endif %}
+        {% user 'serve' %}
+        {% enduser %}
+        return self
+
+    def close(self) -> None:
+{% if faces.size > 0 %}
+        for server in self._servers:
+            server.close()
+        self._servers = []
+{% endif %}
+{% for r in system.proxies %}
+{% if generated contains r.link.constraints.remote.transport %}
+        self.{{ r.link.name | snake }}_proxy.close()
+{% endif %}
+{% endfor %}
+        {% user 'close' %}
+        pass
+        {% enduser %}
+
+    def __enter__(self) -> {{ system.name }}:
+        return self.serve()
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    {% user 'members' %}
+    {% enduser %}
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s: %(message)s')
+    with {{ system.name }}() as system:
+        {% user 'main' %}
+{% if system.stubs.size > 0 %}
+        # Serves the calls of the other binaries until Ctrl-C.
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+{% endif %}
+        del system
+        {% enduser %}
+
+
+if __name__ == '__main__':
+    main()

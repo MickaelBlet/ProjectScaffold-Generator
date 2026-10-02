@@ -1,0 +1,7 @@
+{%- comment -%}
+  Attribute holding a child module: `Sensor` -> `sensor`, `Import` -> `import_`. Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  assign accessor = name | lcfirst
+  render '_py_id', name: accessor
+-%}

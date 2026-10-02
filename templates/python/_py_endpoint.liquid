@@ -1,0 +1,12 @@
+{%- comment -%}
+  Expression reaching a port from the scope wiring it: `self.core.sensor.out`. Parameter: x.
+{%- endcomment -%}
+{%- liquid
+  echo 'self'
+  for child in x.via
+    echo '.'
+    render '_py_accessor', name: child
+  endfor
+  echo '.'
+  render '_py_id', name: x.port
+-%}

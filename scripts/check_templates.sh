@@ -15,6 +15,17 @@ sets=("$@")
 projects=(examples/robot.scaffold.yaml examples/rover.scaffold.yaml examples/station.scaffold.yaml
   tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml)
 failed=0
+# Imports a package and all its modules, then makes and closes each system (servers not started).
+IMPORT_ALL='
+import importlib, inspect, pkgutil, sys
+package = importlib.import_module(sys.argv[1])
+for m in pkgutil.walk_packages(package.__path__, sys.argv[1] + "."):
+    module = importlib.import_module(m.name)
+    if ".systems." in m.name:
+        for name, cls in inspect.getmembers(module, inspect.isclass):
+            if cls.__module__ == m.name and hasattr(cls, "serve"):
+                cls().close()
+'
 
 check() {
   local set=$1 project=$2 name out
@@ -36,7 +47,7 @@ check() {
     local root=$out
     [ -d "$out/python" ] && root=$out/python
     if python3 -m compileall -q "$root" >"$work/log" 2>&1 &&
-      (cd "$root" && for p in */__init__.py; do python3 -c "import ${p%/__init__.py}" || exit 1; done) >>"$work/log" 2>&1; then
+      (cd "$root" && for p in */__init__.py; do python3 -c "$IMPORT_ALL" "${p%/__init__.py}" || exit 1; done) >>"$work/log" 2>&1; then
       echo "ok      $set: $name (python)"
     else
       echo "FAILED  $set: $name (python)"; tail -20 "$work/log" | sed 's/^/        /'; failed=1

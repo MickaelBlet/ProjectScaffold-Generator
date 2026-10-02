@@ -3,7 +3,7 @@
 # tests/remote/interop.cpp, then over each generated transport call C++ from Python, Python from C++
 # and Python from Python (and the Python peers of both binaries). Needs cmake, a C++ compiler of the
 # template set's standard and python3 (3.8+).
-# Usage: scripts/check_remote.sh [-t <C++ template set, default cpp17>] [work directory (default: a temporary one)]
+# Usage: scripts/check_remote.sh [-t <template set, default cpp17>] [work directory (default: a temporary one)]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,15 +11,23 @@ set=cpp17
 if [ "${1:-}" = -t ]; then set=$2; shift 2; fi
 work=${1:-$(mktemp -d)}
 mkdir -p "$work"
-npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t "$set" -o "$work/relay" --force >/dev/null
+# The python set is checked against the cpp17 binaries; the C++ sets against their Python peers.
+cppset=$set
+pydir="$work/relay/python"
+if [ "$set" = python ]; then
+  cppset=cpp17
+  pydir="$work/relay-py"
+  npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t python -o "$pydir" --force >/dev/null
+fi
+npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t "$cppset" -o "$work/relay" --force >/dev/null
 # Unused parameters: the generated handlers are empty.
 # interop.cpp in the standard of the set (cpp11 -> C++11).
-cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" -DCMAKE_CXX_STANDARD="${set#cpp}" \
+cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" -DCMAKE_CXX_STANDARD="${cppset#cpp}" \
   -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" >/dev/null
 cmake --build "$work/build" -j >/dev/null
 
 cpp=("$work/build/interop")
-py=(python3 tests/remote/interop.py "$work/relay/python")
+py=(python3 tests/remote/interop.py "$pydir")
 failed=0
 
 # pair <name> <server command...> -- <client command...>

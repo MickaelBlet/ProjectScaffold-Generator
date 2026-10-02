@@ -1,0 +1,153 @@
+{% include '_py_banner' %}
+{%- liquid
+  assign m = item
+  assign root = project.ident | snake
+  capture class
+    render '_py_class', e: m
+  endcapture
+-%}
+"""Module {{ m.path }} of {{ project.name }}."""
+from __future__ import annotations
+
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple  # noqa: F401
+
+from {{ root }} import data, interfaces  # noqa: F401
+from {{ root }}.ports import OutPort  # noqa: F401
+{% for b in m.bases %}
+from {% render '_py_module_path', m: b %} import {% render '_py_class', e: b %}
+{% endfor %}
+{% for c in m.instances %}
+from {% render '_py_module_path', m: c %} import {% render '_py_class', e: c %}
+{% endfor %}
+{% user 'imports' %}
+{% enduser %}
+
+
+class {{ class }}{% if m.bases.size > 0 %}({% for b in m.bases %}{% render '_py_class', e: b %}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %}:
+{{ m.description | doc_comment: '    # ' }}
+{% for a in m.attributes %}
+{% if a.static %}
+{{ a.description | doc_comment: '    # ' }}
+    {% render '_py_id', name: a.name %}: ClassVar[{% render '_py_type', t: a.type, prefix: 'data.' %}] = {% if a.hasDefault %}{% render '_py_value', v: a.default, t: a.type, prefix: 'data.' %}{% else %}{% render '_py_zero', t: a.type, prefix: 'data.' %}{% endif %}{% if a.const %}  # constant{% endif %}
+{% endif %}
+{% endfor %}
+
+    def __init__(self) -> None:
+{% if m.bases.size > 0 %}
+        super().__init__()
+{% endif %}
+{% for a in m.attributes %}
+{% unless a.static %}
+{{ a.description | doc_comment: '        # ' }}
+        self.{% render '_py_id', name: a.name %}: {% render '_py_type', t: a.type, prefix: 'data.' %} = {% if a.hasDefault %}{% render '_py_value', v: a.default, t: a.type, prefix: 'data.' %}{% else %}{% render '_py_zero', t: a.type, prefix: 'data.' %}{% endif %}{% if a.const %}  # constant{% endif %}
+{% endunless %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.interface %}
+{% capture iface %}interfaces.{% render '_py_class', e: p.interface %}{% endcapture -%}
+{% # Its kind. %}
+        # {{ p.role }} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates.size > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %}
+{{ p.description | doc_comment: '        # ' }}
+{% if p.role == 'out' %}
+        self.{% render '_py_id', name: p.name %}: OutPort[{{ iface }}] = OutPort()
+{% elsif p.delegates.size == 0 %}
+        self.{% render '_py_id', name: p.name %}: {{ iface }} = _{{ class }}{{ p.name | ucfirst }}In(self)
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+        # Abstract: an instance of a class deriving from it.
+        self.{% render '_py_accessor', name: c.name %}: {% render '_py_class', e: c %} = None  # type: ignore[assignment]
+        {% user 'create.' | append: c.name %}
+        # self.{% render '_py_accessor', name: c.name %} = ConcreteClass()
+        {% enduser %}
+{% else %}
+        self.{% render '_py_accessor', name: c.name %} = {% render '_py_class', e: c %}()
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+{% include '_py_connection', connection: c %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+        {% render '_py_endpoint', x: d %}.forward(self.{% render '_py_id', name: p.name %})
+{% endfor %}
+{% endif %}
+{% endfor %}
+        {% user 'constructor' %}
+        pass
+        {% enduser %}
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size > 0 %}
+
+    @property
+    def {% render '_py_id', name: p.name %}(self) -> interfaces.{% render '_py_class', e: p.interface %}:
+        """In port {{ p.name }}, handled by {{ p.delegates[0].module }}:{{ p.delegates[0].port }}."""
+        return {% render '_py_endpoint', x: p.delegates[0] %}
+{% endif %}
+{% endfor %}
+{% for x in m.methods %}
+
+{% if x.static %}
+    @staticmethod
+    def {% render '_py_id', name: x.name %}({% for p in x.inputs %}{% render '_py_id', name: p.name %}: {% render '_py_type', t: p.type, prefix: 'data.' %}{% unless forloop.last %}, {% endunless %}{% endfor %}) -> {% render '_py_results', msg: x, what: 'hint', prefix: 'data.' %}:
+{% else %}
+    def {% render '_py_id', name: x.name %}(self{% render '_py_params', msg: x %}) -> {% render '_py_results', msg: x, what: 'hint', prefix: 'data.' %}:
+{% endif %}
+{{ x.description | doc_comment: '        # ' }}
+{% if x.raises.size > 0 %}
+        # Raises {% for r in x.raises %}data.{% render '_py_id', name: r.name %}{% unless forloop.last %}, {% endunless %}{% endfor %}.
+{% endif %}
+{% if x.pure %}
+        raise NotImplementedError('{{ m.name }}.{{ x.name }}')
+{% else %}
+        {% user 'method.' | append: x.name %}
+{% if x.returns or x.outputs.size > 0 %}
+        return {% render '_py_results', msg: x, what: 'zero', prefix: 'data.' %}
+{% else %}
+        pass
+{% endif %}
+        {% enduser %}
+{% endif %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{% for msg in p.interface.messages %}
+
+    def on_{{ p.name | snake }}_{{ msg.name | snake }}(self{% render '_py_params', msg: msg %}) -> {% render '_py_results', msg: msg, what: 'hint', prefix: 'data.' %}:
+        """Call {{ msg.name }} received by in port {{ p.name }}."""
+        {% user 'on.' | append: p.name | append: '.' | append: msg.name %}
+{% if msg.returns or msg.outputs.size > 0 %}
+        return {% render '_py_results', msg: msg, what: 'zero', prefix: 'data.' %}
+{% else %}
+        pass
+{% endif %}
+        {% enduser %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+    {% user 'members' %}
+    {% enduser %}
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{% assign adapter = p.name | ucfirst | append: 'In' | prepend: class | prepend: '_' %}
+
+
+class {{ adapter }}(interfaces.{% render '_py_class', e: p.interface %}):
+    """In port {{ p.name }} of {{ class }}: hands its calls to the module's on_{{ p.name | snake }}_* methods."""
+
+    def __init__(self, owner: {{ class }}) -> None:
+        self._owner = owner
+{% for msg in p.interface.messages %}
+
+    def {% render '_py_id', name: msg.name %}(self{% render '_py_params', msg: msg %}) -> {% render '_py_results', msg: msg, what: 'hint', prefix: 'data.' %}:
+        return self._owner.on_{{ p.name | snake }}_{{ msg.name | snake }}({% render '_py_args', msg: msg %})
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% user 'end' %}
+{% enduser %}

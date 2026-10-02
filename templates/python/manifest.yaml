@@ -1,0 +1,91 @@
+# Python template set of ProjectScaffold: `npm run generate -- <project file> -t python -o <dir>`.
+# A Python package (3.8+, standard library only): types, interfaces, one module per module, systems
+# wired through the ports, and the calls between binaries over the same wire format and transports
+# as the C++ template sets. The `_py_*` partials spell the Python of the model; edit them freely.
+name: python
+description: Python 3.8+ package - types (dataclasses, enums), interfaces (ABCs), modules wired through their ports, systems; links between binaries over generated transports
+comment: '#'
+# Names of the model that are Python keywords (separated by spaces) are warned about, and renamed by
+# _py_id (a trailing `_`).
+reserved: >-
+  False None True and as assert async await break class continue def del elif else except finally
+  for from global if import in is lambda nonlocal not or pass raise return self try while with yield
+partials:
+  - _py_banner.liquid
+  - _py_id.liquid
+  - _py_class.liquid
+  - _py_accessor.liquid
+  - _py_module_path.liquid
+  - _py_endpoint.liquid
+  - _py_params.liquid
+  - _py_args.liquid
+  - _py_connection.liquid
+  - _py_type.liquid
+  - _py_encode.liquid
+  - _py_encoder.liquid
+  - _py_decode.liquid
+  - _py_decoder.liquid
+  - _py_zero.liquid
+  - _py_value.liquid
+  - _py_results.liquid
+  - _py_labels.liquid
+  - _address.liquid
+  - _address_variable.liquid
+  - _settings.liquid
+outputs:
+  - template: pyproject.toml.liquid
+    path: pyproject.toml
+  - template: py_init.liquid
+    path: "{{ project.ident | snake }}/__init__.py"
+  - template: py_main.liquid
+    path: "{{ project.ident | snake }}/__main__.py"
+    when: modules.size > 0
+  - template: py_wire.liquid
+    path: "{{ project.ident | snake }}/wire.py"
+  - template: py_data.liquid
+    path: "{{ project.ident | snake }}/data.py"
+  - template: py_constants.liquid
+    path: "{{ project.ident | snake }}/constants.py"
+    when: constants.size > 0
+  - template: py_interfaces.liquid
+    path: "{{ project.ident | snake }}/interfaces.py"
+  - template: py_ports.liquid
+    path: "{{ project.ident | snake }}/ports.py"
+    when: modules.size > 0
+  # One Python module per module; a module with children is a package (its class in __init__.py).
+  - template: py_modules_init.liquid
+    path: "{{ project.ident | snake }}/modules/__init__.py"
+    when: modules.size > 0
+  - template: py_module.liquid
+    each: modules
+    path: "{% capture p %}{% render '_py_module_path', m: item %}{% endcapture %}{{ p | replace: '.', '/' }}{% if item.children.size > 0 %}/__init__.py{% else %}.py{% endif %}"
+  # One system per binary of the project, or one for the whole project.
+  - template: py_systems_init.liquid
+    path: "{{ project.ident | snake }}/systems/__init__.py"
+    when: modules.size > 0
+  - template: py_system.liquid
+    each: systems
+    as: system
+    path: "{{ project.ident | snake }}/systems/{% capture file %}{{ system.name | snake }}{% endcapture %}{% render '_py_id', name: file %}.py"
+    when: modules.size > 0
+  # Calls between binaries: transports, link addresses, proxies / handlers / stubs, peers.
+  - template: py_transport.liquid
+    path: "{{ project.ident | snake }}/transport.py"
+    when: remoteLinks.size > 0
+  - template: py_links.liquid
+    path: "{{ project.ident | snake }}/links.py"
+    when: remoteLinks.size > 0
+  - template: py_remote_init.liquid
+    path: "{{ project.ident | snake }}/remote/__init__.py"
+    when: remoteLinks.size > 0
+  - template: py_remote.liquid
+    each: remoteInterfaces
+    path: "{{ project.ident | snake }}/remote/{% capture module %}{{ item.name | snake }}{% endcapture %}{% render '_py_id', name: module %}.py"
+  - template: py_peers_init.liquid
+    path: "{{ project.ident | snake }}/peers/__init__.py"
+    when: remoteLinks.size > 0
+  - template: py_peer.liquid
+    each: systems
+    as: system
+    when: system.proxies.size > 0 or system.stubs.size > 0
+    path: "{{ project.ident | snake }}/peers/{{ system.binary.name | snake }}.py"

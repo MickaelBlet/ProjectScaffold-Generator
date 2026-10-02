@@ -2,6 +2,8 @@ schemaVersion: 1
 project:
   name: Station
   description: Ground station monitoring the robot
+generation:
+  templates: python
 types: []
 interfaces: []
 modules:

@@ -46,7 +46,7 @@ scripts/build_all.sh [--check] [web|cli|vscode|desktop]...   # all of the above 
 - Hosts give the `OutputDir`: `scripts/generate.ts` (CLI, node fs; `scripts/build-cli.ts` bundles it as CommonJS, no top-level await, with the templates embedded in place of `scripts/builtinTemplates.ts`, into a Node single executable), `webApi.ts` (File System Access directory handle), `vscodeApi.ts` (`outputDir` / `outputFile` messages, `vscode/src/session.ts`). `generateCode.ts` bundles `templates/cpp17` into the web build (`import.meta.glob`).
 - Check template changes by building the output: `npm run generate -- tests/fixtures/plant.scaffold.yaml -o /tmp/gen/plant` then CMake with `-Wall -Wextra -Werror`.
 - Built-in template sets: `templates/<set>/`, one self-contained flat copy each (the web glob and CLI embedding are not recursive), listed in `model/templateSets.ts`; a project picks one with `generation.templates`. A fix to one C++ set usually applies to the others.
-- Links between binaries: `wire.hpp` / `transport.cpp` of every C++ set and `py_wire` / `py_transport` (Python peers under `python/<ns>/`, same template set) implement one protocol and must change together; `scripts/check_remote.sh -t <set>` checks them against each other.
+- Links between binaries: `wire.hpp` / `transport.cpp` of every C++ set and `py_wire` / `py_transport` (Python peers under `python/<ns>/`, same template set) implement one protocol and must change together; `scripts/check_remote.sh -t <set>` checks them against each other. The `python` set reuses the C++ sets' `py_*` / `_py_*` files (only `py_data`, `py_constants`, `py_init`, `py_wire`'s docstring differ): keep them in step.
 
 ### State (`src/renderer/src/store/`)
 
