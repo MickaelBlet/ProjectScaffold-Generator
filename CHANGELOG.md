@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Inspector: entries of every list (fields, parameters, attributes, ports, enum values, flags, transports, metadata, binaries, references) are rounded blocks, every other one shaded. Columns of buttons and numbers in tables take the width of their content.
 
+### Removed
+
+- Definitions view (_View › Open definitions view_, Alt+T, _Definitions_ in the Explorer's _Views_, VS Code _Open Definitions View_): the Explorer lists the same entities and the inspector edits them.
+
 ## [0.2.0] - 2026-10-01
 
 ### Added
