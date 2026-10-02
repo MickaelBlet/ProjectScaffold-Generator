@@ -1,0 +1,75 @@
+{% include '_banner' %}
+{%- liquid
+  assign m = item
+  capture class
+    render '_name', e: m
+  endcapture
+-%}
+#include <{% render '_header', e: m %}>
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: m %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ class }}::{{ class }}()
+{
+{% for c in m.instances %}
+{% if c.abstract %}
+    {% user 'create.' | append: c.name %}
+    // {% render '_accessor', name: c.name %}_ = std::make_unique<ConcreteClass>();
+    {% enduser %}
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+    {% include '_connection', connection: c %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+    {% render '_endpoint', x: d %}.forward({% render '_member', name: p.name %});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {% user 'constructor' %}
+    {% enduser %}
+}
+
+{{ class }}::~{{ class }}()
+{
+    {% user 'destructor' %}
+    {% enduser %}
+}
+{% for x in m.methods %}
+{% unless x.pure %}
+
+{% render '_type', t: x.returns %} {{ class }}::{% render '_id', name: x.name %}({% render '_params', params: x.params %}){% if x.const %} const{% endif %}
+{
+    {% user 'method.' | append: x.name %}
+{% if x.returns %}
+    return {};
+{% endif %}
+    {% enduser %}
+}
+{% endunless %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{% for msg in p.interface.messages %}
+
+{% render '_type', t: msg.returns %} {{ class }}::on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_params', params: msg.params %})
+{
+    {% user 'on.' | append: p.name | append: '.' | append: msg.name %}
+{% if msg.returns %}
+    return {};
+{% endif %}
+    {% enduser %}
+}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% user 'end' %}
+{% enduser %}
+
+{% render '_namespace_close', ns: ns %}

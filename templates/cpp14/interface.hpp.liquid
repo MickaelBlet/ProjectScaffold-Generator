@@ -1,0 +1,23 @@
+{% include '_banner' %}
+#pragma once
+
+{% render '_includes', e: item %}
+
+{% capture ns %}{% render '_ns', e: item %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ item.description | doc_comment }}
+class {% render '_name', e: item %} {
+public:
+    virtual ~{% render '_name', e: item %}() = default;
+{% for msg in item.messages %}
+
+{{ msg.description | doc_comment: '    /// ' }}
+{% for r in msg.raises %}
+    /// @throws {% render '_type', t: r %}
+{% endfor %}
+    virtual {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %}) = 0;
+{% endfor %}
+};
+
+{% render '_namespace_close', ns: ns %}

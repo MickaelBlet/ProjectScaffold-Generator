@@ -29,7 +29,7 @@ check() {
       >"$work/log" 2>&1 && cmake --build "$out/.build" -j >>"$work/log" 2>&1; then
       echo "ok      $set: $name"
     else
-      echo "FAILED  $set: $name (build)"; grep -E 'error' "$work/log" | sed "s|$out/||" | sort -u | head -15 | sed 's/^/        /'; failed=1
+      echo "FAILED  $set: $name (build)"; grep -E 'error:' "$work/log" | sed "s|$out/||" | sort -u | head -15 | sed 's/^/        /'; failed=1
     fi
   fi
   if [ -f "$out/pyproject.toml" ] || [ -d "$out/python" ]; then

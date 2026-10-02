@@ -1,0 +1,13 @@
+{%- comment -%}
+  Closes a namespace opened by _namespace_open: `} } // namespace robot::core`. Parameter: ns.
+{%- endcomment -%}
+{%- liquid
+  assign parts = ns | split: '::'
+  for part in parts
+    echo '}'
+    unless forloop.last
+      echo ' '
+    endunless
+  endfor
+  echo ' // namespace ' | append: ns
+-%}

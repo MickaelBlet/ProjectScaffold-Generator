@@ -17,6 +17,15 @@ using remote::EchoStub;
 
 namespace {
 
+// Optional of the template set: scaffold::Optional before C++17, else std::optional.
+#if __has_include(<scaffold/optional.hpp>)
+template <class T>
+using Opt = scaffold::Optional<T>;
+#else
+template <class T>
+using Opt = std::optional<T>;
+#endif
+
 class Echo final : public IEcho {
 public:
     Sample echo(const Sample& sample) override { return sample; }
@@ -60,10 +69,10 @@ public:
 
     Tree tree(const Tree& t) override { return t; }
 
-    std::optional<std::string> pick(const std::map<Mode, std::optional<std::string>>& m, Mode key) override
+    Opt<std::string> pick(const std::map<Mode, Opt<std::string>>& m, Mode key) override
     {
         const auto it = m.find(key);
-        return it == m.end() ? std::nullopt : it->second;
+        return it == m.end() ? Opt<std::string>() : it->second;
     }
 
     Names names(const Names& names) override { return names; }
@@ -132,6 +141,18 @@ void check(const char* what, bool ok)
     }
 }
 
+/// Checks that `call` is rejected for a value over its bound.
+template <class Call>
+void rejected(const char* what, Call call)
+{
+    try {
+        call();
+        check(what, false);
+    } catch (const remote::Error& e) {
+        check(what, std::strstr(e.what(), "over the bound") != nullptr);
+    }
+}
+
 int call(EchoProxy& proxy, const std::string& transport)
 {
     const Sample s = full(transport == "udp" ? 1000 : 100000);
@@ -160,8 +181,8 @@ int call(EchoProxy& proxy, const std::string& transport)
     const Tree t{"root", {Tree{"a", {}}, Tree{"b", {Tree{"c", {}}}}}};
     check("tree", bytes(proxy.tree(t)) == bytes(t));
 
-    const std::map<Mode, std::optional<std::string>> m{{Mode::Idle, "i"}, {Mode::Run, std::nullopt}};
-    check("pick", proxy.pick(m, Mode::Idle) == std::optional<std::string>("i"));
+    const std::map<Mode, Opt<std::string>> m{{Mode::Idle, "i"}, {Mode::Run, Opt<std::string>()}};
+    check("pick", proxy.pick(m, Mode::Idle) == Opt<std::string>("i"));
     check("pick none", !proxy.pick(m, Mode::Run) && !proxy.pick(m, Mode::Fault));
 
     check("bitmask", proxy.access(Access::Write | Access::Exec) == (Access::Write | Access::Exec));
@@ -182,7 +203,8 @@ int call(EchoProxy& proxy, const std::string& transport)
     check("union default case label", proxy.item(item)._d() == 9 && proxy.item(item).text() == "y");
     item.names({"a", "b"});
     check("union negative label", proxy.item(item)._d() == -3 && proxy.item(item).names() == Names{"a", "b"});
-    static_assert(MaxNames == 3 && DefaultMode == Mode::Run && DefaultAccess == (Access::Read | Access::Write));
+    static_assert(MaxNames == 3 && DefaultMode == Mode::Run && DefaultAccess == (Access::Read | Access::Write),
+                  "constants");
     check("constants", Greeting == "hello" && Origin.z == 1.5 && Weights.at("a") == 0.5f &&
                            FirstItem._d() == 1 && FirstItem.number() == 7);
     check("raises nothing", proxy.check(5));
@@ -200,14 +222,6 @@ int call(EchoProxy& proxy, const std::string& transport)
     check("bounds", proxy.names({"a", "bcde"}) == Names{"a", "bcde"});
     const Badge badge{"ab", {{1, {7, 8}}}};
     check("bounds of fields", bytes(proxy.badge(badge)) == bytes(badge));
-    const auto rejected = [](const char* what, auto&& call) {
-        try {
-            call();
-            check(what, false);
-        } catch (const remote::Error& e) {
-            check(what, std::strstr(e.what(), "over the bound") != nullptr);
-        }
-    };
     rejected("bound of a string", [&] { proxy.names({"abcde"}); });
     rejected("bound of a vector", [&] { proxy.names({"a", "b", "c", "d"}); });
     rejected("bound of a field", [&] { proxy.badge(Badge{"abcde", {}}); });

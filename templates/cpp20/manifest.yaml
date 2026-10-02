@@ -3,7 +3,7 @@
 # and includes; edit them freely. Paths, `each` and `when` are Liquid; templates see the generation
 # context (see README, "Writing templates").
 name: cpp20
-description: C++20 skeleton (concepts, defaulted comparisons, std::jthread) - types, interfaces, modules wired through their ports, CMake project; links between binaries over generated transports, with Python peers
+description: C++20 skeleton - types, interfaces, modules wired through their ports, CMake project; links between binaries over generated transports, with Python peers
 comment: '//'
 # Names of the model that are C++ keywords (separated by spaces) are warned about, and renamed by
 # _id / _accessor / _member.
