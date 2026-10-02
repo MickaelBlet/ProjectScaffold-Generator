@@ -1,0 +1,227 @@
+{% include '_banner' %}
+// The same in every project generated with these templates: included once whichever comes first.
+#ifndef SCAFFOLD_SUPPORT_HPP
+#define SCAFFOLD_SUPPORT_HPP
+
+#include <cstddef>
+#include <new>
+#include <stdexcept>
+
+namespace scaffold {
+
+/// No value, for an Optional.
+struct NullOpt {
+};
+const NullOpt nullopt = NullOpt();
+
+/// Thrown by Optional::value() when it holds none.
+class BadOptionalAccess : public std::logic_error {
+public:
+    BadOptionalAccess() : std::logic_error("bad optional access") {}
+};
+
+/// A value or none (std::optional of C++17).
+template <class T>
+class Optional {
+    typedef bool (Optional::*Bool)() const;
+
+public:
+    Optional() : has_(false) {}
+    Optional(NullOpt) : has_(false) {}
+    Optional(const Optional& other) : has_(false)
+    {
+        if (other.has_) construct(*other);
+    }
+    /// From a value, or anything a T is made of (`"text"` for an Optional<std::string>).
+    template <class U>
+    Optional(const U& value) : has_(false)
+    {
+        construct(T(value));
+    }
+    ~Optional() { reset(); }
+
+    Optional& operator=(const Optional& other)
+    {
+        if (this == &other) return *this;
+        if (other.has_) assign(*other);
+        else reset();
+        return *this;
+    }
+    Optional& operator=(NullOpt)
+    {
+        reset();
+        return *this;
+    }
+    template <class U>
+    Optional& operator=(const U& value)
+    {
+        assign(T(value));
+        return *this;
+    }
+
+    bool has_value() const { return has_; }
+    /// True when holding a value (safe bool: no conversion to numbers).
+    operator Bool() const { return has_ ? &Optional::has_value : 0; }
+
+    T& operator*() { return *ptr(); }
+    const T& operator*() const { return *ptr(); }
+    T* operator->() { return ptr(); }
+    const T* operator->() const { return ptr(); }
+
+    T& value()
+    {
+        if (!has_) throw BadOptionalAccess();
+        return *ptr();
+    }
+    const T& value() const
+    {
+        if (!has_) throw BadOptionalAccess();
+        return *ptr();
+    }
+    T value_or(const T& fallback) const { return has_ ? *ptr() : fallback; }
+
+    void reset()
+    {
+        if (has_) {
+            ptr()->~T();
+            has_ = false;
+        }
+    }
+
+private:
+    T* ptr() { return static_cast<T*>(static_cast<void*>(&storage_)); }
+    const T* ptr() const { return static_cast<const T*>(static_cast<const void*>(&storage_)); }
+    void construct(const T& value)
+    {
+        ::new (static_cast<void*>(&storage_)) T(value);
+        has_ = true;
+    }
+    void assign(const T& value)
+    {
+        if (has_) *ptr() = value;
+        else construct(value);
+    }
+
+    /// Room for a T, aligned for any member it may have.
+    union {
+        char bytes[sizeof(T)];
+        long double ld;
+        long long ll;
+        double d;
+        void* p;
+    } storage_;
+    bool has_;
+};
+
+template <class T>
+bool operator==(const Optional<T>& a, const Optional<T>& b)
+{
+    return a.has_value() == b.has_value() && (!a.has_value() || *a == *b);
+}
+template <class T>
+bool operator!=(const Optional<T>& a, const Optional<T>& b)
+{
+    return !(a == b);
+}
+template <class T>
+bool operator==(const Optional<T>& a, NullOpt)
+{
+    return !a.has_value();
+}
+template <class T>
+bool operator!=(const Optional<T>& a, NullOpt)
+{
+    return a.has_value();
+}
+template <class T, class U>
+bool operator==(const Optional<T>& a, const U& b)
+{
+    return a.has_value() && *a == b;
+}
+template <class T, class U>
+bool operator!=(const Optional<T>& a, const U& b)
+{
+    return !(a == b);
+}
+
+/// N values (std::array of C++11): an aggregate, value-initialized by `Array<T, N>()`.
+template <class T, std::size_t N>
+struct Array {
+    typedef T value_type;
+    typedef T* iterator;
+    typedef const T* const_iterator;
+
+    T items[N];
+
+    T& operator[](std::size_t i) { return items[i]; }
+    const T& operator[](std::size_t i) const { return items[i]; }
+    std::size_t size() const { return N; }
+    iterator begin() { return items; }
+    iterator end() { return items + N; }
+    const_iterator begin() const { return items; }
+    const_iterator end() const { return items + N; }
+};
+
+template <class T, std::size_t N>
+bool operator==(const Array<T, N>& a, const Array<T, N>& b)
+{
+    for (std::size_t i = 0; i < N; ++i)
+        if (!(a[i] == b[i])) return false;
+    return true;
+}
+template <class T, std::size_t N>
+bool operator!=(const Array<T, N>& a, const Array<T, N>& b)
+{
+    return !(a == b);
+}
+template <class T, std::size_t N>
+bool operator<(const Array<T, N>& a, const Array<T, N>& b)
+{
+    for (std::size_t i = 0; i < N; ++i) {
+        if (a[i] < b[i]) return true;
+        if (b[i] < a[i]) return false;
+    }
+    return false;
+}
+
+/// A container from its items, in place of a braced list: `Make<std::vector<int> >()(1)(2)(3)`;
+/// maps take a key and a value: `Make<std::map<std::string, int> >()("a", 1)`.
+template <class C>
+class Make {
+public:
+    Make& operator()(const typename C::value_type& item)
+    {
+        value_.insert(value_.end(), item);
+        return *this;
+    }
+    template <class K, class V>
+    Make& operator()(const K& key, const V& value)
+    {
+        value_.insert(value_.end(), typename C::value_type(key, value));
+        return *this;
+    }
+    operator C() const { return value_; }
+
+private:
+    C value_;
+};
+
+template <class T, std::size_t N>
+class Make<Array<T, N> > {
+public:
+    Make() : count_(0), value_() {}
+    Make& operator()(const T& item)
+    {
+        if (count_ < N) value_[count_++] = item;
+        return *this;
+    }
+    operator Array<T, N>() const { return value_; }
+
+private:
+    std::size_t count_;
+    Array<T, N> value_;
+};
+
+} // namespace scaffold
+
+#endif

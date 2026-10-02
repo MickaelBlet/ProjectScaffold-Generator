@@ -1,0 +1,11 @@
+{%- comment -%}
+  Accessor of a child module: `Sensor` -> `sensor`, `Operator` -> `operatorModule`.
+  Its member is the accessor followed by `_`. Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  assign accessor = name | lcfirst
+  echo accessor
+  if generator.reserved contains accessor
+    echo 'Module'
+  endif
+-%}

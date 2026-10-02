@@ -1,0 +1,57 @@
+{%- comment -%}
+  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`; `void` for none.
+  Template arguments are spaced where C++98 needs it: `< ::a::B>` (`<:` is a digraph) and
+  `vector<int> >` (`>>` is a shift). Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  if t == nil
+    echo 'void'
+  else
+    case t.kind
+    when 'primitive'
+      render '_primitive', name: t.name
+    when 'ref'
+      echo '::'
+      if t.dependency
+        echo t.dependency | snake
+      else
+        echo project.ident | snake
+      endif
+      echo '::'
+      render '_id', name: t.name
+    else
+      case t.kind
+      when 'array'
+        echo '::scaffold::Array<'
+      when 'optional'
+        echo '::scaffold::Optional<'
+      else
+        echo 'std::' | append: t.kind | append: '<'
+      endcase
+      if t.kind == 'map'
+        capture inner
+          render '_type', t: t.key
+          echo ', '
+          render '_type', t: t.value
+        endcapture
+      else
+        capture inner
+          render '_type', t: t.of
+        endcapture
+      endif
+      if t.kind == 'array'
+        assign inner = inner | append: ', ' | append: t.size
+      endif
+      assign first = inner | slice: 0
+      if first == ':'
+        echo ' '
+      endif
+      echo inner
+      assign last = inner | slice: -1
+      if last == '>'
+        echo ' '
+      endif
+      echo '>'
+    endcase
+  endif
+-%}

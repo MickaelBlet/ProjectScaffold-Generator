@@ -1,0 +1,166 @@
+# C++98 template set of ProjectScaffold: `npm run generate -- <project file> -o <dir>`.
+# Everything C++ lives in these files: the `_*.liquid` partials spell types, values, names, paths
+# and includes; edit them freely. Paths, `each` and `when` are Liquid; templates see the generation
+# context (see README, "Writing templates").
+name: cpp98
+description: C++98 skeleton - types, interfaces, modules wired through their ports, CMake project; links between binaries over generated transports, with Python peers
+comment: '//'
+# Names of the model that are C++ keywords (separated by spaces) are warned about, and renamed by
+# _id / _accessor / _member.
+reserved: >-
+  alignas alignof and and_eq asm auto bitand bitor bool break case catch char char16_t char32_t
+  class compl const constexpr const_cast continue decltype default delete do double dynamic_cast
+  else enum explicit export extern false float for friend goto if inline int long mutable namespace
+  new noexcept not not_eq nullptr operator or or_eq private protected public register
+  reinterpret_cast return short signed sizeof static static_assert static_cast struct switch
+  template this thread_local throw true try typedef typeid typename union unsigned using virtual
+  void volatile wchar_t while xor xor_eq
+partials:
+  - _banner.liquid
+  - _connection.liquid
+  - _includes.liquid
+  - _id.liquid
+  - _accessor.liquid
+  - _member.liquid
+  - _name.liquid
+  - _ns.liquid
+  - _init.liquid
+  - _namespace_open.liquid
+  - _namespace_close.liquid
+  - _qualified.liquid
+  - _header.liquid
+  - _source.liquid
+  - _primitive.liquid
+  - _type.liquid
+  - _scalar.liquid
+  - _input.liquid
+  - _params.liquid
+  - _args.liquid
+  - _endpoint.liquid
+  - _main.liquid
+  - _value.liquid
+  - _bounds.liquid
+  - _labels.liquid
+  - _py_labels.liquid
+  - _generated_transport.liquid
+  - _address.liquid
+  - _address_variable.liquid
+  - _settings.liquid
+  - _py_banner.liquid
+  - _py_id.liquid
+  - _py_type.liquid
+  - _py_encode.liquid
+  - _py_encoder.liquid
+  - _py_decode.liquid
+  - _py_decoder.liquid
+  - _py_zero.liquid
+  - _py_value.liquid
+  - _py_results.liquid
+outputs:
+  - template: ports.hpp.liquid
+    path: include/{{ project.ident | snake }}/ports.hpp
+    when: modules.size > 0
+  - template: type.hpp.liquid
+    each: types
+    path: "include/{% render '_header', e: item %}"
+  # What C++98 lacks, the same in every project: scaffold::Optional, Array, Make.
+  - template: support.hpp.liquid
+    path: include/scaffold/support.hpp
+  - template: types.hpp.liquid
+    path: include/{{ project.ident | snake }}/types.hpp
+    when: types.size > 0
+  - template: constants.hpp.liquid
+    path: include/{{ project.ident | snake }}/constants.hpp
+    when: constants.size > 0
+  - template: interface.hpp.liquid
+    each: interfaces
+    path: "include/{% render '_header', e: item %}"
+  - template: module.hpp.liquid
+    each: modules
+    path: "include/{% render '_header', e: item %}"
+  - template: module.cpp.liquid
+    each: modules
+    when: item.kind != 'interface'
+    path: "src/{% render '_source', e: item %}"
+  # Calls between binaries: wire format, transports, proxies sending the calls, stubs receiving them.
+  - template: wire.hpp.liquid
+    path: include/{{ project.ident | snake }}/remote/wire.hpp
+    when: remoteLinks.size > 0
+  - template: codec.hpp.liquid
+    path: include/{{ project.ident | snake }}/remote/codec.hpp
+    when: remoteLinks.size > 0
+  - template: transport.hpp.liquid
+    path: include/{{ project.ident | snake }}/remote/transport.hpp
+    when: remoteLinks.size > 0
+  - template: transport.cpp.liquid
+    path: src/remote/transport.cpp
+    when: remoteLinks.size > 0
+  - template: proxy.hpp.liquid
+    each: remoteInterfaces
+    path: include/{{ project.ident | snake }}/remote/{{ item.name }}Proxy.hpp
+  - template: stub.hpp.liquid
+    each: remoteInterfaces
+    path: include/{{ project.ident | snake }}/remote/{{ item.name }}Stub.hpp
+  # One system (and main) per binary of the project, or one for the whole project.
+  - template: system.hpp.liquid
+    each: systems
+    as: system
+    path: "include/{% render '_header', e: system %}"
+    when: modules.size > 0
+  - template: system.cpp.liquid
+    each: systems
+    as: system
+    path: "src/{% render '_source', e: system %}"
+    when: modules.size > 0
+  - template: CMakeLists.txt.liquid
+    path: CMakeLists.txt
+    comment: '#'
+  - template: main.cpp.liquid
+    each: systems
+    as: system
+    path: "src/{% render '_main', system: system %}"
+    when: modules.size > 0
+  # Python peers of the binaries (python/<project>/), speaking the wire format of remote/wire.hpp:
+  # each stands in for a binary, to test the others.
+  - template: py_init.liquid
+    path: python/{{ project.ident | snake }}/__init__.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_wire.liquid
+    path: python/{{ project.ident | snake }}/wire.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_transport.liquid
+    path: python/{{ project.ident | snake }}/transport.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_links.liquid
+    path: python/{{ project.ident | snake }}/links.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_data.liquid
+    path: python/{{ project.ident | snake }}/data.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_constants.liquid
+    path: python/{{ project.ident | snake }}/constants.py
+    when: remoteLinks.size > 0 and remoteConstants.size > 0
+    comment: '#'
+  - template: py_remote_init.liquid
+    path: python/{{ project.ident | snake }}/remote/__init__.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_remote.liquid
+    each: remoteInterfaces
+    path: "python/{{ project.ident | snake }}/remote/{% capture module %}{{ item.name | snake }}{% endcapture %}{% render '_py_id', name: module %}.py"
+    comment: '#'
+  - template: py_peers_init.liquid
+    path: python/{{ project.ident | snake }}/peers/__init__.py
+    when: remoteLinks.size > 0
+    comment: '#'
+  - template: py_peer.liquid
+    each: systems
+    as: system
+    when: system.proxies.size > 0 or system.stubs.size > 0
+    path: python/{{ project.ident | snake }}/peers/{{ system.binary.name | snake }}.py
+    comment: '#'

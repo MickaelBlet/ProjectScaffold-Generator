@@ -1,0 +1,144 @@
+{% include '_banner' %}
+#pragma once
+{%- liquid
+  assign m = item
+  assign root = project.ident | snake
+  capture class
+    render '_name', e: m
+  endcapture
+  assign virtuals = m.methods | where: 'virtual', true | size
+  # Names given by the model: attribute accessors do not take them.
+  assign methodNames = m.methods | map: 'name'
+  assign portNames = m.ports | map: 'name'
+  assign names = methodNames | concat: portNames
+  assign polymorphic = false
+  if m.abstract or m.isBase or virtuals > 0 or m.bases.size > 0
+    assign polymorphic = true
+  endif
+-%}
+
+
+{% render '_includes', e: m %}
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: m %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ m.description | doc_comment }}
+class {{ class }}{% if m.bases.size > 0 %} : {% for b in m.bases %}public {% render '_qualified', e: b %}{% unless forloop.last %}, {% endunless %}{% endfor %}{% endif %} {
+public:
+{% if m.kind == 'interface' %}
+    {{ class }}(){% render '_init', m: m %} {}
+    virtual ~{{ class }}() {}
+{% else %}
+    {{ class }}();
+    {% if polymorphic %}virtual {% endif %}~{{ class }}();
+{% endif %}
+{% for p in m.ports %}
+{% if p.interface %}
+
+    /// {{ p.role }} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates.size > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %}
+{{ p.description | doc_comment: '    /// ' }}
+{% if p.role == 'out' %}
+    ::{{ root }}::OutPort< {% render '_qualified', e: p.interface %}>& {% render '_id', name: p.name %}() { return {% render '_member', name: p.name %}; }
+{% elsif p.delegates.size > 0 %}
+    {% render '_qualified', e: p.interface %}& {% render '_id', name: p.name %}() { return {% render '_endpoint', x: p.delegates[0] %}; }
+{% else %}
+    {% render '_qualified', e: p.interface %}& {% render '_id', name: p.name %}() { return {{ p.name }}In_; }
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if m.instances.size > 0 %}
+
+{% for c in m.instances %}
+    {% render '_qualified', e: c %}& {% render '_accessor', name: c.name %}() { return {% if c.abstract %}*{% endif %}{% render '_accessor', name: c.name %}_; }
+{% endfor %}
+{% endif %}
+{% if m.attributes.size > 0 %}
+
+{% for a in m.attributes %}
+{% assign setter = a.name | ucfirst | prepend: 'set' %}
+{{ a.description | doc_comment: '    /// ' }}
+{% unless names contains a.name %}
+    {% if a.static %}static {% endif %}{% render '_input', t: a.type %} {% render '_id', name: a.name %}(){% unless a.static %} const{% endunless %} { return {% render '_member', name: a.name %}{% if a.static %}(){% endif %}; }
+{% endunless %}
+{% unless a.const or names contains setter %}
+    {% if a.static %}static {% endif %}void {{ setter }}({% render '_input', t: a.type %} value) { {% render '_member', name: a.name %}{% if a.static %}(){% endif %} = value; }
+{% endunless %}
+{% endfor %}
+{% endif %}
+{% for x in m.methods %}
+
+{{ x.description | doc_comment: '    /// ' }}
+{% for r in x.raises %}
+    /// @throws {% render '_type', t: r %}
+{% endfor %}
+    {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{% render '_type', t: x.returns %} {% render '_id', name: x.name %}({% render '_params', params: x.params %}){% if x.const %} const{% endif %}{% if x.pure %} = 0{% endif %};
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+protected:
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+    // Calls received by in port {{ p.name }}.
+{% for msg in p.interface.messages %}
+    {% render '_type', t: msg.returns %} on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_params', params: msg.params %});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {% user 'protected' %}
+    {% enduser %}
+
+private:
+    // Not copyable.
+    {{ class }}(const {{ class }}&);
+    {{ class }}& operator=(const {{ class }}&);
+
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{% assign adapter = p.name | ucfirst | append: 'In' %}
+    class {{ adapter }} : public {% render '_qualified', e: p.interface %} {
+    public:
+        explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
+{% for msg in p.interface.messages %}
+        {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %})
+        {
+            return owner_.on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_args', params: msg.params %});
+        }
+{% endfor %}
+
+    private:
+        {{ class }}& owner_;
+    };
+    {{ adapter }} {{ p.name }}In_;
+{% elsif p.role == 'out' and p.interface %}
+    ::{{ root }}::OutPort< {% render '_qualified', e: p.interface %}> {% render '_member', name: p.name %};
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    {% render '_qualified', e: c %}* {% render '_accessor', name: c.name %}_; // abstract: created in the constructor, deleted by the destructor
+{% else %}
+    {% render '_qualified', e: c %} {% render '_accessor', name: c.name %}_;
+{% endif %}
+{% endfor %}
+{% for a in m.attributes %}
+{% if a.static %}
+    /// Static attribute: a function-local static (no inline variables before C++17).
+    static {% if a.const %}const {% endif %}{% render '_type', t: a.type %}& {% render '_member', name: a.name %}()
+    {
+        static {% if a.const %}const {% endif %}{% render '_type', t: a.type %} value = {% if a.hasDefault %}{% render '_value', v: a.default, t: a.type %}{% else %}{% render '_type', t: a.type %}(){% endif %};
+        return value;
+    }
+{% else %}
+    {% if a.const %}const {% endif %}{% render '_type', t: a.type %} {% render '_member', name: a.name %}; // initialized by the constructor
+{% endif %}
+{% endfor %}
+    {% user 'private' %}
+    {% enduser %}
+};
+
+{% render '_namespace_close', ns: ns %}

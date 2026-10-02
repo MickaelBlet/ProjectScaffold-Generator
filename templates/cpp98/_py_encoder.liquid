@@ -1,0 +1,20 @@
+{%- comment -%}
+  Python function `(writer, value)` encoding a type: `Writer.int32`, `data.encode_Pose`, a lambda.
+  Parameters: t, prefix.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    if t.max
+      echo 'lambda w, v: '
+      render '_py_encode', t: t, v: 'v', w: 'w', prefix: prefix
+    else
+      echo 'Writer.' | append: t.name
+    endif
+  when 'ref'
+    echo prefix | append: 'encode_' | append: t.name
+  else
+    echo 'lambda w, v: '
+    render '_py_encode', t: t, v: 'v', w: 'w', prefix: prefix
+  endcase
+-%}

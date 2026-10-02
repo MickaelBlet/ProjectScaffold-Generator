@@ -1,0 +1,37 @@
+{%- comment -%}
+  Member initializer list of a module's constructor (no member initializers in C++98): the
+  adapters of its in ports, its abstract children (null until created), its attributes (their
+  default, else value-initialized), in the order they are declared. Parameter: m.
+{%- endcomment -%}
+{%- liquid
+  assign inits = ''
+  for p in m.ports
+    if p.role == 'in' and p.interface and p.delegates.size == 0
+      assign inits = inits | append: '|' | append: p.name | append: 'In_(*this)'
+    endif
+  endfor
+  for c in m.instances
+    if c.abstract
+      capture accessor
+        render '_accessor', name: c.name
+      endcapture
+      assign inits = inits | append: '|' | append: accessor | append: '_(NULL)'
+    endif
+  endfor
+  for a in m.attributes
+    unless a.static
+      capture init
+        render '_member', name: a.name
+        echo '('
+        if a.hasDefault
+          render '_value', v: a.default, t: a.type
+        endif
+        echo ')'
+      endcapture
+      assign inits = inits | append: '|' | append: init
+    endunless
+  endfor
+  if inits != ''
+    echo ' : ' | append: inits | remove_first: '|' | replace: '|', ', '
+  endif
+-%}

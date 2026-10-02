@@ -1,0 +1,19 @@
+{%- comment -%}
+  C++ type of a primitive of the model (fixed-width integers of <stdint.h>). Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  case name
+  when 'int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'
+    echo name | append: '_t'
+  when 'float32'
+    echo 'float'
+  when 'float64'
+    echo 'double'
+  when 'string'
+    echo 'std::string'
+  when 'bytes'
+    echo 'std::vector<uint8_t>'
+  else
+    echo name
+  endcase
+-%}

@@ -1,0 +1,30 @@
+{%- comment -%}
+  Header of an entity, relative to `include/`: `robot/core/Sensor.hpp`. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  assign root = project.ident | snake
+  case e.entity
+  when 'type', 'interface'
+    if e.dependency
+      echo e.dependency | snake
+    else
+      echo root
+    endif
+    if e.entity == 'type'
+      echo '/types/'
+    else
+      echo '/interfaces/'
+    endif
+    render '_name', e: e
+  when 'module'
+    echo root
+    for parent in e.namespace
+      assign part = parent | snake
+      echo '/' | append: part
+    endfor
+    echo '/' | append: e.name
+  else
+    echo root | append: '/' | append: e.name
+  endcase
+  echo '.hpp'
+-%}

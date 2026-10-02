@@ -1,0 +1,99 @@
+{% include '_banner' %}
+#include <{% render '_header', e: system %}>
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: system %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{%- liquid
+  assign inits = ''
+  for c in system.instances
+    if c.abstract
+      capture accessor
+        render '_accessor', name: c.name
+      endcapture
+      assign inits = inits | append: '|' | append: accessor | append: '_(NULL)'
+    endif
+  endfor
+-%}
+{{ system.name }}::{{ system.name }}(){% if inits != '' %} : {{ inits | remove_first: '|' | replace: '|', ', ' }}{% endif %}
+{
+{% for c in system.instances %}
+{% if c.abstract %}
+    {% user 'create.' | append: c.name %}
+    // {% render '_accessor', name: c.name %}_ = new ConcreteClass;
+    {% enduser %}
+{% endif %}
+{% endfor %}
+{% for c in system.connections %}
+    {% include '_connection', connection: c %}
+{% endfor %}
+{% for r in system.proxies %}
+{% assign transport = r.link.constraints.remote.transport | default: 'an unset transport' %}
+    // {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ transport }}
+{{ r.link.description | doc_comment: '    // ' }}
+    {% render '_endpoint', x: r.local %}.connect({{ r.link.name | camel }}Proxy_);
+{% capture generated %}
+{% render '_generated_transport', transport: r.link.constraints.remote.transport %}
+{% endcapture %}
+{% if generated == 'true' %}
+    {{ r.link.name | camel }}Proxy_.open(remote::connect("{{ transport }}", remote::address("{% render '_address_variable', r: r, side: 'client' %}", "{% render '_address', r: r, side: 'client' %}"){% if r.settings.path %}, "{{ r.settings.path }}"{% endif %}),
+        {{ r.link.constraints.ack.required }}, {{ r.link.constraints.ack.timeoutMs | default: 5000 }});
+{% endif %}
+    {% user 'link.' | append: r.link.name %}
+{% unless generated == 'true' %}
+    // Open {{ r.link.name | camel }}Proxy_ with a remote::Channel to binary {{ r.peer.binary }} over {{ transport }}.
+{% capture settings %}{% render '_settings', s: r.link.constraints.remote.settings %}{% endcapture %}
+{% if settings != '' %}
+    // Settings: {{ settings }}.
+{% endif %}
+{% endunless %}
+    {% enduser %}
+{% endfor %}
+{% for r in system.stubs %}
+{% assign transport = r.link.constraints.remote.transport | default: 'an unset transport' %}
+    // {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ transport }}
+{{ r.link.description | doc_comment: '    // ' }}
+    {{ r.link.name | camel }}Stub_.bind({% render '_endpoint', x: r.local %});
+{% capture generated %}
+{% render '_generated_transport', transport: r.link.constraints.remote.transport %}
+{% endcapture %}
+{% if generated == 'true' %}
+    {{ r.link.name | camel }}Stub_.serve("{{ transport }}", remote::address("{% render '_address_variable', r: r, side: 'server' %}", "{% render '_address', r: r, side: 'server' %}"){% if r.settings.capacity %}, {{ r.settings.capacity }}{% endif %});
+{% endif %}
+    {% user 'link.' | append: r.link.name %}
+{% unless generated == 'true' %}
+    // Receive the calls of binary {{ r.peer.binary }} over {{ transport }} into {{ r.link.name | camel }}Stub_.dispatch().
+{% capture settings %}{% render '_settings', s: r.link.constraints.remote.settings %}{% endcapture %}
+{% if settings != '' %}
+    // Settings: {{ settings }}.
+{% endif %}
+{% endunless %}
+    {% enduser %}
+{% endfor %}
+{% for e in system.external %}
+    // {{ e.link.name }}: {{ e.link.from.project | default: project.ident }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project | default: project.ident }}.{{ e.link.to.module }}:{{ e.link.to.port }}
+    {% user 'external.' | append: e.link.name %}
+    // Other project: connect {% render '_endpoint', x: e.local %} through a transport{% if e.link.constraints.remote.transport %} ({{ e.link.constraints.remote.transport }}){% endif %}.
+    {% enduser %}
+{% endfor %}
+    {% user 'constructor' %}
+    {% enduser %}
+}
+
+{{ system.name }}::~{{ system.name }}()
+{
+    {% user 'destructor' %}
+    {% enduser %}
+{% for c in system.instances %}
+{% if c.abstract %}
+    delete {% render '_accessor', name: c.name %}_;
+{% endif %}
+{% endfor %}
+}
+
+{% user 'end' %}
+{% enduser %}
+
+{% render '_namespace_close', ns: ns %}
