@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project text (_Edit as text_, Alt+U): a real code editor (CodeMirror) in place of the plain text field: folding, search and replace (Ctrl+F), multiple cursors, bracket matching, completion in a popup that follows the text, problems underlined and marked in the gutter. Undo in the text undoes typing; the app's global shortcuts (save, palette…) still work from it.
 - Inspector: entries of every list (fields, parameters, attributes, ports, enum values, flags, transports, metadata, binaries, references) are rounded blocks, every other one shaded. Columns of buttons and numbers in tables take the width of their content.
 - Explorer: the buttons of a section header stay on the right of its title, wrapping onto more lines there when the panel is narrow; the title stays whole.
+- Toolbar: ← / → buttons go to the previous / next selection (Alt+← / Alt+→); the shortcut of _Go to…_ sits on the right of its button.
 
 ### Fixed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Definitions view (_View › Open definitions view_, Alt+T, _Definitions_ in the Explorer's _Views_, VS Code _Open Definitions View_): the Explorer lists the same entities and the inspector edits them.
+- _Export YAML_ / _Export JSON_ buttons of the toolbar: still in _File_, the command palette and their shortcuts (Ctrl+E, Ctrl+Shift+E).
 
 ## [0.2.0] - 2026-10-01
 
