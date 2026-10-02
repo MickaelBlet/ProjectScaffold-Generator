@@ -4,7 +4,7 @@ import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { buildContext } from '@/codegen/context'
 import { createEngine, generate, outputPath, trimTagLines } from '@/codegen/generate'
-import { generateInto, generationInput, RECORD, type OutputDir } from '@/codegen/run'
+import { generatedFiles, generateInto, generationInput, RECORD, type OutputDir } from '@/codegen/run'
 import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '@/codegen/sections'
 import { parseManifest, type TemplateSet } from '@/codegen/templateSet'
 import { fromFile } from '@/model/serialize'
@@ -444,6 +444,11 @@ describe('C++17 generation', () => {
     expect(dir.files['src/Client.cpp']).toContain('void Client::start()')
     expect(third.orphans).toEqual([{ path: store, ids: ['on.query.get'] }])
     expect(dir.files[`${store}.orphans`]).toContain('return key == "x";')
+    // Listed with the files generated, beside its file.
+    const listed = await generatedFiles(dir)
+    expect(listed).toContain(store)
+    expect(listed[listed.indexOf(store) + 1]).toBe(`${store}.orphans`)
+    expect(listed).not.toContain(RECORD)
   })
 
   it('leaves files changed outside their sections alone', async () => {

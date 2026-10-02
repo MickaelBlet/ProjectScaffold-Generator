@@ -26,6 +26,8 @@ export interface OutputDir {
   /** Writes a file, creating its directories. */
   write(path: string, text: string): Promise<void>
   remove(path: string): Promise<void>
+  /** Opens a file in the host's own editor (VS Code); absent when the page edits it. */
+  open?(path: string): void
 }
 
 export const RECORD = '.scaffold-gen.json'
@@ -204,6 +206,15 @@ export async function generateInto(
   return report
 }
 
+/** Files generated into a directory (its record), and the `.orphans` files kept beside them. */
+export async function generatedFiles(dir: OutputDir): Promise<string[]> {
+  const files = Object.keys((await readRecord(dir))?.files ?? {})
+  const orphans = await Promise.all(
+    files.map(async (f) => ((await dir.read(f + ORPHANS)) === null ? [] : [f + ORPHANS]))
+  )
+  return [...files, ...orphans.flat()].sort()
+}
+
 async function readRecord(dir: OutputDir): Promise<GenRecord | null> {
   const text = await dir.read(RECORD)
   if (text === null) return null
@@ -221,7 +232,7 @@ const sortRecord = (r: GenRecord): GenRecord => ({
 })
 
 /** Comment of the markers of a file no longer generated: guessed from its first marker. */
-function commentOf(text: string, fallback: string): string {
+export function commentOf(text: string, fallback: string): string {
   const m = /^[ \t]*(\S+)[ \t]*<user:[^\s<>]+>[ \t]*\r?$/m.exec(text)
   return m ? m[1]! : fallback
 }
