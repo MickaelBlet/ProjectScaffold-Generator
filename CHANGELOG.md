@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Code generation panel (_Window › Code generation_): the templates generating the active document (template folder, the output directory's `.scaffold/templates`, or built-in) and the files generated into its output directory, with their `.orphans` files. Each opens in an editor tab with the code editor: Liquid templates checked as they are typed, user sections of generated files shaded, Ctrl+S / _Save_ writes the file, changes on disk taken when the tab is shown again. Built-in templates open read-only. In VS Code, the files open in VS Code's editors.
 - _File › Open IDL file as text…_: IDL files edited in a tab of the code editor, with their errors and warnings on their lines, saved with Ctrl+S.
+- Output panel (_Window › Output_, Ctrl+Shift+U): a timestamped log of code generation (each file written, unchanged, removed, in conflict, with orphan sections or no longer generated, and the template warnings; a file opens from its line) and of every status message and dialog of the app, filtered by source, level or text; _Window › Clear output_. Shown, without the focus, when a generation reports problems or fails. In VS Code, the lines also go to the _ProjectScaffold_ output channel.
 
 ### Changed
 

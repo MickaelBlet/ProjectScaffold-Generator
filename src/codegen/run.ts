@@ -237,6 +237,38 @@ export function commentOf(text: string, fallback: string): string {
   return m ? m[1]! : fallback
 }
 
+/** A line of a generation report: problems are warnings; `path`: the file it is about. */
+export interface ReportEntry {
+  level: 'info' | 'warning'
+  text: string
+  path?: string
+}
+
+/** One entry per file and problem, for the app's Output panel. */
+export function reportEntries(r: GenerationReport): ReportEntry[] {
+  return [
+    ...r.written.map((path) => ({ level: 'info' as const, text: `written ${path}`, path })),
+    ...r.unchanged.map((path) => ({ level: 'info' as const, text: `unchanged ${path}`, path })),
+    ...r.removed.map((path) => ({ level: 'info' as const, text: `removed ${path}` })),
+    ...r.conflicts.map((c) => ({
+      level: 'warning' as const,
+      text: `conflict ${c.path}: ${c.reason}, left as it is`,
+      path: c.path
+    })),
+    ...r.orphans.map((o) => ({
+      level: 'warning' as const,
+      text: `orphans ${o.path}: user sections ${o.ids.join(', ')} have no place left, saved to ${o.path}${ORPHANS}`,
+      path: o.path + ORPHANS
+    })),
+    ...r.stale.map((path) => ({
+      level: 'warning' as const,
+      text: `stale ${path}: no longer generated`,
+      path
+    })),
+    ...r.warnings.map((text) => ({ level: 'warning' as const, text }))
+  ]
+}
+
 /** One line per file and problem, for the CLI and the app (`written`: list the files written). */
 export function formatReport(r: GenerationReport, dir: string, written = true): string {
   const lines: string[] = []

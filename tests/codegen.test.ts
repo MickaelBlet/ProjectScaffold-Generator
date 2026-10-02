@@ -4,7 +4,14 @@ import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { buildContext } from '@/codegen/context'
 import { createEngine, generate, outputPath, trimTagLines } from '@/codegen/generate'
-import { generatedFiles, generateInto, generationInput, RECORD, type OutputDir } from '@/codegen/run'
+import {
+  generatedFiles,
+  generateInto,
+  generationInput,
+  RECORD,
+  reportEntries,
+  type OutputDir
+} from '@/codegen/run'
 import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '@/codegen/sections'
 import { parseManifest, type TemplateSet } from '@/codegen/templateSet'
 import { fromFile } from '@/model/serialize'
@@ -478,5 +485,30 @@ describe('C++17 generation', () => {
     expect(pruned.removed).toEqual(['include/plant_demo/Client.hpp', 'src/Client.cpp'])
     expect(dir.files['src/Client.cpp']).toBeUndefined()
     expect(dir.files['src/Client.cpp.orphans']).toContain('hello();')
+  })
+})
+
+describe('report entries', () => {
+  it('lists files as information and problems as warnings, with the file to open', () => {
+    const entries = reportEntries({
+      written: ['a.hpp'],
+      unchanged: ['b.hpp'],
+      conflicts: [{ path: 'c.cpp', reason: 'changed outside its user sections' }],
+      orphans: [{ path: 'd.cpp', ids: ['init'] }],
+      stale: ['e.cpp'],
+      removed: ['f.cpp'],
+      warnings: ['unknown type']
+    })
+    expect(entries.map((e) => [e.level, e.path])).toEqual([
+      ['info', 'a.hpp'],
+      ['info', 'b.hpp'],
+      ['info', undefined],
+      ['warning', 'c.cpp'],
+      ['warning', 'd.cpp.orphans'],
+      ['warning', 'e.cpp'],
+      ['warning', undefined]
+    ])
+    expect(entries[3]!.text).toContain('changed outside its user sections')
+    expect(entries[4]!.text).toContain('init')
   })
 })
