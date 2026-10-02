@@ -1,0 +1,141 @@
+{%- comment -%}
+  C++ literal of a default value of the model (as in the YAML file) of type t.
+  Parameters: v, t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    case t.name
+    when 'bool'
+      if v == true or v == 'true'
+        echo 'true'
+      else
+        echo 'false'
+      endif
+    when 'char'
+      assign c = v | replace: '\\', '\\\\' | replace: "'", "\\'"
+      echo "'" | append: c | append: "'"
+    when 'string'
+      assign text = v | replace: '\\', '\\\\' | replace: '"', '\\"' | replace: '\n', '\\n' | replace: '\t', '\\t'
+      echo '"' | append: text | append: '"'
+    when 'bytes'
+      # The text's characters, one byte each.
+      assign chars = v | split: ''
+      echo '{'
+      for ch in chars
+        assign c = ch | replace: '\\', '\\\\' | replace: "'", "\\'"
+        echo "'" | append: c | append: "'"
+        unless forloop.last
+          echo ', '
+        endunless
+      endfor
+      echo '}'
+    when 'float32', 'float64'
+      assign number = v | append: ''
+      echo number
+      unless number contains '.' or number contains 'e'
+        echo '.0'
+      endunless
+      if t.name == 'float32'
+        echo 'f'
+      endif
+    when 'int64'
+      echo v | append: 'LL'
+    when 'uint64'
+      echo v | append: 'ULL'
+    when 'uint32'
+      echo v | append: 'U'
+    else
+      echo v
+    endcase
+  when 'optional'
+    if v == nil
+      echo 'std::nullopt'
+    else
+      render '_value', v: v, t: t.of
+    endif
+  when 'array', 'vector', 'list', 'set'
+    echo '{'
+    for item in v
+      render '_value', v: item, t: t.of
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+    echo '}'
+  when 'map'
+    echo '{'
+    for entry in v
+      echo '{'
+      render '_value', v: entry[0], t: t.key
+      echo ', '
+      render '_value', v: entry[1], t: t.value
+      echo '}'
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+    echo '}'
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    case def.kind
+    when 'enum'
+      render '_type', t: t
+      echo '::'
+      render '_id', name: v
+    when 'bitmask'
+      # The flags of the list, or no flag.
+      if v.size == 0
+        render '_type', t: t
+        echo '{}'
+      endif
+      for flag in v
+        render '_type', t: t
+        echo '::'
+        render '_id', name: flag
+        unless forloop.last
+          echo ' | '
+        endunless
+      endfor
+    when 'union'
+      # The case of the one-entry mapping, set by a lambda.
+      for entry in v
+        assign c = def.cases | where: 'name', entry[0] | first
+        echo '[] { '
+        render '_type', t: t
+        echo ' u; u.'
+        render '_id', name: c.name
+        echo '('
+        render '_value', v: entry[1], t: c.type
+        echo '); return u; }()'
+      endfor
+    when 'alias'
+      render '_value', v: v, t: def.type
+    when 'struct'
+      # Fields in order: the value's, else the field's default, else value-initialized.
+      assign given = '|'
+      for entry in v
+        assign given = given | append: entry[0] | append: '|'
+      endfor
+      render '_type', t: t
+      echo '{'
+      for f in def.fields
+        assign key = '|' | append: f.name | append: '|'
+        if given contains key
+          render '_value', v: v[f.name], t: f.type
+        elsif f.hasDefault
+          render '_value', v: f.default, t: f.type
+        else
+          echo '{}'
+        endif
+        unless forloop.last
+          echo ', '
+        endunless
+      endfor
+      echo '}'
+    else
+      # Custom primitive: the value is written as it is (a string is a C++ expression).
+      echo v
+    endcase
+  endcase
+-%}

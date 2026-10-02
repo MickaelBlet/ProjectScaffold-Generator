@@ -1,0 +1,58 @@
+{%- comment -%}
+  C++ statements, on one line, checking the bounds of value `v` of type `t` (`string<16>`,
+  `vector<T, 8>`, through aliases; structs check their own fields): nothing when unbounded.
+  Parameters: t, v, depth (of the loops, from 0).
+{%- endcomment -%}
+{%- liquid
+  assign item = 'x' | append: depth | append: '_'
+  assign next = depth | plus: 1
+  case t.kind
+  when 'primitive'
+    if t.max
+      echo 'checkBound(' | append: v | append: ', ' | append: t.max | append: ');'
+    endif
+  when 'ref'
+    if t.typeKind == 'alias'
+      assign def = allTypes | where: 'name', t.name | first
+      render '_bounds', t: def.type, v: v, depth: depth
+    endif
+  when 'optional'
+    assign value = '*' | append: v
+    capture inner
+      render '_bounds', t: t.of, v: value, depth: depth
+    endcapture
+    if inner != ''
+      echo 'if (' | append: v | append: ') { ' | append: inner | append: ' }'
+    endif
+  when 'map'
+    if t.max
+      echo 'checkBound(' | append: v | append: ', ' | append: t.max | append: ');'
+    endif
+    assign key = item | append: '.first'
+    assign value = item | append: '.second'
+    capture inner
+      render '_bounds', t: t.key, v: key, depth: next
+      render '_bounds', t: t.value, v: value, depth: next
+    endcapture
+    if inner != ''
+      if t.max
+        echo ' '
+      endif
+      echo 'for (const auto& ' | append: item | append: ' : ' | append: v | append: ') { ' | append: inner | append: ' }'
+    endif
+  else
+    # array, vector, list, set
+    if t.kind != 'array' and t.max
+      echo 'checkBound(' | append: v | append: ', ' | append: t.max | append: ');'
+    endif
+    capture inner
+      render '_bounds', t: t.of, v: item, depth: next
+    endcapture
+    if inner != ''
+      if t.kind != 'array' and t.max
+        echo ' '
+      endif
+      echo 'for (const auto& ' | append: item | append: ' : ' | append: v | append: ') { ' | append: inner | append: ' }'
+    endif
+  endcase
+-%}

@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Check the calls between binaries: generate tests/fixtures/relay.scaffold.yaml, build it with
 # tests/remote/interop.cpp, then over each generated transport call C++ from Python, Python from C++
-# and Python from Python (and the Python peers of both binaries). Needs cmake, a C++17 compiler and
-# python3 (3.8+).
-# Usage: scripts/check_remote.sh [work directory (default: a temporary one)]
+# and Python from Python (and the Python peers of both binaries). Needs cmake, a C++ compiler of the
+# template set's standard and python3 (3.8+).
+# Usage: scripts/check_remote.sh [-t <C++ template set, default cpp17>] [work directory (default: a temporary one)]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+set=cpp17
+if [ "${1:-}" = -t ]; then set=$2; shift 2; fi
 work=${1:-$(mktemp -d)}
 mkdir -p "$work"
-npm run -s generate -- tests/fixtures/relay.scaffold.yaml -o "$work/relay" --force >/dev/null
+npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t "$set" -o "$work/relay" --force >/dev/null
 # Unused parameters: the generated handlers are empty.
 cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" \
   -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" >/dev/null

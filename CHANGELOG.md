@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Built-in template sets chosen per project: the file format's `generation.templates` names the one generating its code (default `cpp17`), set in _Inspector › Project › Code generation_ or _File › Code templates…_, which lists the built-in sets. Command line: `-t <name>` takes a built-in set as well as a folder.
+- Built-in `cpp20` template set: the C++17 one in C++20 (concepts in the wire format, `std::bit_cast` / `std::endian`, defaulted `operator==` on structs and unions, `std::jthread` server threads).
+- `scripts/check_templates.sh`: generates the examples and fixtures with each built-in template set and builds them; `scripts/check_remote.sh -t <set>` checks another C++ set.
 - Code generation panel (_Window › Code generation_): the templates generating the active document (template folder, the output directory's `.scaffold/templates`, or built-in) and the files generated into its output directory, with their `.orphans` files. Each opens in an editor tab with the code editor: Liquid templates checked as they are typed, user sections of generated files shaded, Ctrl+S / _Save_ writes the file, changes on disk taken when the tab is shown again. Built-in templates open read-only. In VS Code, the files open in VS Code's editors.
 - Global view: a _YAML_ button at its top right opens the project text (_Edit as text_).
 - _File › Open IDL file as text…_: IDL files edited in a tab of the code editor, with their errors and warnings on their lines, saved with Ctrl+S.

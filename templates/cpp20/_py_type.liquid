@@ -1,0 +1,54 @@
+{%- comment -%}
+  Python type hint of a type reference: `Dict[str, List[data.Pose]]`; `None` for none. Aliases are
+  spelled as the type they stand for. Parameters: t, prefix (`data.` outside data.py, else '').
+{%- endcomment -%}
+{%- liquid
+  if t == nil
+    echo 'None'
+  else
+    case t.kind
+    when 'primitive'
+      case t.name
+      when 'bool'
+        echo 'bool'
+      when 'char', 'string'
+        echo 'str'
+      when 'float32', 'float64'
+        echo 'float'
+      when 'bytes'
+        echo 'bytes'
+      else
+        echo 'int'
+      endcase
+    when 'ref'
+      assign def = allTypes | where: 'name', t.name | first
+      case def.kind
+      when 'alias'
+        render '_py_type', t: def.type, prefix: prefix
+      when 'primitive'
+        echo 'Any'
+      else
+        echo prefix
+        render '_py_id', name: t.name
+      endcase
+    when 'optional'
+      echo 'Optional['
+      render '_py_type', t: t.of, prefix: prefix
+      echo ']'
+    when 'set'
+      echo 'Set['
+      render '_py_type', t: t.of, prefix: prefix
+      echo ']'
+    when 'map'
+      echo 'Dict['
+      render '_py_type', t: t.key, prefix: prefix
+      echo ', '
+      render '_py_type', t: t.value, prefix: prefix
+      echo ']'
+    else
+      echo 'List['
+      render '_py_type', t: t.of, prefix: prefix
+      echo ']'
+    endcase
+  endif
+-%}

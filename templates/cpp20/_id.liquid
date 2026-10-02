@@ -1,0 +1,10 @@
+{%- comment -%}
+  A model name as a C++ identifier: reserved words (manifest `reserved`) get a trailing `_`.
+  Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  echo name
+  if generator.reserved contains name
+    echo '_'
+  endif
+-%}

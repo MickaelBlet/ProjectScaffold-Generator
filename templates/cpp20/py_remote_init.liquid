@@ -1,0 +1,5 @@
+{% include '_py_banner' %}
+"""Proxies, handlers and stubs of the interfaces of the links between binaries."""
+{% for i in remoteInterfaces %}
+from .{% capture module %}{{ i.name | snake }}{% endcapture %}{% render '_py_id', name: module %} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
+{% endfor %}
