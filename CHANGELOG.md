@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - YAML highlighting: values colored by type (strings, numbers, booleans, null), anchors and aliases colored, top-level keys in bold.
 - Inspector: entries of every list (fields, parameters, attributes, ports, enum values, flags, transports, metadata, binaries, references) and table rows are rounded, bordered blocks. Columns of buttons and numbers in tables take the width of their content. Module ports laid out like parameters: name, direction, then interface, wrapped onto a second line when the inspector is narrow.
 - Explorer: the buttons of a section header stay on the right of its title, wrapping onto more lines there when the panel is narrow; the title stays whole.
+- Explorer: views show the diamond of their editor tab in place of the letter V.
 - Toolbar: ← / → buttons go to the previous / next selection (Alt+← / Alt+→); the shortcut of _Go to…_ sits on the right of its button.
 
 ### Fixed
