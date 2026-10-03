@@ -95,7 +95,7 @@ Development: `npm run build && npm run vscode:compile`, then `code --extensionDe
 - The **Output** panel (Ctrl+Shift+U) logs code generation file by file (click a generated file to open it) and every status message and dialog, with their time; filter by source, level or text.
 - **Save** writes the project file (export format + `editor` section). **Export** writes the file without editor data.
 - **Recent ▾** (toolbar) lists the last 10 opened/saved projects (exports excluded). Stored in IndexedDB (file handle + last content; reopening asks for file access again when needed).
-- Settings (theme, link style and badges, port style (dots, arrows, hollow, shapes) to tell `in` from `out`, grid, guides, select before moving, minimap, arrange on open) are kept per browser.
+- Settings (theme, link style and badges, port style (dots, arrows, hollow, shapes) to tell `in` from `out`, grid, guides, select before moving, Inspector shown on selection, minimap, arrange on open) are kept per browser.
 
 ## File format
 
