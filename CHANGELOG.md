@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tool panel tabs (Explorer, Code generation, Inspector, Problems, Output, Search, Settings) show an icon in place of their title, kept as the tooltip; the Problems tab shows its error (or warning) count as a badge. Middle click or right click › _Close_ closes them.
 - The _Modules_, _Links_ and _Dependencies_ panels are removed (also from the VS Code side bar, with _Window › Modules_ Ctrl+Shift+O and _Window › Links_ Ctrl+Shift+L): the Explorer shows the same. Its _Modules_ gain the eye hiding a module in the focused view, drag and drop to re-parent, and _Open module view_ / _Hide in view_ / _Rename_ / _Add submodule_ in their right-click menu; a dependency shows in the Inspector (_Show dependency_), double-click opens its file. A saved panel layout holding a removed panel is reset.
 - _Snap to grid_ and _Force animations_ are on by default (a saved choice is kept).
 - Default panel layout: _Explorer_, _Code generation_ and _Search_ tabbed on the left, _Inspector_ and _Settings_ on the right, _Problems_ and _Output_ under the editor area (_Window › Reset panel layout_ to apply it to a saved layout).
