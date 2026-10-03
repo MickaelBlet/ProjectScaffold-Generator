@@ -33,10 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explorer: the buttons of a section header stay on the right of its title, wrapping onto more lines there when the panel is narrow; the title stays whole.
 - Explorer: views show the diamond of their editor tab in place of the letter V.
 - Toolbar: ← / → buttons go to the previous / next selection (Alt+← / Alt+→); the shortcut of _Go to…_ sits on the right of its button.
+- _Change templates…_ / _File › Code templates…_: the templates in use come first, checked on the left; the entries no longer show a T badge.
 
 ### Fixed
 
 - Tauri (Windows): files and folders picked once (recent documents, workspace, output and template folders) are read and written again without asking for permission at every launch.
+- Code generation panel: its templates and generated files are listed after a reload instead of staying at _Reading…_ until _Change templates…_ or _Refresh_; picking a built-in template set no longer does nothing when the document changed while the list was open.
 - Explorer: the selected link is highlighted in _Links_.
 - Going to a link (Explorer, Links, problems, text cursor) centers the diagram on the link itself, not on the modules it joins; _Fit selection_ (F) zooms to a selected link.
 
