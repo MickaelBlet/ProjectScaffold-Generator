@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explorer: the selected link is highlighted in _Links_.
 - Errors that go away are reported as gone in the status bar and the Output panel instead of staying shown: the conflicts of a project with the open documents using it (_Not taken from this project_), once any edit or undo in one of them resolves them (a cycle broken, a name defined differently renamed); a file that could not be read, once it can.
 - Going to a link (Explorer, Links, problems, text cursor) centers the diagram on the link itself, not on the modules it joins; _Fit selection_ (F) zooms to a selected link.
+- Browser and desktop: _Open_ on an IDL dependency (Explorer, Inspector, imported module) opens the IDL file as text instead of reporting it is not open; the file is picked again when it is no longer at hand.
 
 ### Removed
 
