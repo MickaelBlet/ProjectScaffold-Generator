@@ -569,7 +569,7 @@ export function typeUsages(p: Project, typeId: Id): string[] {
 // Views
 
 export function globalView(): View {
-  return { id: GLOBAL_VIEW, name: 'Global', rootModuleId: null, hidden: [] }
+  return { id: GLOBAL_VIEW, name: 'Project', rootModuleId: null, hidden: [] }
 }
 
 const ISOLATED = 'isolate:'
