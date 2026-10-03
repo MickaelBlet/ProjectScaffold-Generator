@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Thin, discreet scrollbars on a transparent track, darker on hover (VS Code: its theme's scrollbar colors).
 - Project text (_Edit as text_, Alt+U): a real code editor (CodeMirror) in place of the plain text field: folding, search and replace (Ctrl+F), multiple cursors, bracket matching, completion in a popup that follows the text, problems underlined and marked in the gutter. Undo in the text undoes typing; the app's global shortcuts (save, palette…) still work from it.
 - Project text: selecting an element in the diagram or a list moves the cursor to it in the YAML, scrolled into view; _Follow cursor_ becomes _Sync selection_ and covers both directions. The editor data (layout, views, notes, styles) is always shown, its toggle removed; _Sync selection_ is a pill toggle in place of a checkbox; _Whitespace_ moves to _Settings › Text editor_ (an earlier choice to hide it is kept).
 - Browser, Electron: the open and save dialogs start in the folder of the last opened or saved project file, also after a reload.
