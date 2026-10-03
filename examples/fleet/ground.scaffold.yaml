@@ -265,8 +265,7 @@ links:
     constraints:
       direction: bidirectional
       ack:
-        required: true
-        timeoutMs: 1000
+        required: false
       performance:
         class: low
         maxLatencyMs: 500
@@ -1066,13 +1065,16 @@ editor:
       height: 140
     VideoWall:
       x: 520
-      y: 800
+      y: 840
       width: 200
-      height: 92
+      height: 100
   style:
     Datalink:
       labels:
         uplink: left
+    VideoWall:
+      labels:
+        video: bottom
   dependencies:
     Drone:
       Radio:
@@ -1080,14 +1082,18 @@ editor:
         y: 20
     Weather:
       WeatherService:
-        x: 20
-        y: 276
+        x: 60
+        y: 280
   orientation: vertical
   links:
     weather_feed:
       to:
         side: top
         at: 0.4
+    datalink_video:
+      to:
+        side: left
+        at: 0.217
   notes:
     - kind: note
       text: "Radio (project Drone) and WeatherService (project Weather) are modules of dependencies placed here (dashed): double-click to open their project."
