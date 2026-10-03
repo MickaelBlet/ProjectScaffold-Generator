@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tauri (Windows): files and folders picked once (recent documents, workspace, output and template folders) are read and written again without asking for permission at every launch.
 - Code generation panel: its templates and generated files are listed after a reload instead of staying at _Reading…_ until _Change templates…_ or _Refresh_; picking a built-in template set no longer does nothing when the document changed while the list was open.
 - Explorer: the selected link is highlighted in _Links_.
+- Dependent documents: once the conflicts of a project with the open documents using it are gone (a cycle broken, for one), the status bar and the Output panel say so instead of keeping the _Not taken from this project_ error.
 - Going to a link (Explorer, Links, problems, text cursor) centers the diagram on the link itself, not on the modules it joins; _Fit selection_ (F) zooms to a selected link.
 
 ### Removed
