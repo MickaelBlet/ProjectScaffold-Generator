@@ -37,6 +37,7 @@ export type ProblemTarget =
   | { kind: 'const'; id: Id }
   | { kind: 'module'; id: Id }
   | { kind: 'link'; id: Id }
+  | { kind: 'dependency'; id: Id }
 
 export interface Problem {
   severity: Severity
