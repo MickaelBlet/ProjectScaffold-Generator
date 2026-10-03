@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The _Global_ view is renamed _Project_ (_View › Open project view_, Alt+G); clicking it in the Explorer shows the project properties in the Inspector.
 - _File › Open IDL file as text…_: IDL files edited in a tab of the code editor, with their errors and warnings on their lines, saved with Ctrl+S.
 - Output panel (_Window › Output_, Ctrl+Shift+U): a timestamped log of code generation (each file written, unchanged, removed, in conflict, with orphan sections or no longer generated, and the template warnings; a file opens from its line) and of every status message and dialog of the app, filtered by source, level or text; _Window › Clear output_. Shown, without the focus, when a generation reports problems or fails. In VS Code, the entries also go to the _ProjectScaffold_ log output channel, with their level (filterable by VS Code's log level).
+- _Help › Reset app data…_ (browser, desktop) deletes everything the app stores in the browser (settings, panel layout, recent files, open documents, caches) and reloads it.
 
 ### Changed
 
