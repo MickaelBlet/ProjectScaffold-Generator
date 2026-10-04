@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Selecting on the canvas or in the Explorer brings the Inspector to the front (re-opened when closed), without taking the focus; setting _Show the Inspector on selection_ (on by default).
 - Clicking a dependency in the Explorer shows it in the Inspector (relations, types, interfaces with their members and uses, constants, placed modules, and a filter below its relations); its chevron folds it. The text cursor and the selection follow each other on a dependency too.
 - Settings filter: matches the settings' labels, hints and section titles.
+- _File › Export settings…_ / _Import settings…_: the settings as a JSON file (`project-scaffold.settings.json`), to take them to another browser, desktop app or VS Code; importing keeps the current value of the settings missing or invalid in the file.
 - Project text editor: _Changes_ (on by default) shows the changes since the last save in the text (added and changed lines highlighted, removed lines shown above them, markers in the gutter, the minimap and the left lane of the scrollbar's overview ruler), each with a _Revert_ button; the number of changes beside it. Not in VS Code, which shows its own.
 - Project text editor: the validation errors and warnings (not only load errors) are underlined on the lines of their entities, counted in the header (click to show or hide the list below the text), and listed with their line.
 - Project view: a _YAML_ button at its top right opens the project text (_Edit as text_).
