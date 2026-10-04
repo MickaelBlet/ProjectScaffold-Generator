@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code editor: matching brackets outlined in the accent color, on top of their shading, and marked on the minimap and the overview ruler of the scrollbar.
 - Code editor: fold markers drawn as wider chevrons, centered on their line.
 - Diagram export (PNG / SVG): transparent background, no longer filled with the editor background.
+- Diagram export as SVG about ten times smaller: the style properties each element would get anyway (inherited or default) are left out.
 
 ### Fixed
 
