@@ -61,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explorer: section headers behave like the Code generation panel's: always in view, stacked at the top or bottom of the list while it scrolls, the filter staying above; clicking the header of a section scrolled out of view scrolls back to its first item. The buttons of a header stay on the right of its title, wrapping onto more lines there when the panel is narrow; the title stays whole.
 - Explorer: views show the diamond of their editor tab in place of the letter V.
 - Explorer: a button beside the filter folds or unfolds all the modules with submodules, the dependencies and their groups.
-- Explorer and Code generation panel: the whole section header folds the section (or scrolls back to it), not only its title; its action buttons excepted.
+- Explorer and Code generation panel: the whole section header folds the section (or scrolls back to it, outlining the section a moment), not only its title; its action buttons excepted.
 - Consistent mouse cursors: a hand on everything clickable (section headers, selects, checkboxes and their labels, color pickers), the arrow once disabled; on the canvas, the bend and end handles of a selected link and its line show an open hand, closed while dragging.
 - Toolbar: ← / → buttons go to the previous / next selection (Alt+← / Alt+→); the shortcut of _Go to…_ sits on the right of its button.
 - _Change templates…_ / _File › Code templates…_: the templates in use come first, checked on the left; the entries no longer show a T badge.
