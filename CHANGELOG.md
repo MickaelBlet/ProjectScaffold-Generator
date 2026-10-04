@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Going to a link (Explorer, Links, problems, text cursor) centers the diagram on the link itself, not on the modules it joins; _Fit selection_ (F) zooms to a selected link.
 - Browser and desktop: _Open_ on an IDL dependency (Explorer, Inspector, imported module) opens the IDL file as text instead of reporting it is not open; the file is picked again when it is no longer at hand.
 - Browser and desktop: generating code into an output folder deleted or recreated since it was picked asks for the folder again instead of failing with _A requested file or directory could not be found_.
+- Diagram export (PNG / SVG): inheritance lines are drawn; the drawings of the diagram (lines, arrows, icons) keep the style of the page instead of only their own.
 
 ### Removed
 
