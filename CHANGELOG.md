@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diagram export (PNG / SVG): transparent background, no longer filled with the editor background.
 - Diagram export as SVG about ten times smaller: the style properties each element would get anyway (inherited or default) are left out.
 - Canvas: the edges of a selected module, imported module or note grab a resize 8px wide (4px on either side of the border), no longer 1px, above the port bands and labels lying on the border (top and bottom edges of modules with ports there were partly out of reach); still drawn as a thin line, ports still start links.
+- VS Code: the ProjectScaffold side bar's title has no buttons any more (_Generate Code_, _Generate Code Into…_, _Code Templates…_): its Code generation tab, the diagram's title, the palette and the files' explorer menu still run them. Its tabs show icons, titles as tooltips, like the tool tabs of the full layout.
 
 ### Fixed
 
