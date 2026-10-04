@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code editor: fold markers drawn as wider chevrons, centered on their line.
 - Diagram export (PNG / SVG): transparent background, no longer filled with the editor background.
 - Diagram export as SVG about ten times smaller: the style properties each element would get anyway (inherited or default) are left out.
+- Canvas: the edges of a selected module, imported module or note grab a resize 10px wide (5px on either side of the border), no longer 1px; still drawn as a thin line.
 
 ### Fixed
 
