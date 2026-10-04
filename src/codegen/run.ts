@@ -12,6 +12,7 @@ import {
   type Section
 } from './sections'
 import { loadTemplateSet, type TemplateSet } from './templateSet'
+import type { TextSpot } from '../model/search'
 import { toFile } from '../model/serialize'
 import { validate } from '../model/validate'
 import type { FileProject } from '../model/schema'
@@ -26,8 +27,8 @@ export interface OutputDir {
   /** Writes a file, creating its directories. */
   write(path: string, text: string): Promise<void>
   remove(path: string): Promise<void>
-  /** Opens a file in the host's own editor (VS Code); absent when the page edits it. */
-  open?(path: string): void
+  /** Opens a file in the host's own editor (VS Code), selecting `at`; absent when the page edits it. */
+  open?(path: string, at?: TextSpot): void
 }
 
 export const RECORD = '.scaffold-gen.json'
