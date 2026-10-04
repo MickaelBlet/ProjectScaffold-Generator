@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - _File › Open IDL file as text…_: IDL files edited in a tab of the code editor, with their errors and warnings on their lines, saved with Ctrl+S.
 - Output panel (_Window › Output_, Ctrl+Shift+U): a timestamped log of code generation (each file written, unchanged, removed, in conflict, with orphan sections or no longer generated, and the template warnings; a file opens from its line) and of every status message and dialog of the app, filtered by source, level or text; _Window › Clear output_. Shown, without the focus, when a generation reports problems or fails. In VS Code, the entries also go to the _ProjectScaffold_ log output channel, with their level (filterable by VS Code's log level).
 - _Help › Reset app data…_ (browser, desktop) deletes everything the app stores in the browser (settings, panel layout, recent files, open documents, caches) and reloads it.
+- Explorer: the _Modules_ section also lists the modules of dependencies placed on the canvas, after the project's own; a dependency's _Modules_ group also lists its modules not placed (dimmed, in its project's order) when its file can be read (open tab, or next to the document in VS Code): double-click one, or _Place on the canvas_ from its menu, to place it.
 
 ### Changed
 
