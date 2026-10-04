@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Documentation split out of the README into guides in `docs/` (building, editor, keyboard shortcuts, VS Code, file format, dependencies, IDL files, code generation, C++ and Python mapping, links between binaries, SCA, writing templates); the README keeps an overview and a quick start.
 - The toolbar's _Previous selection_ / _Next selection_ icons show an arrow toward a square, set apart from _Undo_ / _Redo_.
 - The toolbar no longer has the _+ Module_ and _Arrange_ buttons: _Insert › Add module_ (Ctrl+M) and _Arrange › Auto-arrange_ (Ctrl+Alt+L) remain.
 - VS Code: the ProjectScaffold side bar is one view with the Explorer and Code generation in tabs, no longer stacked views; it shows the tab shown last, and _Window › Explorer / Code generation_ select theirs. Settings moved to the diagram, with the Inspector (Ctrl+,).

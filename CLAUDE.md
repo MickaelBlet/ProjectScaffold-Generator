@@ -70,6 +70,6 @@ scripts/build_all.sh [--check] [web|cli|vscode|desktop]...   # all of the above 
 
 ## Conventions
 
-- Update `CHANGELOG.md` `[Unreleased]` (Keep a Changelog) and README for user-visible changes; update `examples/` and the schema when the file format changes.
+- Update `CHANGELOG.md` `[Unreleased]` (Keep a Changelog) and the user documentation (`README.md`, `docs/*.md`, `vscode/README.md`) for user-visible changes; update `examples/` and the schema when the file format changes.
 - Build scripts install with `npm ci` when `node_modules` is older than the lockfile.
 - Commit each finished feature or fix with the `commit-gpg` skill (GPG-signed commit, CHANGELOG checked).
