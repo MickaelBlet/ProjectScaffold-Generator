@@ -35,56 +35,56 @@ partials:
 outputs:
   - template: pyproject.toml.liquid
     path: pyproject.toml
-  - template: py_init.liquid
+  - template: init.py.liquid
     path: "{{ project.ident | snake }}/__init__.py"
-  - template: py_main.liquid
+  - template: main.py.liquid
     path: "{{ project.ident | snake }}/__main__.py"
     when: modules.size > 0
-  - template: py_wire.liquid
+  - template: wire.py.liquid
     path: "{{ project.ident | snake }}/wire.py"
-  - template: py_data.liquid
+  - template: data.py.liquid
     path: "{{ project.ident | snake }}/data.py"
-  - template: py_constants.liquid
+  - template: constants.py.liquid
     path: "{{ project.ident | snake }}/constants.py"
     when: constants.size > 0
-  - template: py_interfaces.liquid
+  - template: interfaces.py.liquid
     path: "{{ project.ident | snake }}/interfaces.py"
-  - template: py_ports.liquid
+  - template: ports.py.liquid
     path: "{{ project.ident | snake }}/ports.py"
     when: modules.size > 0
   # One Python module per module; a module with children is a package (its class in __init__.py).
-  - template: py_modules_init.liquid
+  - template: modules_init.py.liquid
     path: "{{ project.ident | snake }}/modules/__init__.py"
     when: modules.size > 0
-  - template: py_module.liquid
+  - template: module.py.liquid
     each: modules
     path: "{% capture p %}{% render '_py_module_path', m: item %}{% endcapture %}{{ p | replace: '.', '/' }}{% if item.children.size > 0 %}/__init__.py{% else %}.py{% endif %}"
   # One system per binary of the project, or one for the whole project.
-  - template: py_systems_init.liquid
+  - template: systems_init.py.liquid
     path: "{{ project.ident | snake }}/systems/__init__.py"
     when: modules.size > 0
-  - template: py_system.liquid
+  - template: system.py.liquid
     each: systems
     as: system
     path: "{{ project.ident | snake }}/systems/{% capture file %}{{ system.name | snake }}{% endcapture %}{% render '_py_id', name: file %}.py"
     when: modules.size > 0
   # Calls between binaries: transports, link addresses, proxies / handlers / stubs, peers.
-  - template: py_transport.liquid
+  - template: transport.py.liquid
     path: "{{ project.ident | snake }}/transport.py"
     when: remoteLinks.size > 0
-  - template: py_links.liquid
+  - template: links.py.liquid
     path: "{{ project.ident | snake }}/links.py"
     when: remoteLinks.size > 0
-  - template: py_remote_init.liquid
+  - template: remote_init.py.liquid
     path: "{{ project.ident | snake }}/remote/__init__.py"
     when: remoteLinks.size > 0
-  - template: py_remote.liquid
+  - template: remote.py.liquid
     each: remoteInterfaces
     path: "{{ project.ident | snake }}/remote/{% capture module %}{{ item.name | snake }}{% endcapture %}{% render '_py_id', name: module %}.py"
-  - template: py_peers_init.liquid
+  - template: peers_init.py.liquid
     path: "{{ project.ident | snake }}/peers/__init__.py"
     when: remoteLinks.size > 0
-  - template: py_peer.liquid
+  - template: peer.py.liquid
     each: systems
     as: system
     when: system.proxies.size > 0 or system.stubs.size > 0

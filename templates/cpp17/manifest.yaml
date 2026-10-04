@@ -116,43 +116,43 @@ outputs:
     when: modules.size > 0
   # Python peers of the binaries (python/<project>/), speaking the wire format of remote/wire.hpp:
   # each stands in for a binary, to test the others.
-  - template: py_init.liquid
+  - template: init.py.liquid
     path: python/{{ project.ident | snake }}/__init__.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_wire.liquid
+  - template: wire.py.liquid
     path: python/{{ project.ident | snake }}/wire.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_transport.liquid
+  - template: transport.py.liquid
     path: python/{{ project.ident | snake }}/transport.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_links.liquid
+  - template: links.py.liquid
     path: python/{{ project.ident | snake }}/links.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_data.liquid
+  - template: data.py.liquid
     path: python/{{ project.ident | snake }}/data.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_constants.liquid
+  - template: constants.py.liquid
     path: python/{{ project.ident | snake }}/constants.py
     when: remoteLinks.size > 0 and remoteConstants.size > 0
     comment: '#'
-  - template: py_remote_init.liquid
+  - template: remote_init.py.liquid
     path: python/{{ project.ident | snake }}/remote/__init__.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_remote.liquid
+  - template: remote.py.liquid
     each: remoteInterfaces
     path: "python/{{ project.ident | snake }}/remote/{% capture module %}{{ item.name | snake }}{% endcapture %}{% render '_py_id', name: module %}.py"
     comment: '#'
-  - template: py_peers_init.liquid
+  - template: peers_init.py.liquid
     path: python/{{ project.ident | snake }}/peers/__init__.py
     when: remoteLinks.size > 0
     comment: '#'
-  - template: py_peer.liquid
+  - template: peer.py.liquid
     each: systems
     as: system
     when: system.proxies.size > 0 or system.stubs.size > 0
