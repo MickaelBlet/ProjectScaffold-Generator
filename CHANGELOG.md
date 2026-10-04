@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Selecting on the canvas or in the Explorer brings the Inspector to the front (re-opened when closed), without taking the focus; setting _Show the Inspector on selection_ (on by default).
 - Clicking a dependency in the Explorer shows it in the Inspector (relations, types, interfaces with their members and uses, constants, placed modules, and a filter below its relations); its chevron folds it. The text cursor and the selection follow each other on a dependency too.
 - Settings filter: matches the settings' labels, hints and section titles.
+- VS Code: the full diagram editor has two layouts, switched by the _Full_ / _Integrated_ button of its toolbar, _Window › Full layout_, its editor title button (_Switch to Full Layout_ / _Switch to Integrated Layout_) or the setting `projectScaffold.editor.layout`: _integrated_ (the default, Explorer and Settings in the VS Code side bar) or _full_, every tool docked in the editor like the web app, templates and generated files opened in its tabs. Every open full diagram editor follows, keeping its views; each layout keeps its own panel arrangement.
+- VS Code commands _Import Settings…_, _Export Settings…_, _Show Code Generation Panel_, _Show Search Panel_, _Show Problems Panel_ and _Show Output Panel_ for the active diagram.
 - _File › Export settings…_ / _Import settings…_: the settings as a JSON file (`project-scaffold.settings.json`), to take them to another browser, desktop app or VS Code; importing keeps the current value of the settings missing or invalid in the file.
 - Project text editor: _Changes_ (on by default) shows the changes since the last save in the text (added and changed lines highlighted, removed lines shown above them, markers in the gutter, the minimap and the left lane of the scrollbar's overview ruler), each with a _Revert_ button; the number of changes beside it. Not in VS Code, which shows its own.
 - Project text editor: the validation errors and warnings (not only load errors) are underlined on the lines of their entities, counted in the header (click to show or hide the list below the text), and listed with their line.
@@ -67,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- VS Code: Alt+Z (word wrap) and Ctrl+Shift+U (Output) in a focused diagram run the app's command instead of VS Code's.
 - Desktop apps (Tauri, Electron): the window appears once the page is painted, in the theme colors, instead of white at startup.
 - Tauri (Windows): files and folders picked once (recent documents, workspace, output and template folders) are read and written again without asking for permission at every launch.
 - Code generation panel: its templates and generated files are listed after a reload instead of staying at _Reading…_ until _Change templates…_ or _Refresh_; picking a built-in template set no longer does nothing when the document changed while the list was open.
