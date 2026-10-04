@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toolbar: ← / → buttons go to the previous / next selection (Alt+← / Alt+→); the shortcut of _Go to…_ sits on the right of its button.
 - _Change templates…_ / _File › Code templates…_: the templates in use come first, checked on the left; the entries no longer show a T badge.
 - The overflow menu of a tab bar (its chevron, shown when tabs do not fit) lists all the tabs of the group, not only the hidden ones.
-- Code editor: matching brackets outlined in the accent color, on top of their shading.
+- Code editor: matching brackets outlined in the accent color, on top of their shading, and marked on the minimap and the overview ruler of the scrollbar.
 
 ### Fixed
 
