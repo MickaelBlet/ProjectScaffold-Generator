@@ -1,0 +1,11 @@
+{%- comment -%}
+  Header of a module, relative to `include/`: `robot/core/Sensor.hpp`. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  echo project.ident | snake
+  for parent in e.namespace
+    assign part = parent | snake
+    echo '/' | append: part
+  endfor
+  echo '/' | append: e.name | append: '.hpp'
+-%}

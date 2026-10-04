@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties PUBLIC "-//JTRS//DTD SCA V2.2.2 PRF//EN" "properties.dtd">
+{% include '_xml_banner' %}
+{% assign root = project.ident | snake %}
+<!-- Properties of component {{ item.name }}: its attributes, configure / query. -->
+<properties>
+{% for a in item.attributes %}
+{% unless a.static %}
+{%- liquid
+  capture prf
+    render '_prf_type', t: a.type
+  endcapture
+-%}
+{% assign mode = 'readwrite' %}
+{% if a.const %}
+{% assign mode = 'readonly' %}
+{% endif %}
+{% if prf contains 'simple:' %}
+    <simple id="{{ a.name }}" type="{{ prf | remove_first: 'simple:' }}" name="{{ a.name }}" mode="{{ mode }}">
+{% if a.description != '' %}
+        <description>{{ a.description | escape }}</description>
+{% endif %}
+{% if a.hasDefault and a.default != nil %}
+        <value>{% render '_prf_value', v: a.default %}</value>
+{% endif %}
+        <kind kindtype="configure"/>
+    </simple>
+{% elsif prf contains 'sequence:' %}
+    <simplesequence id="{{ a.name }}" type="{{ prf | remove_first: 'sequence:' }}" name="{{ a.name }}" mode="{{ mode }}">
+{% if a.description != '' %}
+        <description>{{ a.description | escape }}</description>
+{% endif %}
+{% if a.hasDefault and a.default.size > 0 %}
+        <values>
+{% for v in a.default %}
+            <value>{% render '_prf_value', v: v %}</value>
+{% endfor %}
+        </values>
+{% endif %}
+        <kind kindtype="configure"/>
+    </simplesequence>
+{% else %}
+    <!-- {{ a.name }} ({% render '_cx_name', t: a.type, owner: root %}): configured as an any of its IDL type, not a PRF simple property. -->
+{% endif %}
+{% endunless %}
+{% endfor %}
+</properties>

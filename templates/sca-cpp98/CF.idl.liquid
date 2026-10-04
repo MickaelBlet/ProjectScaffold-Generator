@@ -1,0 +1,97 @@
+{% include '_banner' %}
+// The interfaces of the SCA 2.2.2 Core Framework (module CF) a component implements and uses:
+// those of a Resource and of its ports, with the repository ids of the standard. Replace this file
+// with the CF IDL of a Core Framework to deploy the components with it.
+#ifndef SCAFFOLD_CF_IDL
+#define SCAFFOLD_CF_IDL
+
+module CF {
+    struct DataType {
+        string id;
+        any value;
+    };
+    typedef sequence<DataType> Properties;
+    typedef sequence<string> StringSequence;
+    typedef sequence<octet> OctetSequence;
+
+    enum ErrorNumberType {
+        CF_NOTSET, CF_E2BIG, CF_EACCES, CF_EAGAIN, CF_EBADF, CF_EBADMSG, CF_EBUSY, CF_ECANCELED,
+        CF_ECHILD, CF_EDEADLK, CF_EDOM, CF_EEXIST, CF_EFAULT, CF_EFBIG, CF_EINPROGRESS, CF_EINTR,
+        CF_EINVAL, CF_EIO, CF_EISDIR, CF_EMFILE, CF_EMLINK, CF_EMSGSIZE, CF_ENAMETOOLONG, CF_ENFILE,
+        CF_ENODEV, CF_ENOENT, CF_ENOEXEC, CF_ENOLCK, CF_ENOMEM, CF_ENOSPC, CF_ENOSYS, CF_ENOTDIR,
+        CF_ENOTEMPTY, CF_ENOTSUP, CF_ENOTTY, CF_ENXIO, CF_EPERM, CF_EPIPE, CF_ERANGE, CF_EROFS,
+        CF_ESPIPE, CF_ESRCH, CF_ETIMEDOUT, CF_EXDEV
+    };
+
+    exception InvalidObjectReference {
+        string msg;
+    };
+    exception UnknownProperties {
+        Properties invalidProperties;
+    };
+
+    interface LifeCycle {
+        exception InitializeError {
+            StringSequence errorMessages;
+        };
+        exception ReleaseError {
+            StringSequence errorMessages;
+        };
+        void initialize() raises (InitializeError);
+        void releaseObject() raises (ReleaseError);
+    };
+
+    interface TestableObject {
+        exception UnknownTest {
+        };
+        void runTest(in unsigned long testid, inout Properties testValues)
+            raises (UnknownTest, UnknownProperties);
+    };
+
+    interface PropertySet {
+        exception InvalidConfiguration {
+            string msg;
+            Properties invalidProperties;
+        };
+        exception PartialConfiguration {
+            Properties invalidProperties;
+        };
+        void configure(in Properties configProperties)
+            raises (InvalidConfiguration, PartialConfiguration);
+        void query(inout Properties configProperties) raises (UnknownProperties);
+    };
+
+    interface PortSupplier {
+        exception UnknownPort {
+        };
+        Object getPort(in string name) raises (UnknownPort);
+    };
+
+    interface Resource : LifeCycle, TestableObject, PropertySet, PortSupplier {
+        exception StartError {
+            ErrorNumberType errorNumber;
+            string msg;
+        };
+        exception StopError {
+            ErrorNumberType errorNumber;
+            string msg;
+        };
+        readonly attribute string identifier;
+        void start() raises (StartError);
+        void stop() raises (StopError);
+    };
+
+    interface Port {
+        exception InvalidPort {
+            unsigned short errorCode;
+            string msg;
+        };
+        exception OccupiedPort {
+        };
+        void connectPort(in Object connection, in string connectionId)
+            raises (InvalidPort, OccupiedPort);
+        void disconnectPort(in string connectionId) raises (InvalidPort);
+    };
+};
+
+#endif

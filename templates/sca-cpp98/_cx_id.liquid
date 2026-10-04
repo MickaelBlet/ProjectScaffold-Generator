@@ -1,0 +1,10 @@
+{%- comment -%}
+  C++ name of an identifier declared in IDL (types, fields, operations, parameters): C++ keywords
+  get the `_cxx_` prefix of the C++ mapping. Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  if generator.reserved contains name
+    echo '_cxx_'
+  endif
+  echo name
+-%}

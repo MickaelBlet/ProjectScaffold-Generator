@@ -1,0 +1,123 @@
+# SCA 2.2.2 template set of ProjectScaffold (C++98, CORBA with omniORB 4):
+# `npm run generate -- <project file> -t sca-cpp98 -o <dir>`.
+# Types, constants and interfaces become IDL (idl/<project>.idl); each concrete top-level module an
+# SCA component (CF::Resource: provides ports as servants of their interface, uses ports as
+# CF::Port, attributes as properties) with its executable and descriptors (SPD, SCD, PRF); the
+# project a waveform (SAD; binaries as host collocations) and a launcher running it in one process.
+# Everything C++ / IDL lives in these files: the `_cx_*` partials spell the C++ mapping of IDL, the
+# `_idl_*` ones the IDL of the model; edit them freely.
+name: sca-cpp98
+description: SCA 2.2.2 components in C++98 over CORBA (omniORB) - IDL, CF::Resource components, SPD / SCD / PRF / SAD descriptors, CMake project, waveform launcher
+comment: '//'
+# C++ keywords (separated by spaces): names of the model among them are warned about, and renamed by
+# _id / _accessor / _member (the C++ mapping prefixes IDL names with `_cxx_`). IDL keywords are
+# escaped by _idl_id.
+reserved: >-
+  alignas alignof and and_eq asm auto bitand bitor bool break case catch char char16_t char32_t
+  class compl const constexpr const_cast continue decltype default delete do double dynamic_cast
+  else enum explicit export extern false float for friend goto if inline int long mutable namespace
+  new noexcept not not_eq nullptr operator or or_eq private protected public register
+  reinterpret_cast return short signed sizeof static static_assert static_cast struct switch
+  template this thread_local throw true try typedef typeid typename union unsigned using virtual
+  void volatile wchar_t while xor xor_eq
+partials:
+  - _banner.liquid
+  - _xml_banner.liquid
+  - _id.liquid
+  - _accessor.liquid
+  - _member.liquid
+  - _ns.liquid
+  - _qualified.liquid
+  - _header.liquid
+  - _source.liquid
+  - _namespace_open.liquid
+  - _namespace_close.liquid
+  - _component.liquid
+  - _iface_ns.liquid
+  - _repid.liquid
+  - _endpoint.liquid
+  - _exposed.liquid
+  - _port_name.liquid
+  - _waveform_links.liquid
+  - _init.liquid
+  - _idl_id.liquid
+  - _idl_member.liquid
+  - _idl_prim.liquid
+  - _idl_name.liquid
+  - _idl_type.liquid
+  - _idl_literal.liquid
+  - _idl_containers.liquid
+  - _idl_decl.liquid
+  - _idl_forward.liquid
+  - _idl_type_containers.liquid
+  - _cx_id.liquid
+  - _cx_member_id.liquid
+  - _cx_kind.liquid
+  - _cx_prim.liquid
+  - _variable.liquid
+  - _cx_name.liquid
+  - _cx_in.liquid
+  - _cx_params.liquid
+  - _cx_args.liquid
+  - _cx_ret.liquid
+  - _cx_member.liquid
+  - _cx_get.liquid
+  - _cx_empty.liquid
+  - _cx_outs.liquid
+  - _cx_literal.liquid
+  - _cx_init.liquid
+  - _any_get.liquid
+  - _any_put.liquid
+  - _prf_type.liquid
+  - _prf_value.liquid
+  - _scd_port.liquid
+  - _sad_placement.liquid
+outputs:
+  # IDL: the Core Framework interfaces a component needs, and the project's.
+  - template: CF.idl.liquid
+    path: idl/CF.idl
+  - template: idl.liquid
+    path: idl/{{ project.ident | snake }}.idl
+  # What every component uses, the same in every project: sca::Resource, sca::UsesPort, sca::Runtime.
+  - template: support.hpp.liquid
+    path: include/sca/support.hpp
+  - template: support.cpp.liquid
+    path: src/sca/support.cpp
+  - template: module.hpp.liquid
+    each: modules
+    path: "include/{% render '_header', e: item %}"
+  - template: module.cpp.liquid
+    each: modules
+    when: item.kind != 'interface'
+    path: "src/{% render '_source', e: item %}"
+  # Components: concrete top-level modules.
+  - template: component_main.cpp.liquid
+    each: modules
+    when: item.depth == 0 and item.abstract == false
+    path: src/main/{{ item.name | snake }}_main.cpp
+  - template: spd.xml.liquid
+    each: modules
+    when: item.depth == 0 and item.abstract == false
+    path: dom/components/{{ item.name }}/{{ item.name }}.spd.xml
+    comment: '#'
+  - template: scd.xml.liquid
+    each: modules
+    when: item.depth == 0 and item.abstract == false
+    path: dom/components/{{ item.name }}/{{ item.name }}.scd.xml
+    comment: '#'
+  - template: prf.xml.liquid
+    each: modules
+    when: item.depth == 0 and item.abstract == false
+    path: dom/components/{{ item.name }}/{{ item.name }}.prf.xml
+    comment: '#'
+  # The waveform: its assembly, and a launcher running it in one process.
+  - template: sad.xml.liquid
+    path: dom/waveforms/{{ project.ident | snake }}/{{ project.ident | snake }}.sad.xml
+    when: "modules | where: 'depth', 0 | where: 'abstract', false | first"
+    comment: '#'
+  - template: waveform.cpp.liquid
+    path: src/main/waveform.cpp
+    when: "modules | where: 'depth', 0 | where: 'abstract', false | first"
+  - template: CMakeLists.txt.liquid
+    path: CMakeLists.txt
+    comment: '#'

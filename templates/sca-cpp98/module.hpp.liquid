@@ -1,0 +1,246 @@
+{% include '_banner' %}
+#pragma once
+{%- liquid
+  assign m = item
+  assign root = project.ident | snake
+  capture class
+    render '_id', name: m.name
+  endcapture
+  capture component
+    render '_component', m: m
+  endcapture
+  # A component deriving from another component is a CF::Resource through it.
+  assign baseComponent = false
+  for b in m.bases
+    capture isComponent
+      render '_component', m: b
+    endcapture
+    if isComponent == 'true' and baseComponent == false
+      assign baseComponent = b
+    endif
+  endfor
+  assign virtuals = m.methods | where: 'virtual', true | size
+  # Names given by the model: attribute accessors do not take them.
+  assign methodNames = m.methods | map: 'name'
+  assign portNames = m.ports | map: 'name'
+  assign names = methodNames | concat: portNames
+  assign polymorphic = false
+  if component == 'true' or m.abstract or m.isBase or virtuals > 0 or m.bases.size > 0
+    assign polymorphic = true
+  endif
+  assign inherits = ''
+  if component == 'true' and baseComponent == false
+    assign inherits = '|public ::sca::Resource'
+  endif
+  for b in m.bases
+    capture base
+      render '_qualified', e: b
+    endcapture
+    assign inherits = inherits | append: '|public ' | append: base
+  endfor
+-%}
+
+
+#include <{{ root }}.hh>
+#include <sca/support.hpp>
+{% for b in m.bases %}
+#include <{% render '_header', e: b %}>
+{% endfor %}
+{% for c in m.instances %}
+#include <{% render '_header', e: c %}>
+{% endfor %}
+{% if component == 'true' %}
+#include <string>
+#include <vector>
+{% endif %}
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: m %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ m.description | doc_comment }}
+{% if component == 'true' %}
+/// SCA component {{ m.name }} (CF::Resource): its ports through getPort, its attributes as properties
+/// (configure / query); its executable and descriptors (dom/components/{{ m.name }}) start it alone.
+{% endif %}
+class {{ class }}{% if inherits != '' %} : {{ inherits | remove_first: '|' | replace: '|', ', ' }}{% endif %} {
+public:
+{% if m.kind == 'interface' %}
+    {{ class }}(){% render '_init', m: m %}
+    {
+{% for a in m.attributes %}
+{% if a.hasDefault and a.static == false %}
+{%- liquid
+  capture member
+    render '_member', name: a.name
+  endcapture
+-%}
+{% render '_cx_init', target: member, v: a.default, t: a.type, owner: root, pad: '        ', depth: 0 %}
+{% endif %}
+{% endfor %}
+    }
+    virtual ~{{ class }}() {}
+{% else %}
+    {{ class }}();
+    {% if polymorphic %}virtual {% endif %}~{{ class }}();
+{% endif %}
+{% for p in m.ports %}
+{% if p.interface %}
+{%- liquid
+  capture ifns
+    render '_iface_ns', i: p.interface
+  endcapture
+  capture iface
+    render '_cx_id', name: p.interface.name
+  endcapture
+%}
+
+    /// {% if p.role == 'in' %}Provides{% else %}Uses{% endif %} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates.size > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %}
+{{ p.description | doc_comment: '    /// ' }}
+{% if p.role == 'out' %}
+    ::sca::UsesPort< ::{{ ifns }}::{{ iface }}>& {% render '_id', name: p.name %}() { return {% render '_member', name: p.name %}; }
+{% elsif p.delegates.size > 0 %}
+    POA_{{ ifns }}::{{ iface }}& {% render '_id', name: p.name %}() { return {% render '_endpoint', x: p.delegates[0], skip: 0 %}; }
+{% else %}
+    POA_{{ ifns }}::{{ iface }}& {% render '_id', name: p.name %}() { return {{ p.name }}In_; }
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if m.instances.size > 0 %}
+
+{% for c in m.instances %}
+    {% render '_qualified', e: c %}& {% render '_accessor', name: c.name %}() { return {% if c.abstract %}*{% endif %}{% render '_accessor', name: c.name %}_; }
+{% endfor %}
+{% endif %}
+{% if m.attributes.size > 0 %}
+
+{% for a in m.attributes %}
+{% assign setter = a.name | ucfirst | prepend: 'set' %}
+{%- liquid
+  capture kind
+    render '_cx_kind', t: a.type
+  endcapture
+-%}
+{{ a.description | doc_comment: '    /// ' }}
+{% unless names contains a.name %}
+    {% if a.static %}static {% endif %}{% render '_cx_get', t: a.type, owner: root %} {% render '_id', name: a.name %}(){% unless a.static %} const{% endunless %} { return {% render '_member', name: a.name %}{% if a.static %}(){% endif %}{% if kind == 'string' %}.in(){% endif %}; }
+{% endunless %}
+{% unless a.const or names contains setter %}
+    {% if a.static %}static {% endif %}void {{ setter }}({% render '_cx_in', t: a.type, owner: root %} value) { {% render '_member', name: a.name %}{% if a.static %}(){% endif %} = value; }
+{% endunless %}
+{% endfor %}
+{% endif %}
+{% for x in m.methods %}
+
+{{ x.description | doc_comment: '    /// ' }}
+{% for r in x.raises %}
+    /// @throws {% render '_cx_name', t: r, owner: root %}
+{% endfor %}
+    {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{% render '_cx_ret', t: x.returns, owner: root %} {% render '_id', name: x.name %}({% render '_cx_params', params: x.params, owner: root %}){% if x.const %} const{% endif %}{% if x.pure %} = 0{% endif %};
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+protected:
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{%- liquid
+  capture ifns
+    render '_iface_ns', i: p.interface
+  endcapture
+%}
+    // Calls received by provides port {{ p.name }}.
+{% for msg in p.interface.messages %}
+    {% render '_cx_ret', t: msg.returns, owner: ifns %} on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_cx_params', params: msg.params, owner: ifns %});
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% if component == 'true' %}
+
+    // CF::Resource: life cycle, properties and ports.
+    void onInitialize();
+    void onStart();
+    void onStop();
+    void onRelease();
+    void onConfigured(const std::string& id);
+    bool configureProperty(const std::string& id, const ::CORBA::Any& value);
+    bool queryProperty(const std::string& id, ::CORBA::Any& value);
+    void propertyIds(std::vector<std::string>& ids);
+    ::CORBA::Object_ptr port(const std::string& name);
+{% endif %}
+    {% user 'protected' %}
+    {% enduser %}
+
+private:
+    // Not copyable.
+    {{ class }}(const {{ class }}&);
+    {{ class }}& operator=(const {{ class }}&);
+
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{%- liquid
+  capture ifns
+    render '_iface_ns', i: p.interface
+  endcapture
+  capture iface
+    render '_cx_id', name: p.interface.name
+  endcapture
+-%}
+{% assign servant = p.name | ucfirst | append: 'In' %}
+    /// Servant of provides port {{ p.name }}: hands its calls to the handlers above.
+    class {{ servant }} : public virtual POA_{{ ifns }}::{{ iface }} {
+    public:
+        explicit {{ servant }}({{ class }}& owner) : owner_(owner) {}
+{% for msg in p.interface.messages %}
+        {% render '_cx_ret', t: msg.returns, owner: ifns %} {% render '_cx_member_id', name: msg.name, scope: p.interface.name %}({% render '_cx_params', params: msg.params, owner: ifns %})
+        {
+            return owner_.on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_cx_args', params: msg.params %});
+        }
+{% endfor %}
+
+    private:
+        {{ class }}& owner_;
+    };
+    {{ servant }} {{ p.name }}In_;
+{% elsif p.role == 'out' and p.interface %}
+    ::sca::UsesPort< ::{% render '_iface_ns', i: p.interface %}::{% render '_cx_id', name: p.interface.name %}> {% render '_member', name: p.name %};
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    {% render '_qualified', e: c %}* {% render '_accessor', name: c.name %}_; // abstract: created in the constructor, deleted by the destructor
+{% else %}
+    {% render '_qualified', e: c %} {% render '_accessor', name: c.name %}_;
+{% endif %}
+{% endfor %}
+{% for a in m.attributes %}
+{% if a.static %}
+{%- liquid
+  capture type
+    render '_cx_member', t: a.type, owner: root
+  endcapture
+%}
+    /// Static attribute: a function-local static (set to its default on first use).
+    static {{ type }}& {% render '_member', name: a.name %}()
+    {
+        static {{ type }} value;
+{% if a.hasDefault %}
+        static bool set = false;
+        if (!set) {
+            set = true;
+{% render '_cx_init', target: 'value', v: a.default, t: a.type, owner: root, pad: '            ', depth: 0 %}
+        }
+{% endif %}
+        return value;
+    }
+{% else %}
+    {% render '_cx_member', t: a.type, owner: root %} {% render '_member', name: a.name %}; // set by the constructor
+{% endif %}
+{% endfor %}
+    {% user 'private' %}
+    {% enduser %}
+};
+
+{% render '_namespace_close', ns: ns %}

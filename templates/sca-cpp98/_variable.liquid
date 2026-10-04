@@ -1,0 +1,47 @@
+{%- comment -%}
+  `true` for a variable-length type of the C++ mapping (strings, sequences, any, and the structs
+  and unions holding one): returned as `T*`, passed out as `T_out`. Parameters: t, depth.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    if t.name == 'string' or t.name == 'bytes'
+      echo 'true'
+    endif
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    assign next = depth | plus: 1
+    if next > 16
+      echo 'true'
+    else
+      case def.kind
+      when 'struct', 'exception'
+        for f in def.fields
+          capture inner
+            render '_variable', t: f.type, depth: next
+          endcapture
+          if inner == 'true'
+            echo 'true'
+            break
+          endif
+        endfor
+      when 'union'
+        for c in def.cases
+          capture inner
+            render '_variable', t: c.type, depth: next
+          endcapture
+          if inner == 'true'
+            echo 'true'
+            break
+          endif
+        endfor
+      when 'alias'
+        render '_variable', t: def.type, depth: next
+      when 'primitive'
+        echo 'true'
+      endcase
+    endif
+  else
+    echo 'true'
+  endcase
+-%}

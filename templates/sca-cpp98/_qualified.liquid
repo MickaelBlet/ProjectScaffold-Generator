@@ -1,0 +1,9 @@
+{%- comment -%}
+  Fully qualified class name of a module: `::robot::core::Sensor`. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  echo '::'
+  render '_ns', e: e
+  echo '::'
+  render '_id', name: e.name
+-%}

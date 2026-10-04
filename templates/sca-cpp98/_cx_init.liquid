@@ -1,0 +1,99 @@
+{%- comment -%}
+  Statements setting `target` to a default value of the model (as in the YAML file) of type t:
+  sequences sized then filled, structs field by field (the value's, else the field's default),
+  unions through the modifier of their case. Parameters: target, v, t, owner, pad, depth.
+{%- endcomment -%}
+{%- liquid
+  assign next = depth | plus: 1
+  if t.kind == 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    assign defKind = def.kind
+  else
+    assign defKind = ''
+  endif
+  capture literal
+    render '_cx_literal', v: v, t: t
+  endcapture
+-%}
+{% if literal != '' %}
+{{ pad }}{{ target }} = {{ literal }};
+{% elsif t.kind == 'primitive' and t.name == 'string' %}
+{{ pad }}{{ target }} = ::CORBA::string_dup("{{ v | replace: '\\', '\\\\' | replace: '"', '\\"' | replace: '\n', '\\n' | replace: '\t', '\\t' }}");
+{% elsif t.kind == 'primitive' and t.name == 'bytes' %}
+{% assign chars = v | split: '' %}
+{{ pad }}{{ target }}.length({{ chars.size }});
+{% for ch in chars %}
+{{ pad }}{{ target }}[{{ forloop.index0 }}] = '{{ ch | replace: '\\', '\\\\' | replace: "'", "\\'" }}';
+{% endfor %}
+{% elsif t.kind == 'optional' %}
+{% if v == nil %}
+{{ pad }}{{ target }}.length(0);
+{% else %}
+{{ pad }}{{ target }}.length(1);
+{% assign element = target | append: '[0]' %}
+{% render '_cx_init', target: element, v: v, t: t.of, owner: owner, pad: pad, depth: next %}
+{% endif %}
+{% elsif t.kind == 'vector' or t.kind == 'list' or t.kind == 'set' or t.kind == 'array' %}
+{{ pad }}{{ target }}.length({{ v.size }});
+{% for item in v %}
+{% assign element = target | append: '[' | append: forloop.index0 | append: ']' %}
+{% render '_cx_init', target: element, v: item, t: t.of, owner: owner, pad: pad, depth: next %}
+{% endfor %}
+{% elsif t.kind == 'map' %}
+{{ pad }}{{ target }}.length({{ v.size }});
+{% for entry in v %}
+{% assign key = target | append: '[' | append: forloop.index0 | append: '].key' %}
+{% assign value = target | append: '[' | append: forloop.index0 | append: '].value' %}
+{% render '_cx_init', target: key, v: entry[0], t: t.key, owner: owner, pad: pad, depth: next %}
+{% render '_cx_init', target: value, v: entry[1], t: t.value, owner: owner, pad: pad, depth: next %}
+{% endfor %}
+{% elsif defKind == 'alias' %}
+{% render '_cx_init', target: target, v: v, t: def.type, owner: owner, pad: pad, depth: next %}
+{% elsif defKind == 'struct' or defKind == 'exception' %}
+{% assign given = '|' %}
+{% for entry in v %}
+{% assign given = given | append: entry[0] | append: '|' %}
+{% endfor %}
+{% for f in def.fields %}
+{% assign key = '|' | append: f.name | append: '|' %}
+{%- liquid
+  capture field
+    echo target | append: '.'
+    render '_cx_member_id', name: f.name, scope: def.name
+  endcapture
+-%}
+{% if given contains key %}
+{% render '_cx_init', target: field, v: v[f.name], t: f.type, owner: owner, pad: pad, depth: next %}
+{% elsif f.hasDefault %}
+{% render '_cx_init', target: field, v: f.default, t: f.type, owner: owner, pad: pad, depth: next %}
+{% endif %}
+{% endfor %}
+{% elsif defKind == 'union' %}
+{% for entry in v %}
+{% assign c = def.cases | where: 'name', entry[0] | first %}
+{%- liquid
+  capture modifier
+    render '_cx_member_id', name: c.name, scope: def.name
+  endcapture
+  capture kind
+    render '_cx_kind', t: c.type
+  endcapture
+  capture caseLiteral
+    render '_cx_literal', v: entry[1], t: c.type
+  endcapture
+-%}
+{% if caseLiteral != '' %}
+{{ pad }}{{ target }}.{{ modifier }}({{ caseLiteral }});
+{% else %}
+{% assign temp = 'value' | append: depth %}
+{{ pad }}{
+{{ pad }}    {% render '_cx_member', t: c.type, owner: owner %} {{ temp }};
+{% assign inner = pad | append: '    ' %}
+{% render '_cx_init', target: temp, v: entry[1], t: c.type, owner: owner, pad: inner, depth: next %}
+{{ pad }}    {{ target }}.{{ modifier }}({{ temp }}{% if kind == 'string' %}.in(){% endif %});
+{{ pad }}}
+{% endif %}
+{% endfor %}
+{% elsif defKind == 'primitive' %}
+{{ pad }}// {{ target }}: custom primitive, default {{ v | json }} to set by hand.
+{% endif %}

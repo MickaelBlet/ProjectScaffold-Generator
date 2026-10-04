@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE softwareassembly PUBLIC "-//JTRS//DTD SCA V2.2.2 SAD//EN" "softwareassembly.dtd">
+{% include '_xml_banner' %}
+{%- liquid
+  assign root = project.ident | snake
+  assign components = ''
+  for m in modules
+    capture isComponent
+      render '_component', m: m
+    endcapture
+    if isComponent == 'true'
+      assign components = components | append: m.path | append: ','
+    endif
+  endfor
+  assign components = components | split: ','
+  capture links
+    render '_waveform_links'
+  endcapture
+  assign waveLinks = links | split: ';'
+-%}
+<!-- Waveform {{ project.name | escape }}: a component per concrete top-level module, the binaries as host collocations, the first component as assembly controller. -->
+<softwareassembly id="DCE:{{ root | append: '/waveform' | uuid }}" name="{{ project.name | escape }}">
+{% if project.description != '' %}
+    <description>{{ project.description | escape }}</description>
+{% endif %}
+    <componentfiles>
+{% for path in components %}
+        <componentfile id="{{ path }}_spd" type="SPD">
+            <localfile name="/components/{{ path }}/{{ path }}.spd.xml"/>
+        </componentfile>
+{% endfor %}
+    </componentfiles>
+    <partitioning>
+{% if binaries.size > 0 %}
+{% for b in binaries %}
+        <hostcollocation id="DCE:{{ root | append: '/binaries/' | append: b.name | uuid }}" name="{{ b.name }}">
+{% for m in b.modules %}
+{%- liquid
+  capture isComponent
+    render '_component', m: m
+  endcapture
+-%}
+{% if isComponent == 'true' %}
+{% include '_sad_placement', m: m, pad: '    ' %}
+{% endif %}
+{% endfor %}
+        </hostcollocation>
+{% endfor %}
+{% for path in components %}
+{% assign inBinary = false %}
+{% for b in binaries %}
+{% assign found = b.modules | where: 'path', path | size %}
+{% if found > 0 %}
+{% assign inBinary = true %}
+{% endif %}
+{% endfor %}
+{% unless inBinary %}
+{% assign m = modules | where: 'path', path | first %}
+{% include '_sad_placement', m: m, pad: '' %}
+{% endunless %}
+{% endfor %}
+{% else %}
+{% for path in components %}
+{% assign m = modules | where: 'path', path | first %}
+{% include '_sad_placement', m: m, pad: '' %}
+{% endfor %}
+{% endif %}
+    </partitioning>
+    <assemblycontroller>
+        <componentinstantiationref refid="DCE:{{ root | append: '/instances/' | append: components[0] | uuid }}"/>
+    </assemblycontroller>
+{% if waveLinks.size > 0 %}
+    <connections>
+{% for entry in waveLinks %}
+{% assign x = entry | split: '|' %}
+{% assign from = x[1] | split: '.' | first %}
+{% assign to = x[3] | split: '.' | first %}
+{% assign fromModule = modules | where: 'path', from | first %}
+{% assign toModule = modules | where: 'path', to | first %}
+{%- liquid
+  capture fromComponent
+    render '_component', m: fromModule
+  endcapture
+  capture toComponent
+    render '_component', m: toModule
+  endcapture
+-%}
+{% if fromComponent == 'true' and toComponent == 'true' %}
+        <connectinterface id="{{ x[0] }}">
+            <usesport>
+                <usesidentifier>{% render '_port_name', module: x[1], port: x[2], component: from %}</usesidentifier>
+                <componentinstantiationref refid="DCE:{{ root | append: '/instances/' | append: from | uuid }}"/>
+            </usesport>
+            <providesport>
+                <providesidentifier>{% render '_port_name', module: x[3], port: x[4], component: to %}</providesidentifier>
+                <componentinstantiationref refid="DCE:{{ root | append: '/instances/' | append: to | uuid }}"/>
+            </providesport>
+        </connectinterface>
+{% else %}
+        <!-- {{ x[0] }}: {{ x[1] }}:{{ x[2] }} -> {{ x[3] }}:{{ x[4] }}, an end not in a component. -->
+{% endif %}
+{% endfor %}
+    </connections>
+{% endif %}
+{% assign externals = '' %}
+{% for s in systems %}
+{% for e in s.external %}
+{% assign top = e.local.module | split: '.' | first %}
+{% assign topModule = modules | where: 'path', top | first %}
+{%- liquid
+  capture topComponent
+    render '_component', m: topModule
+  endcapture
+-%}
+{% if topComponent == 'true' %}
+{% assign externals = externals | append: e.link.name | append: '|' | append: e.local.module | append: '|' | append: e.local.port | append: '|' | append: top | append: ';' %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% assign externals = externals | split: ';' %}
+{% if externals.size > 0 %}
+    <!-- Ports linked to other projects. -->
+    <externalports>
+{% for entry in externals %}
+{% assign x = entry | split: '|' %}
+{% assign owner = modules | where: 'path', x[1] | first %}
+{% assign p = owner.ports | where: 'name', x[2] | first %}
+        <port>
+            <description>{{ x[0] }}</description>
+{% if p.role == 'in' %}
+            <providesidentifier>{% render '_port_name', module: x[1], port: x[2], component: x[3] %}</providesidentifier>
+{% else %}
+            <usesidentifier>{% render '_port_name', module: x[1], port: x[2], component: x[3] %}</usesidentifier>
+{% endif %}
+            <componentinstantiationref refid="DCE:{{ root | append: '/instances/' | append: x[3] | uuid }}"/>
+        </port>
+{% endfor %}
+    </externalports>
+{% endif %}
+</softwareassembly>

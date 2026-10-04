@@ -1,0 +1,36 @@
+{%- comment -%}
+  Name of the IDL typedef standing for a container of the model (IDL has no anonymous types in
+  operations): `vector<Reading>` -> `ReadingSeq`, `map<string, int32>` -> `StringInt32Map`,
+  `optional<string>` -> `StringOpt`, `array<float32, 3>` -> `Float32Array3`, bounds appended
+  (`Int32Seq16`). Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    echo t.name | ucfirst
+    if t.max
+      echo t.max
+    endif
+  when 'ref'
+    echo t.name
+  when 'map'
+    render '_idl_name', t: t.key
+    render '_idl_name', t: t.value
+    echo 'Map'
+    if t.max
+      echo t.max
+    endif
+  when 'optional'
+    render '_idl_name', t: t.of
+    echo 'Opt'
+  when 'array'
+    render '_idl_name', t: t.of
+    echo 'Array' | append: t.size
+  else
+    render '_idl_name', t: t.of
+    echo 'Seq'
+    if t.max
+      echo t.max
+    endif
+  endcase
+-%}

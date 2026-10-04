@@ -1,0 +1,35 @@
+{%- comment -%}
+  Parameter list of an operation in the C++ mapping: `in` as _cx_in; `inout` as `T&` (`char*&`);
+  `out` as `T&` for fixed-length types, `T_out` for variable-length ones, `CORBA::String_out`.
+  Parameters: params, owner.
+{%- endcomment -%}
+{%- liquid
+  for p in params
+    capture kind
+      render '_cx_kind', t: p.type
+    endcapture
+    capture name
+      render '_cx_name', t: p.type, owner: owner
+    endcapture
+    case p.direction
+    when 'in'
+      render '_cx_in', t: p.type, owner: owner
+    when 'inout'
+      echo name | append: '&'
+    else
+      case kind
+      when 'string'
+        echo '::CORBA::String_out'
+      when 'variable'
+        echo name | append: '_out'
+      else
+        echo name | append: '&'
+      endcase
+    endcase
+    echo ' '
+    render '_cx_id', name: p.name
+    unless forloop.last
+      echo ', '
+    endunless
+  endfor
+-%}

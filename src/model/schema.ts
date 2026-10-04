@@ -427,7 +427,7 @@ export const FileProjectSchema = z
           .min(1)
           .optional()
           .describe(
-            'built-in template set generating the code (cpp17 by default): cpp98, cpp11, cpp14, cpp17, cpp20, python'
+            'built-in template set generating the code (cpp17 by default): cpp98, cpp11, cpp14, cpp17, cpp20, python, sca-cpp98'
           )
       })
       .optional()

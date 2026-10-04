@@ -1,0 +1,129 @@
+{% include '_banner' %}
+{%- liquid
+  assign ns = project.ident | snake
+  assign guard = ns | upcase | append: '_IDL'
+-%}
+// Types, constants and interfaces of {{ project.name }}, in IDL module {{ ns }}: the containers of the
+// model as typedefs (sequences; maps as sequences of key / value structs), each type after the ones
+// it names.
+#ifndef {{ guard }}
+#define {{ guard }}
+
+#include "CF.idl"
+{% for d in dependencies %}
+#include "{{ d.name | snake }}.idl"
+{% endfor %}
+{% user 'includes' %}
+{% enduser %}
+
+{% capture idl_body %}
+{%- liquid
+  assign idl_declared = '|'
+  assign idl_done = '|'
+  for pass in types
+    for e in types
+      assign idl_key = '|' | append: e.name | append: '|'
+      if idl_done contains idl_key
+        continue
+      endif
+      assign idl_ready = true
+      for u in e.uses.types
+        assign idl_used = '|' | append: u.name | append: '|'
+        if u.dependency == nil and u.name != e.name
+          unless idl_done contains idl_used
+            assign idl_ready = false
+          endunless
+        endif
+      endfor
+      if idl_ready
+        assign idl_done = idl_done | append: idl_key
+        # A recursive struct or union: declared first, for the sequences of it.
+        assign idl_self = e.uses.types | where: 'name', e.name | size
+        if idl_self > 0
+          include '_idl_forward', e: e
+        endif
+        include '_idl_type_containers', e: e
+        include '_idl_decl', e: e
+      endif
+    endfor
+  endfor
+  # Types naming each other: all declared first, then defined in their order.
+  for e in types
+    assign idl_key = '|' | append: e.name | append: '|'
+    unless idl_done contains idl_key
+      include '_idl_forward', e: e
+    endunless
+  endfor
+  for e in types
+    assign idl_key = '|' | append: e.name | append: '|'
+    unless idl_done contains idl_key
+      include '_idl_type_containers', e: e
+      include '_idl_decl', e: e
+    endunless
+  endfor
+-%}
+{% for c in constants %}
+{%- liquid
+  capture idl_value
+    render '_idl_literal', v: c.value, t: c.type
+  endcapture
+%}
+
+{{ c.description | doc_comment: '    // ' }}
+{% if idl_value == '' %}
+    // {{ c.name }}: no IDL constant of its type.
+{% else %}
+    const {% render '_idl_type', t: c.type %} {% render '_idl_id', name: c.name %} = {{ idl_value }};
+{% endif %}
+{% endfor %}
+{% for i in interfaces %}
+{%- liquid
+  for m in i.messages
+    for p in m.params
+      include '_idl_containers', t: p.type
+    endfor
+    if m.returns
+      include '_idl_containers', t: m.returns
+    endif
+  endfor
+-%}
+
+{{ i.description | doc_comment: '    // ' }}
+    interface {% render '_idl_id', name: i.name %} {
+{% for m in i.messages %}
+{{ m.description | doc_comment: '        // ' }}
+        {% if m.returns %}{% render '_idl_type', t: m.returns %}{% else %}void{% endif %} {% render '_idl_member', name: m.name, scope: i.name %}({% for p in m.params %}{{ p.direction }} {% render '_idl_type', t: p.type %} {% render '_idl_id', name: p.name %}{% unless forloop.last %}, {% endunless %}{% endfor %}){% if m.raises.size > 0 %} raises ({% for r in m.raises %}{% render '_idl_type', t: r %}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %};
+{% endfor %}
+    };
+{% endfor %}
+{%- liquid
+  # Containers of the attributes and methods of the modules (their C++ types).
+  for m in modules
+    for a in m.attributes
+      include '_idl_containers', t: a.type
+    endfor
+    for x in m.methods
+      for p in x.params
+        include '_idl_containers', t: p.type
+      endfor
+      if x.returns
+        include '_idl_containers', t: x.returns
+      endif
+    endfor
+  endfor
+-%}
+{% endcapture %}
+{% assign idl_text = idl_body | strip %}
+{% if idl_text != '' %}
+{{ project.description | doc_comment: '// ' }}
+module {{ ns }} {
+{{ idl_body }}
+
+    {% user 'module' %}
+    {% enduser %}
+};
+{% else %}
+// {{ project.name }} has no types, constants nor interfaces of its own.
+{% endif %}
+
+#endif

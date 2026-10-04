@@ -1,0 +1,12 @@
+{%- comment -%}
+  Expression reaching a port from the scope wiring it: `core().sensor().out()`; `skip` first
+  modules of `via` left out (1: from the component holding the port). Parameters: x, skip.
+{%- endcomment -%}
+{%- liquid
+  for child in x.via offset: skip
+    render '_accessor', name: child
+    echo '().'
+  endfor
+  render '_id', name: x.port
+  echo '()'
+-%}

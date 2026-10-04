@@ -1,0 +1,55 @@
+{%- comment -%}
+  IDL declaration of a type of the project. Enum values and bitmask flags are prefixed with their
+  type's name (`State_On`): IDL puts them in the enclosing module. Included (not rendered): a
+  custom primitive's user section belongs to the including file. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  capture idld_name
+    render '_idl_id', name: e.name
+  endcapture
+%}
+
+{{ e.description | doc_comment: '    // ' }}
+{% case e.kind %}
+{% when 'struct', 'exception' %}
+    {{ e.kind }} {{ idld_name }} {
+{% for f in e.fields %}
+{{ f.description | doc_comment: '        // ' }}
+        {% render '_idl_type', t: f.type %} {% render '_idl_member', name: f.name, scope: e.name %};{% if f.hasDefault %} // default: {{ f.default | json }}{% endif %}
+{% endfor %}
+{% if e.kind == 'struct' and e.fields.size == 0 %}
+        octet unused; // an IDL struct has members
+{% endif %}
+    };
+{% when 'enum' %}
+    enum {{ idld_name }} {
+{% for v in e.values %}
+        {{ e.name }}_{{ v.name }}{% unless forloop.last %},{% endunless %} // {{ v.value }}
+{% endfor %}
+    };
+{% when 'bitmask' %}
+    typedef {% render '_idl_prim', name: e.underlying %} {{ idld_name }};
+{% for f in e.flags %}
+    const {{ idld_name }} {{ e.name }}_{{ f.name }} = {{ f.value }};
+{% endfor %}
+{% when 'union' %}
+    union {{ idld_name }} switch ({% render '_idl_type', t: e.discriminator %}) {
+{% for c in e.cases %}
+{{ c.description | doc_comment: '        // ' }}
+{% for l in c.labels %}
+    case {% render '_idl_literal', v: l, t: e.discriminator %}:
+{% endfor %}
+{% if c.isDefault %}
+    default:
+{% endif %}
+        {% render '_idl_type', t: c.type %} {% render '_idl_member', name: c.name, scope: e.name %};
+{% endfor %}
+    };
+{% when 'alias' %}
+    typedef {% render '_idl_type', t: e.type %} {{ idld_name }};
+{% when 'primitive' %}
+    // Custom primitive: an any until given its IDL type.
+    {% user 'primitive.' | append: e.name %}
+    typedef any {{ idld_name }};
+    {% enduser %}
+{% endcase %}

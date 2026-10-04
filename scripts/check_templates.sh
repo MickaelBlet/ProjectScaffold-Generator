@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Check the built-in template sets: generate the examples and fixtures with each, then build them
 # (C++: CMake with -Wall -Wextra -Werror; Python: byte-compile and import each package).
-# Needs cmake, a C++20 compiler (C++98 for cpp98) and python3 (3.8+).
+# Needs cmake, a C++20 compiler (C++98 for cpp98) and python3 (3.8+); sca-cpp98 also omniORB 4 (omniidl,
+# libomniorb4-dev; elsewhere than the system: OMNIORB_ROOT=<prefix>, omniidl in <prefix>/bin), else
+# it is only generated.
 # Usage: scripts/check_templates.sh [-w <work directory>] [set]...   (default: every templates/<set>)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -34,9 +36,17 @@ check() {
   if ! npm run -s generate -- "$project" -t "$set" -o "$out" -d --force >"$work/log" 2>&1; then
     echo "FAILED  $set: $name (generation)"; sed 's/^/        /' "$work/log"; failed=1; return
   fi
+  local cmake_args=()
+  if [[ $set == sca-* ]]; then
+    if [ -n "${OMNIORB_ROOT:-}" ]; then
+      cmake_args=(-DCMAKE_PREFIX_PATH="$OMNIORB_ROOT" -DOMNIIDL="$OMNIORB_ROOT/bin/omniidl")
+    elif ! command -v omniidl >/dev/null; then
+      echo "ok      $set: $name (generated; not built: no omniidl)"; return
+    fi
+  fi
   if [ -f "$out/CMakeLists.txt" ]; then
     # Unused parameters: the generated handlers are empty.
-    if cmake -S "$out" -B "$out/.build" -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" \
+    if cmake -S "$out" -B "$out/.build" "${cmake_args[@]}" -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" \
       >"$work/log" 2>&1 && cmake --build "$out/.build" -j >>"$work/log" 2>&1; then
       echo "ok      $set: $name"
     else

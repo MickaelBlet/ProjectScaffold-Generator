@@ -1,0 +1,32 @@
+{%- comment -%}
+  Member initializer list of a module's constructor: the servants of its provides ports, its
+  abstract children (null until created), its attributes (value-initialized; the constructor sets
+  their defaults), in the order they are declared. Parameter: m.
+{%- endcomment -%}
+{%- liquid
+  assign inits = ''
+  for p in m.ports
+    if p.role == 'in' and p.interface and p.delegates.size == 0
+      assign inits = inits | append: '|' | append: p.name | append: 'In_(*this)'
+    endif
+  endfor
+  for c in m.instances
+    if c.abstract
+      capture accessor
+        render '_accessor', name: c.name
+      endcapture
+      assign inits = inits | append: '|' | append: accessor | append: '_(NULL)'
+    endif
+  endfor
+  for a in m.attributes
+    unless a.static
+      capture member
+        render '_member', name: a.name
+      endcapture
+      assign inits = inits | append: '|' | append: member | append: '()'
+    endunless
+  endfor
+  if inits != ''
+    echo ' : ' | append: inits | remove_first: '|' | replace: '|', ', '
+  endif
+-%}

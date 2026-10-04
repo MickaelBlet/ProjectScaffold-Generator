@@ -2,7 +2,7 @@
 // user sections. Pure: merging with the files on disk is done by run.ts.
 import { Liquid } from 'liquidjs'
 import { buildContext, type GenContext } from './context'
-import { caseFilters } from './filters'
+import { caseFilters, uuid } from './filters'
 import { placeMarkers, UserTag } from './sections'
 import type { TemplateSet } from './templateSet'
 import type { FileProject } from '../model/schema'
@@ -61,6 +61,7 @@ export function createEngine(templates: Record<string, string>, globals: object)
   liquid.registerTag('user', UserTag)
   const filters: Record<string, (s: string, ...args: string[]) => string> = {
     ...caseFilters,
+    uuid,
     doc_comment: docComment
   }
   for (const [name, f] of Object.entries(filters))

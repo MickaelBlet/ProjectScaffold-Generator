@@ -1,0 +1,245 @@
+{% include '_banner' %}
+{%- liquid
+  assign m = item
+  assign root = project.ident | snake
+  capture class
+    render '_id', name: m.name
+  endcapture
+  capture component
+    render '_component', m: m
+  endcapture
+  assign baseComponent = false
+  for b in m.bases
+    capture isComponent
+      render '_component', m: b
+    endcapture
+    if isComponent == 'true' and baseComponent == false
+      assign baseComponent = b
+    endif
+  endfor
+  if baseComponent
+    capture base
+      render '_qualified', e: baseComponent
+    endcapture
+  endif
+  # Properties: the component's own instance attributes.
+  assign properties = m.attributes | where: 'static', false
+  capture exposed
+    render '_exposed', m: m
+  endcapture
+  assign exposed = exposed | split: ','
+-%}
+#include <{% render '_header', e: m %}>
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: m %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ class }}::{{ class }}(){% render '_init', m: m %}
+{
+{% for a in m.attributes %}
+{% if a.hasDefault and a.static == false %}
+{%- liquid
+  capture member
+    render '_member', name: a.name
+  endcapture
+-%}
+{% render '_cx_init', target: member, v: a.default, t: a.type, owner: root, pad: '    ', depth: 0 %}
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    {% user 'create.' | append: c.name %}
+    // {% render '_accessor', name: c.name %}_ = new ConcreteClass;
+    {% enduser %}
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+{% assign l = c.link %}
+    // {{ l.name }}: {{ l.from.module }}:{{ l.from.port }} -> {{ l.to.module }}:{{ l.to.port }}, {{ l.constraints.direction }}, {{ l.constraints.performance.class }}
+{{ l.description | doc_comment: '    // ' }}
+    {% render '_endpoint', x: c.from, skip: 0 %}.connect({% render '_endpoint', x: c.to, skip: 0 %});
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+    {% render '_endpoint', x: d, skip: 0 %}.forward({% render '_member', name: p.name %});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {% user 'constructor' %}
+    {% enduser %}
+}
+
+{{ class }}::~{{ class }}()
+{
+    {% user 'destructor' %}
+    {% enduser %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    delete {% render '_accessor', name: c.name %}_;
+{% endif %}
+{% endfor %}
+}
+{% for x in m.methods %}
+{% unless x.pure %}
+
+{% render '_cx_ret', t: x.returns, owner: root %} {{ class }}::{% render '_id', name: x.name %}({% render '_cx_params', params: x.params, owner: root %}){% if x.const %} const{% endif %}
+{
+    {% user 'method.' | append: x.name %}
+{% render '_cx_outs', params: x.params, owner: root, pad: '    ' %}
+{% if x.returns %}
+    return {% render '_cx_empty', t: x.returns, owner: root %};
+{% endif %}
+    {% enduser %}
+}
+{% endunless %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and p.interface and p.delegates.size == 0 %}
+{%- liquid
+  capture ifns
+    render '_iface_ns', i: p.interface
+  endcapture
+-%}
+{% for msg in p.interface.messages %}
+
+{% render '_cx_ret', t: msg.returns, owner: ifns %} {{ class }}::on{{ p.name | ucfirst }}{{ msg.name | ucfirst }}({% render '_cx_params', params: msg.params, owner: ifns %})
+{
+    {% user 'on.' | append: p.name | append: '.' | append: msg.name %}
+{% render '_cx_outs', params: msg.params, owner: ifns, pad: '    ' %}
+{% if msg.returns %}
+    return {% render '_cx_empty', t: msg.returns, owner: ifns %};
+{% endif %}
+    {% enduser %}
+}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% if component == 'true' %}
+
+void {{ class }}::onInitialize()
+{
+    {% user 'onInitialize' %}
+{% if baseComponent %}
+    {{ base }}::onInitialize();
+{% endif %}
+    {% enduser %}
+}
+
+void {{ class }}::onStart()
+{
+    {% user 'onStart' %}
+{% if baseComponent %}
+    {{ base }}::onStart();
+{% endif %}
+    {% enduser %}
+}
+
+void {{ class }}::onStop()
+{
+    {% user 'onStop' %}
+{% if baseComponent %}
+    {{ base }}::onStop();
+{% endif %}
+    {% enduser %}
+}
+
+void {{ class }}::onRelease()
+{
+    {% user 'onRelease' %}
+{% if baseComponent %}
+    {{ base }}::onRelease();
+{% endif %}
+    {% enduser %}
+}
+
+void {{ class }}::onConfigured(const std::string& id)
+{
+    {% user 'onConfigured' %}
+{% if baseComponent %}
+    {{ base }}::onConfigured(id);
+{% else %}
+    (void)id;
+{% endif %}
+    {% enduser %}
+}
+
+bool {{ class }}::configureProperty(const std::string& id, const ::CORBA::Any& value)
+{
+{% for a in properties %}
+{% if a.const %}
+    if (id == "{{ a.name }}") return false; // read only
+{% else %}
+    if (id == "{{ a.name }}") return {% render '_any_get', any: 'value', name: a.name, t: a.type %};
+{% endif %}
+{% endfor %}
+{% if baseComponent %}
+    return {{ base }}::configureProperty(id, value);
+{% else %}
+    (void)id;
+    (void)value;
+    return false;
+{% endif %}
+}
+
+bool {{ class }}::queryProperty(const std::string& id, ::CORBA::Any& value)
+{
+{% for a in properties %}
+    if (id == "{{ a.name }}") {
+        value <<= {% render '_any_put', name: a.name, t: a.type %};
+        return true;
+    }
+{% endfor %}
+{% if baseComponent %}
+    return {{ base }}::queryProperty(id, value);
+{% else %}
+    (void)id;
+    (void)value;
+    return false;
+{% endif %}
+}
+
+void {{ class }}::propertyIds(std::vector<std::string>& ids)
+{
+{% if baseComponent %}
+    {{ base }}::propertyIds(ids);
+{% endif %}
+{% for a in properties %}
+    ids.push_back("{{ a.name }}");
+{% endfor %}
+{% if properties.size == 0 and baseComponent == false %}
+    (void)ids;
+{% endif %}
+}
+
+::CORBA::Object_ptr {{ class }}::port(const std::string& name)
+{
+{% for p in m.ports %}
+{% if p.interface %}
+    if (name == "{{ p.name }}") return {% render '_id', name: p.name %}()._this();
+{% endif %}
+{% endfor %}
+{% for x in exposed %}
+{% assign parts = x | split: ':' %}
+{% assign inner = modules | where: 'path', parts[0] | first %}
+{% assign innerPort = inner.ports | where: 'name', parts[1] | first %}
+{% if innerPort.interface %}
+{% assign segments = parts[0] | split: '.' %}
+    if (name == "{% render '_port_name', module: parts[0], port: parts[1], component: m.path %}") return {% for s in segments offset: 1 %}{% render '_accessor', name: s %}().{% endfor %}{% render '_id', name: parts[1] %}()._this();
+{% endif %}
+{% endfor %}
+{% if baseComponent %}
+    return {{ base }}::port(name);
+{% else %}
+    (void)name;
+    return ::CORBA::Object::_nil();
+{% endif %}
+}
+{% endif %}
+
+{% user 'end' %}
+{% enduser %}
+
+{% render '_namespace_close', ns: ns %}

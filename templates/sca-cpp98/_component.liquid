@@ -1,0 +1,9 @@
+{%- comment -%}
+  `true` for a module that is an SCA component (a CF::Resource with its own executable and
+  descriptors): a concrete top-level module. Parameter: m.
+{%- endcomment -%}
+{%- liquid
+  if m.depth == 0 and m.abstract == false
+    echo 'true'
+  endif
+-%}

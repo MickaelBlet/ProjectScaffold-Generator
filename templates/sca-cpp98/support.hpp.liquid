@@ -1,0 +1,280 @@
+{% include '_banner' %}
+// SCA support of the generated components, the same in every project: the base of a component
+// (CF::Resource), its uses ports (CF::Port), and the runtime starting components (alone, as a Core
+// Framework starts them, or a whole waveform in one process).
+#pragma once
+
+#include <omniORB4/CORBA.h>
+#include <omniORB4/Naming.hh>
+#include <omnithread.h>
+#include <CF.hh>
+
+#include <cstddef>
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace sca {
+
+/// A uses port (CF::Port) of interface `Interface`: the calls of its component go to the provides
+/// ports connected to it, by connectPort (a Core Framework, the waveform launcher) or by connect
+/// (inside a component), and to those of the uses ports it forwards to.
+template <class Interface>
+class UsesPort : public virtual POA_CF::Port {
+public:
+    typedef typename Interface::_ptr_type Ptr;
+    typedef typename Interface::_var_type Var;
+
+    UsesPort() : next_(0) {}
+
+    // CF::Port
+    void connectPort(::CORBA::Object_ptr connection, const char* connectionId)
+    {
+        if (::CORBA::is_nil(connection)) throw ::CF::Port::InvalidPort(1, "nil connection");
+        Var peer = Interface::_narrow(connection);
+        if (::CORBA::is_nil(peer)) throw ::CF::Port::InvalidPort(1, "connection of another interface");
+        add(connectionId, peer);
+    }
+
+    void disconnectPort(const char* connectionId)
+    {
+        omni_mutex_lock lock(mutex_);
+        for (typename Connections::iterator i = connections_.begin(); i != connections_.end(); ++i)
+            if (i->first == connectionId) {
+                connections_.erase(i);
+                return;
+            }
+        throw ::CF::Port::InvalidPort(2, "unknown connection id");
+    }
+
+    /// Sends the calls of this port to `peer`.
+    void connect(Ptr peer)
+    {
+        Var ref = Interface::_duplicate(peer);
+        add(localId(), ref);
+    }
+
+    /// Sends the calls of this port to the object of a provides port servant (activated if it is not).
+    template <class Servant>
+    void connect(Servant& servant)
+    {
+        Var ref = servant._this();
+        add(localId(), ref);
+    }
+
+    /// Sends the calls of this port to the peers of `port` as well.
+    void forward(UsesPort& port)
+    {
+        omni_mutex_lock lock(mutex_);
+        forwards_.push_back(&port);
+    }
+
+    /// Every peer, forwarded ones included.
+    std::vector<Var> peers() const
+    {
+        std::vector<Var> all;
+        std::vector<UsesPort*> forwards;
+        {
+            omni_mutex_lock lock(mutex_);
+            for (std::size_t i = 0; i < connections_.size(); ++i) all.push_back(connections_[i].second);
+            forwards = forwards_;
+        }
+        for (std::size_t i = 0; i < forwards.size(); ++i) {
+            const std::vector<Var> more = forwards[i]->peers();
+            all.insert(all.end(), more.begin(), more.end());
+        }
+        return all;
+    }
+
+    bool connected() const { return !peers().empty(); }
+
+    /// The only peer: throws std::logic_error unless exactly one is connected.
+    Var operator->() const
+    {
+        const std::vector<Var> all = peers();
+        if (all.size() != 1) throw std::logic_error("uses port with no or several connections");
+        return all.front();
+    }
+
+    /// Calls `f(peer)` for each peer.
+    template <class F>
+    void each(F f) const
+    {
+        const std::vector<Var> all = peers();
+        for (std::size_t i = 0; i < all.size(); ++i) f(all[i].in());
+    }
+
+private:
+    typedef std::vector<std::pair<std::string, Var> > Connections;
+
+    // Not copyable.
+    UsesPort(const UsesPort&);
+    UsesPort& operator=(const UsesPort&);
+
+    void add(const std::string& id, const Var& peer)
+    {
+        omni_mutex_lock lock(mutex_);
+        for (std::size_t i = 0; i < connections_.size(); ++i)
+            if (connections_[i].first == id) {
+                connections_[i].second = peer;
+                return;
+            }
+        connections_.push_back(std::make_pair(id, peer));
+    }
+
+    std::string localId()
+    {
+        omni_mutex_lock lock(mutex_);
+        char id[32];
+        std::sprintf(id, "local:%lu", static_cast<unsigned long>(++next_));
+        return id;
+    }
+
+    mutable omni_mutex mutex_;
+    Connections connections_;
+    std::vector<UsesPort*> forwards_;
+    unsigned long next_;
+};
+
+/// Base of a component: CF::Resource, its properties and ports given by the component's overrides.
+class Resource : public virtual POA_CF::Resource {
+public:
+    Resource();
+    virtual ~Resource();
+
+    void setIdentifier(const std::string& identifier);
+    bool started() const;
+    /// releaseObject was called: the runtime deactivates the component.
+    bool released() const;
+
+    // CF::Resource
+    char* identifier();
+    void start();
+    void stop();
+    // CF::LifeCycle
+    void initialize();
+    void releaseObject();
+    // CF::TestableObject
+    void runTest(::CORBA::ULong testid, ::CF::Properties& testValues);
+    // CF::PropertySet: through configureProperty / queryProperty.
+    void configure(const ::CF::Properties& configProperties);
+    void query(::CF::Properties& configProperties);
+    // CF::PortSupplier: through port.
+    ::CORBA::Object_ptr getPort(const char* name);
+
+protected:
+    virtual void onInitialize();
+    virtual void onStart();
+    virtual void onStop();
+    virtual void onRelease();
+    /// Property `id` was configured.
+    virtual void onConfigured(const std::string& id);
+    /// Sets property `id` from `value`: false when there is no such property or `value` does not fit.
+    virtual bool configureProperty(const std::string& id, const ::CORBA::Any& value);
+    /// Puts property `id` into `value`: false when there is no such property.
+    virtual bool queryProperty(const std::string& id, ::CORBA::Any& value);
+    /// Ids of the properties, for a query of all of them.
+    virtual void propertyIds(std::vector<std::string>& ids);
+    /// A new reference to port `name`, nil when there is none.
+    virtual ::CORBA::Object_ptr port(const std::string& name);
+
+private:
+    // Not copyable.
+    Resource(const Resource&);
+    Resource& operator=(const Resource&);
+
+    mutable omni_mutex mutex_;
+    std::string identifier_;
+    bool started_;
+    bool released_;
+};
+
+/// Extracts a string from `any` into `value`: false when it holds none.
+bool fromAny(const ::CORBA::Any& any, ::CORBA::String_var& value);
+
+/// Extracts a value of an IDL struct, union, sequence or any from `any`: false when it holds none.
+template <class T>
+bool fromAnyValue(const ::CORBA::Any& any, T& value)
+{
+    const T* p = 0;
+    if (!(any >>= p) || !p) return false;
+    value = *p;
+    return true;
+}
+
+/// Connects uses port `usesName` of `user` to provides port `providesName` of `provider`, as a Core
+/// Framework does for a connection of a waveform (SAD).
+void connect(Resource& user, const char* usesName, Resource& provider, const char* providesName,
+    const char* connectionId);
+
+/// Execute parameters of a component started by a Core Framework (SCA 2.2.2, D.4.1.1.4):
+/// NAMING_CONTEXT_IOR, NAME_BINDING, COMPONENT_IDENTIFIER, then the others.
+struct ExecParams {
+    ExecParams(int argc, char** argv);
+
+    std::string namingContextIor;
+    std::string nameBinding;
+    std::string identifier;
+    std::vector<std::pair<std::string, std::string> > others;
+};
+
+/// The ORB and root POA of the process, and the components it serves.
+class Runtime {
+public:
+    /// Initializes the ORB (it removes its -ORB options from the arguments) and activates the root POA.
+    Runtime(int& argc, char** argv);
+    /// Destroys the ORB.
+    ~Runtime();
+
+    ::CORBA::ORB_ptr orb() const;
+    ::PortableServer::POA_ptr poa() const;
+
+    /// Activates `component` as `identifier`, a new reference to it.
+    ::CF::Resource_ptr activate(Resource& component, const std::string& identifier);
+    /// Waits until SIGINT, SIGTERM, or the release of every activated component.
+    void wait();
+    /// Stops serving: deactivates the components (to delete after it).
+    void shutdown();
+
+    /// Serves a component started alone: activated with the execute parameters, bound in the naming
+    /// context given (else its IOR printed), until released or stopped.
+    void serve(Resource& component, const ExecParams& params, const std::string& name);
+
+private:
+    // Not copyable.
+    Runtime(const Runtime&);
+    Runtime& operator=(const Runtime&);
+
+    ::CORBA::ORB_var orb_;
+    ::PortableServer::POA_var poa_;
+    std::vector<Resource*> components_;
+    bool down_;
+};
+
+/// Writes an error to the standard error.
+void reportError(const char* where, const ::CORBA::Exception& e);
+void reportError(const char* where, const char* what);
+
+/// `main` of a component started alone or by a Core Framework.
+template <class Component>
+int runComponent(int argc, char** argv, const char* name)
+{
+    try {
+        Runtime runtime(argc, argv);
+        const ExecParams params(argc, argv);
+        Component* component = new Component;
+        runtime.serve(*component, params, name);
+        runtime.shutdown();
+        delete component;
+        return 0;
+    } catch (const ::CORBA::Exception& e) {
+        reportError(name, e);
+    } catch (const std::exception& e) {
+        reportError(name, e.what());
+    }
+    return 1;
+}
+
+} // namespace sca

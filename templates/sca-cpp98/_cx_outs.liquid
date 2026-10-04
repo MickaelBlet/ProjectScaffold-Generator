@@ -1,0 +1,27 @@
+{%- comment -%}
+  Statements giving the `out` parameters of an operation an empty value (variable-length ones must
+  be set before returning). Parameters: params, owner, pad (indentation).
+{%- endcomment -%}
+{% for p in params %}
+{% if p.direction == 'out' %}
+{%- liquid
+  capture kind
+    render '_cx_kind', t: p.type
+  endcapture
+  capture name
+    render '_cx_name', t: p.type, owner: owner
+  endcapture
+  capture id
+    render '_cx_id', name: p.name
+  endcapture
+-%}
+{% case kind %}
+{% when 'string' %}
+{{ pad }}{{ id }} = ::CORBA::string_dup("");
+{% when 'variable' %}
+{{ pad }}{{ id }} = new {{ name }}();
+{% else %}
+{{ pad }}{{ id }} = {{ name }}();
+{% endcase %}
+{% endif %}
+{% endfor %}

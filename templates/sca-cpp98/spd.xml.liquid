@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE softpkg PUBLIC "-//JTRS//DTD SCA V2.2.2 SPD//EN" "softpkg.dtd">
+{% include '_xml_banner' %}
+{%- liquid
+  assign root = project.ident | snake
+  assign exe = root | append: '_' | append: item.name | snake
+  assign id = root | append: '/components/' | append: item.name | uuid
+  assign author = ''
+  for entry in project.metadata
+    if entry[0] == 'author'
+      assign author = entry[1]
+    endif
+  endfor
+-%}
+<softpkg id="DCE:{{ id }}" name="{{ item.name }}">
+    <author>
+{% if author != '' %}
+        <name>{{ author | escape }}</name>
+{% endif %}
+    </author>
+{% if item.description != '' %}
+    <description>{{ item.description | escape }}</description>
+{% endif %}
+    <propertyfile type="PRF">
+        <localfile name="{{ item.name }}.prf.xml"/>
+    </propertyfile>
+    <descriptor>
+        <localfile name="{{ item.name }}.scd.xml"/>
+    </descriptor>
+    <implementation id="DCE:{{ id | append: '/cpp' | uuid }}">
+        <code type="Executable">
+            <localfile name="{{ exe }}"/>
+            <entrypoint>{{ exe }}</entrypoint>
+        </code>
+        <programminglanguage name="C++"/>
+        <humanlanguage name="EN"/>
+        <runtime name="omniORB" version="4"/>
+        <os name="Linux"/>
+    </implementation>
+</softpkg>

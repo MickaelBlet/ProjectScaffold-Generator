@@ -1,0 +1,10 @@
+{%- comment -%}
+  Forward declaration of a struct or union (nothing for other types). Included. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  if e.kind == 'struct' or e.kind == 'union'
+    echo '    ' | append: e.kind | append: ' '
+    render '_idl_id', name: e.name
+    echo ';\n'
+  endif
+-%}

@@ -1,0 +1,12 @@
+{%- comment -%}
+  C++ name of a member of an IDL scope (see _idl_member). Parameters: name, scope.
+{%- endcomment -%}
+{%- liquid
+  assign a = name | downcase
+  assign b = scope | downcase
+  if a == b
+    echo name | append: '_'
+  else
+    render '_cx_id', name: name
+  endif
+-%}

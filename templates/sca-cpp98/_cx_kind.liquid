@@ -1,0 +1,41 @@
+{%- comment -%}
+  How the C++ mapping passes a type: `basic` (numbers, bool, char, octet, bitmasks), `enum`,
+  `string`, `fixed` (fixed-length structs and unions) or `variable` (sequences, any, structs and
+  unions holding them). Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    case t.name
+    when 'string'
+      echo 'string'
+    when 'bytes'
+      echo 'variable'
+    else
+      echo 'basic'
+    endcase
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    case def.kind
+    when 'enum'
+      echo 'enum'
+    when 'bitmask'
+      echo 'basic'
+    when 'alias'
+      render '_cx_kind', t: def.type
+    when 'primitive'
+      echo 'variable'
+    else
+      capture variable
+        render '_variable', t: t, depth: 0
+      endcapture
+      if variable == 'true'
+        echo 'variable'
+      else
+        echo 'fixed'
+      endif
+    endcase
+  else
+    echo 'variable'
+  endcase
+-%}

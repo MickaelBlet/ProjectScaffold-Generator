@@ -1,0 +1,7 @@
+{%- comment -%}
+  Text of a value of a PRF simple property. Parameter: v.
+{%- endcomment -%}
+{%- liquid
+  assign text = v | append: ''
+  echo text | escape
+-%}

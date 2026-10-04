@@ -1,0 +1,18 @@
+{%- comment -%}
+  Primitive of the model a basic type stands for (through aliases; a bitmask's underlying type):
+  `bool`, `char`, `uint8`... Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    echo t.name
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    case def.kind
+    when 'bitmask'
+      echo def.underlying
+    when 'alias'
+      render '_cx_prim', t: def.type
+    endcase
+  endcase
+-%}

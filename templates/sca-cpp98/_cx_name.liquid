@@ -1,0 +1,52 @@
+{%- comment -%}
+  C++ type of a type reference in the CORBA mapping: `::CORBA::Long`, `::robot::Pose`; the
+  containers are the typedefs of the IDL module `owner` (where the entity naming them is declared):
+  `::robot::PoseSeq`. Strings are `char*`. Parameters: t, owner.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    case t.name
+    when 'int8', 'uint8'
+      echo '::CORBA::Octet'
+    when 'int16'
+      echo '::CORBA::Short'
+    when 'uint16'
+      echo '::CORBA::UShort'
+    when 'int32'
+      echo '::CORBA::Long'
+    when 'uint32'
+      echo '::CORBA::ULong'
+    when 'int64'
+      echo '::CORBA::LongLong'
+    when 'uint64'
+      echo '::CORBA::ULongLong'
+    when 'float32'
+      echo '::CORBA::Float'
+    when 'float64'
+      echo '::CORBA::Double'
+    when 'bool'
+      echo '::CORBA::Boolean'
+    when 'char'
+      echo '::CORBA::Char'
+    when 'string'
+      echo 'char*'
+    when 'bytes'
+      echo '::CF::OctetSequence'
+    else
+      echo t.name
+    endcase
+  when 'ref'
+    echo '::'
+    if t.dependency
+      echo t.dependency | snake
+    else
+      echo project.ident | snake
+    endif
+    echo '::'
+    render '_cx_id', name: t.name
+  else
+    echo '::' | append: owner | append: '::'
+    render '_idl_name', t: t
+  endcase
+-%}

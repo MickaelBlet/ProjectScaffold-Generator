@@ -1,0 +1,13 @@
+{%- comment -%}
+  Opens a namespace, one level at a time (no nested namespace definitions before C++17):
+  `robot::core` -> `namespace robot { namespace core {`. Parameter: ns.
+{%- endcomment -%}
+{%- liquid
+  assign parts = ns | split: '::'
+  for part in parts
+    echo 'namespace ' | append: part | append: ' {'
+    unless forloop.last
+      echo ' '
+    endunless
+  endfor
+-%}

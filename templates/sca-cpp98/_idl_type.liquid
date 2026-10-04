@@ -1,0 +1,28 @@
+{%- comment -%}
+  IDL spelling of a type reference, fully scoped (a scoped name brings no identifier into the
+  scope using it, so members may be named like their types): `::robot::Pose`, `::robot::PoseSeq`,
+  `string<16>`. Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    render '_idl_prim', name: t.name
+    if t.name == 'string' and t.max
+      echo '<' | append: t.max | append: '>'
+    endif
+  when 'ref'
+    echo '::'
+    if t.dependency
+      echo t.dependency | snake
+    else
+      echo project.ident | snake
+    endif
+    echo '::'
+    render '_idl_id', name: t.name
+  else
+    echo '::'
+    echo project.ident | snake
+    echo '::'
+    render '_idl_name', t: t
+  endcase
+-%}

@@ -1,0 +1,20 @@
+{%- comment -%}
+  Empty value of a type, returned by a generated handler or method: `::CORBA::string_dup("")`,
+  `new T()` for variable-length types, else `T()`. Parameters: t, owner.
+{%- endcomment -%}
+{%- liquid
+  capture kind
+    render '_cx_kind', t: t
+  endcapture
+  capture name
+    render '_cx_name', t: t, owner: owner
+  endcapture
+  case kind
+  when 'string'
+    echo '::CORBA::string_dup("")'
+  when 'variable'
+    echo 'new ' | append: name | append: '()'
+  else
+    echo name | append: '()'
+  endcase
+-%}

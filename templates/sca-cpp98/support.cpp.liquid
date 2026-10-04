@@ -1,0 +1,293 @@
+{% include '_banner' %}
+#include <sca/support.hpp>
+
+#include <csignal>
+#include <cstring>
+#include <iostream>
+
+namespace sca {
+
+namespace {
+
+volatile std::sig_atomic_t stopRequested = 0;
+
+extern "C" void requestStop(int)
+{
+    stopRequested = 1;
+}
+
+void append(::CF::Properties& list, const ::CF::DataType& property)
+{
+    const ::CORBA::ULong n = list.length();
+    list.length(n + 1);
+    list[n] = property;
+}
+
+} // namespace
+
+// Resource
+
+Resource::Resource() : started_(false), released_(false) {}
+
+Resource::~Resource() {}
+
+void Resource::setIdentifier(const std::string& identifier)
+{
+    omni_mutex_lock lock(mutex_);
+    identifier_ = identifier;
+}
+
+bool Resource::started() const
+{
+    omni_mutex_lock lock(mutex_);
+    return started_;
+}
+
+bool Resource::released() const
+{
+    omni_mutex_lock lock(mutex_);
+    return released_;
+}
+
+char* Resource::identifier()
+{
+    omni_mutex_lock lock(mutex_);
+    return ::CORBA::string_dup(identifier_.c_str());
+}
+
+void Resource::start()
+{
+    onStart();
+    omni_mutex_lock lock(mutex_);
+    started_ = true;
+}
+
+void Resource::stop()
+{
+    onStop();
+    omni_mutex_lock lock(mutex_);
+    started_ = false;
+}
+
+void Resource::initialize()
+{
+    onInitialize();
+}
+
+void Resource::releaseObject()
+{
+    onRelease();
+    omni_mutex_lock lock(mutex_);
+    released_ = true;
+}
+
+void Resource::runTest(::CORBA::ULong, ::CF::Properties&)
+{
+    throw ::CF::TestableObject::UnknownTest();
+}
+
+void Resource::configure(const ::CF::Properties& configProperties)
+{
+    ::CF::Properties invalid;
+    for (::CORBA::ULong i = 0; i < configProperties.length(); ++i) {
+        const std::string id(configProperties[i].id.in());
+        if (configureProperty(id, configProperties[i].value))
+            onConfigured(id);
+        else
+            append(invalid, configProperties[i]);
+    }
+    if (invalid.length() == 0) return;
+    if (invalid.length() == configProperties.length())
+        throw ::CF::PropertySet::InvalidConfiguration("no property configured", invalid);
+    throw ::CF::PropertySet::PartialConfiguration(invalid);
+}
+
+void Resource::query(::CF::Properties& configProperties)
+{
+    if (configProperties.length() == 0) {
+        std::vector<std::string> ids;
+        propertyIds(ids);
+        configProperties.length(static_cast< ::CORBA::ULong>(ids.size()));
+        for (::CORBA::ULong i = 0; i < configProperties.length(); ++i) {
+            configProperties[i].id = ids[i].c_str();
+            queryProperty(ids[i], configProperties[i].value);
+        }
+        return;
+    }
+    ::CF::Properties unknown;
+    for (::CORBA::ULong i = 0; i < configProperties.length(); ++i)
+        if (!queryProperty(configProperties[i].id.in(), configProperties[i].value))
+            append(unknown, configProperties[i]);
+    if (unknown.length() > 0) throw ::CF::UnknownProperties(unknown);
+}
+
+::CORBA::Object_ptr Resource::getPort(const char* name)
+{
+    ::CORBA::Object_ptr p = port(name);
+    if (::CORBA::is_nil(p)) throw ::CF::PortSupplier::UnknownPort();
+    return p;
+}
+
+void Resource::onInitialize() {}
+
+void Resource::onStart() {}
+
+void Resource::onStop() {}
+
+void Resource::onRelease() {}
+
+void Resource::onConfigured(const std::string&) {}
+
+bool Resource::configureProperty(const std::string&, const ::CORBA::Any&)
+{
+    return false;
+}
+
+bool Resource::queryProperty(const std::string&, ::CORBA::Any&)
+{
+    return false;
+}
+
+void Resource::propertyIds(std::vector<std::string>&) {}
+
+::CORBA::Object_ptr Resource::port(const std::string&)
+{
+    return ::CORBA::Object::_nil();
+}
+
+// Values and connections
+
+bool fromAny(const ::CORBA::Any& any, ::CORBA::String_var& value)
+{
+    const char* text = 0;
+    if (!(any >>= text) || !text) return false;
+    value = text;
+    return true;
+}
+
+void connect(Resource& user, const char* usesName, Resource& provider, const char* providesName,
+    const char* connectionId)
+{
+    ::CORBA::Object_var uses = user.getPort(usesName);
+    ::CF::Port_var port = ::CF::Port::_narrow(uses);
+    if (::CORBA::is_nil(port)) throw std::logic_error(std::string(usesName) + " is not a uses port");
+    ::CORBA::Object_var provides = provider.getPort(providesName);
+    port->connectPort(provides, connectionId);
+}
+
+void reportError(const char* where, const ::CORBA::Exception& e)
+{
+    std::cerr << where << ": CORBA exception " << e._name() << std::endl;
+}
+
+void reportError(const char* where, const char* what)
+{
+    std::cerr << where << ": " << what << std::endl;
+}
+
+// ExecParams
+
+ExecParams::ExecParams(int argc, char** argv)
+{
+    for (int i = 1; i + 1 < argc; i += 2) {
+        const std::string name(argv[i]);
+        const std::string value(argv[i + 1]);
+        if (name == "NAMING_CONTEXT_IOR")
+            namingContextIor = value;
+        else if (name == "NAME_BINDING")
+            nameBinding = value;
+        else if (name == "COMPONENT_IDENTIFIER")
+            identifier = value;
+        else
+            others.push_back(std::make_pair(name, value));
+    }
+}
+
+// Runtime
+
+Runtime::Runtime(int& argc, char** argv) : down_(false)
+{
+    orb_ = ::CORBA::ORB_init(argc, argv);
+    ::CORBA::Object_var root = orb_->resolve_initial_references("RootPOA");
+    poa_ = ::PortableServer::POA::_narrow(root);
+    ::PortableServer::POAManager_var manager = poa_->the_POAManager();
+    manager->activate();
+}
+
+Runtime::~Runtime()
+{
+    try {
+        shutdown();
+        orb_->destroy();
+    } catch (const ::CORBA::Exception& e) {
+        reportError("sca::Runtime", e);
+    }
+}
+
+::CORBA::ORB_ptr Runtime::orb() const
+{
+    return orb_.in();
+}
+
+::PortableServer::POA_ptr Runtime::poa() const
+{
+    return poa_.in();
+}
+
+::CF::Resource_ptr Runtime::activate(Resource& component, const std::string& identifier)
+{
+    component.setIdentifier(identifier);
+    components_.push_back(&component);
+    return component._this();
+}
+
+void Runtime::wait()
+{
+    std::signal(SIGINT, requestStop);
+    std::signal(SIGTERM, requestStop);
+    while (!stopRequested) {
+        bool released = !components_.empty();
+        for (std::size_t i = 0; i < components_.size(); ++i)
+            if (!components_[i]->released()) released = false;
+        if (released) break;
+        omni_thread::sleep(0, 100 * 1000 * 1000);
+    }
+}
+
+void Runtime::shutdown()
+{
+    if (down_) return;
+    down_ = true;
+    // Waits for the calls in progress, deactivates every object.
+    orb_->shutdown(true);
+}
+
+void Runtime::serve(Resource& component, const ExecParams& params, const std::string& name)
+{
+    const std::string identifier = params.identifier.empty() ? name : params.identifier;
+    ::CF::Resource_var ref = activate(component, identifier);
+    for (std::size_t i = 0; i < params.others.size(); ++i)
+        std::cerr << name << ": execute parameter " << params.others[i].first << " ignored" << std::endl;
+    ::CosNaming::NamingContext_var context;
+    ::CosNaming::Name binding;
+    if (!params.namingContextIor.empty()) {
+        ::CORBA::Object_var object = orb_->string_to_object(params.namingContextIor.c_str());
+        context = ::CosNaming::NamingContext::_narrow(object);
+        binding.length(1);
+        binding[0].id = (params.nameBinding.empty() ? identifier : params.nameBinding).c_str();
+        context->rebind(binding, ref);
+    } else {
+        ::CORBA::String_var ior = orb_->object_to_string(ref);
+        std::cout << ior.in() << std::endl;
+    }
+    wait();
+    if (!::CORBA::is_nil(context)) {
+        try {
+            context->unbind(binding);
+        } catch (const ::CORBA::Exception& e) {
+            reportError(name.c_str(), e);
+        }
+    }
+}
+
+} // namespace sca

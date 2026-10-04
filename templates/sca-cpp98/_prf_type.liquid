@@ -1,0 +1,47 @@
+{%- comment -%}
+  PRF property of an attribute's type: `simple:<type>` for a primitive (through aliases),
+  `sequence:<type>` for a vector, list or set of primitives, nothing otherwise. Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    case t.name
+    when 'int8', 'uint8'
+      echo 'simple:octet'
+    when 'int16'
+      echo 'simple:short'
+    when 'uint16'
+      echo 'simple:ushort'
+    when 'int32'
+      echo 'simple:long'
+    when 'uint32'
+      echo 'simple:ulong'
+    when 'int64'
+      echo 'simple:longlong'
+    when 'uint64'
+      echo 'simple:ulonglong'
+    when 'float32'
+      echo 'simple:float'
+    when 'float64'
+      echo 'simple:double'
+    when 'bool'
+      echo 'simple:boolean'
+    when 'char'
+      echo 'simple:char'
+    when 'string'
+      echo 'simple:string'
+    endcase
+  when 'vector', 'list', 'set'
+    capture inner
+      render '_prf_type', t: t.of
+    endcapture
+    if inner contains 'simple:'
+      echo inner | replace: 'simple:', 'sequence:'
+    endif
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    if def.kind == 'alias'
+      render '_prf_type', t: def.type
+    endif
+  endcase
+-%}

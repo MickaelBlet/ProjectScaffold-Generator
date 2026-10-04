@@ -307,6 +307,50 @@ describe.each(TEMPLATE_SETS)('built-in %s templates', (set) => {
   })
 })
 
+describe('SCA generation', () => {
+  const sca = (path: string): Record<string, string> =>
+    Object.fromEntries(generate(exported(path), builtin('sca-cpp98')).files.map((f) => [f.path, f.text]))
+
+  it('writes the types and interfaces as IDL, containers as typedefs before their use', () => {
+    const idl = sca('tests/fixtures/relay.scaffold.yaml')['idl/relay.idl']!
+    // A recursive struct is declared before the sequence of it.
+    expect(idl.indexOf('struct Tree;')).toBeLessThan(idl.indexOf('typedef sequence<::relay::Tree> TreeSeq;'))
+    expect(idl.indexOf('TreeSeq;')).toBeLessThan(idl.indexOf('struct Tree {'))
+    // An operation named like its interface is renamed.
+    expect(idl).toMatch(/interface Echo \{[^}]*echo_\(/)
+    const plant = sca('tests/fixtures/plant.scaffold.yaml')['idl/plant_demo.idl']!
+    expect(plant).toContain('State_Off, // -1')
+    expect(plant).toContain('typedef sequence<::plant_demo::StringInt32MapEntry> StringInt32Map;')
+    expect(plant).toContain('typedef sequence<string, 1> StringOpt; // optional: empty or one')
+  })
+
+  it('makes a component of each concrete top-level module, and a waveform of the project', () => {
+    const files = sca('tests/fixtures/plant.scaffold.yaml')
+    const paths = Object.keys(files)
+    for (const c of ['Plant', 'Client'])
+      for (const ext of ['spd', 'scd', 'prf']) expect(paths).toContain(`dom/components/${c}/${c}.${ext}.xml`)
+    expect(paths).not.toContain('dom/components/Device/Device.spd.xml')
+    expect(files['include/plant_demo/Plant.hpp']).toContain('class Plant : public ::sca::Resource {')
+    // A port of an inner module linked from another component is offered by its component.
+    expect(files['src/Plant.cpp']).toContain('if (name == "Store.query") return store().query()._this();')
+    const sad = files['dom/waveforms/plant_demo/plant_demo.sad.xml']!
+    expect(sad).toContain('<usesidentifier>ask</usesidentifier>')
+    expect(sad).toContain('<providesidentifier>Store.query</providesidentifier>')
+    expect(files['src/main/waveform.cpp']).toContain(
+      '::sca::connect(*client, "ask", *plant, "Store.query", "ask_store");'
+    )
+  })
+
+  it('gives the descriptors ids stable across generations', () => {
+    const a = sca('tests/fixtures/plant.scaffold.yaml')['dom/components/Plant/Plant.spd.xml']!
+    const b = sca('tests/fixtures/plant.scaffold.yaml')['dom/components/Plant/Plant.spd.xml']!
+    expect(a).toBe(b)
+    expect(a).toMatch(
+      /<softpkg id="DCE:[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}" name="Plant">/
+    )
+  })
+})
+
 describe('C++17 generation', () => {
   it('generates the robot', () => {
     const { files, warnings } = generate(exported('examples/robot.scaffold.yaml'), builtin('cpp17'))
@@ -432,7 +476,9 @@ describe('C++17 generation', () => {
     expect(at('src/ClientSystem.cpp')).toContain('remote::address("RELAY_ECHO_UDP", "10.0.0.2:50001")')
     expect(at('src/ServerSystem.cpp')).toContain('remote::address("RELAY_ECHO_UDP_LISTEN", "[::]:50001")')
     // Without links between binaries: neither transports nor Python.
-    const plain = generate(exported('tests/fixtures/plant.scaffold.yaml'), builtin('cpp17')).files.map((f) => f.path)
+    const plain = generate(exported('tests/fixtures/plant.scaffold.yaml'), builtin('cpp17')).files.map(
+      (f) => f.path
+    )
     expect(plain.filter((p) => p.includes('remote') || p.startsWith('python/'))).toEqual([])
   })
 

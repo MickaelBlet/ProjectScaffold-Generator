@@ -1,0 +1,64 @@
+{%- comment -%}
+  C++ expression of a value of a basic type, an enum or a bitmask (nothing for other types).
+  Parameters: v, t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive'
+    case t.name
+    when 'bool'
+      if v == true or v == 'true'
+        echo 'true'
+      else
+        echo 'false'
+      endif
+    when 'char'
+      assign c = v | replace: '\\', '\\\\' | replace: "'", "\\'"
+      echo "'" | append: c | append: "'"
+    when 'int8'
+      # An octet: negative values wrap around.
+      if v < 0
+        echo v | plus: 256
+      else
+        echo v
+      endif
+    when 'float32', 'float64'
+      assign number = v | append: ''
+      echo number
+      unless number contains '.' or number contains 'e'
+        echo '.0'
+      endunless
+      if t.name == 'float32'
+        echo 'f'
+      endif
+    when 'int64'
+      echo v | append: 'LL'
+    when 'uint64'
+      echo v | append: 'ULL'
+    when 'uint32'
+      echo v | append: 'U'
+    when 'string', 'bytes'
+    else
+      echo v
+    endcase
+  when 'ref'
+    assign def = allTypes | where: 'name', t.name | first
+    assign ns = def.dependency | default: project.ident | snake
+    case def.kind
+    when 'enum'
+      echo '::' | append: ns | append: '::' | append: def.name | append: '_' | append: v
+    when 'bitmask'
+      if v.size == 0
+        echo '0'
+      endif
+      for flag in v
+        echo '::' | append: ns | append: '::' | append: def.name | append: '_' | append: flag
+        unless forloop.last
+          echo ' | '
+        endunless
+      endfor
+    when 'alias'
+      render '_cx_literal', v: v, t: def.type
+    endcase
+  endcase
+-%}
