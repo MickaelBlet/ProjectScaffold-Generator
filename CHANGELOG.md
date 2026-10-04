@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Desktop apps (Tauri, Electron): the window appears once the page is painted, in the theme colors, instead of white at startup.
 - Tauri (Windows): files and folders picked once (recent documents, workspace, output and template folders) are read and written again without asking for permission at every launch.
 - Code generation panel: its templates and generated files are listed after a reload instead of staying at _Reading…_ until _Change templates…_ or _Refresh_; picking a built-in template set no longer does nothing when the document changed while the list was open.
 - Explorer: the selected link is highlighted in _Links_.
