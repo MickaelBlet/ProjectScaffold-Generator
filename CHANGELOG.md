@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consistent mouse cursors: a hand on everything clickable (section headers, selects, checkboxes and their labels, color pickers), the arrow once disabled; on the canvas, the bend and end handles of a selected link and its line show an open hand, closed while dragging.
 - Toolbar: ← / → buttons go to the previous / next selection (Alt+← / Alt+→); the shortcut of _Go to…_ sits on the right of its button.
 - _Change templates…_ / _File › Code templates…_: the templates in use come first, checked on the left; the entries no longer show a T badge.
+- The overflow menu of a tab bar (its chevron, shown when tabs do not fit) lists all the tabs of the group, not only the hidden ones.
 
 ### Fixed
 
