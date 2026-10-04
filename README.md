@@ -95,7 +95,7 @@ Development: `npm run build && npm run vscode:compile`, then `code --extensionDe
 - The **Output** panel (Ctrl+Shift+U) logs code generation file by file (click a generated file to open it) and every status message and dialog, with their time; filter by source, level or text.
 - **Save** writes the project file (export format + `editor` section). **Export** writes the file without editor data.
 - **Recent ▾** (toolbar) lists the last 10 opened/saved projects (exports excluded). Stored in IndexedDB (file handle + last content; reopening asks for file access again when needed).
-- Settings (theme, link style and badges, port style (dots, arrows, hollow, shapes) to tell `in` from `out`, grid, guides, select before moving, Inspector shown on selection, minimap, arrange on open, text editor: font, tab size, whitespace, word wrap, minimap, line numbers, folding, brackets, suggestions…) are kept per browser; the filter at the top of the panel matches their labels, hints and section titles.
+- Settings (theme, link style and badges, port style (dots, arrows, hollow, shapes) to tell `in` from `out`, grid, guides, select before moving, Inspector shown on selection, minimap, arrange on open, text editor: font, tab size, whitespace, indentation guides, word wrap, minimap, line numbers, folding, brackets, suggestions…) are kept per browser; the filter at the top of the panel matches their labels, hints and section titles.
 - _Help › Reset app data…_ deletes everything the app stores in the browser (settings, panel layout, recent files, open documents, caches) and reloads it.
 
 ## File format
