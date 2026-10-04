@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The overflow menu of a tab bar (its chevron, shown when tabs do not fit) lists all the tabs of the group, not only the hidden ones, sorted by title, their titles aligned on one column whatever the width of their icon.
 - Code editor: matching brackets outlined in the accent color, on top of their shading, and marked on the minimap and the overview ruler of the scrollbar.
 - Code editor: fold markers drawn as wider chevrons, centered on their line.
+- Diagram export (PNG / SVG): transparent background, no longer filled with the editor background.
 
 ### Fixed
 
