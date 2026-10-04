@@ -5,6 +5,8 @@ project:
   metadata:
     version: 0.9.0
     owner: ops-team
+generation:
+  templates: cpp20
 transports:
   - mavlink
   - rtp
