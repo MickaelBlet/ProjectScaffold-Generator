@@ -4,7 +4,7 @@ import { Liquid } from 'liquidjs'
 import { buildContext, type GenContext } from './context'
 import { caseFilters, uuid } from './filters'
 import { placeMarkers, UserTag } from './sections'
-import type { TemplateSet } from './templateSet'
+import { isInsidePath, type TemplateSet } from './templateSet'
 import type { FileProject } from '../model/schema'
 
 export interface GeneratedFile {
@@ -24,12 +24,14 @@ export class GenerationError extends Error {}
 
 /** Checks and normalizes a generated file path: relative, inside the output directory. */
 export function outputPath(path: string): string {
-  const p = path.trim().replace(/\/+/g, '/')
-  if (!p || p.startsWith('/') || p.includes('\\') || /^[A-Za-z]:/.test(p))
-    throw new GenerationError(`invalid output path '${path}': must be relative and use '/'`)
-  const parts = p.split('/').filter((s) => s !== '.')
-  if (parts.some((s) => s === '..' || s === '')) throw new GenerationError(`invalid output path '${path}'`)
-  return parts.join('/')
+  if (!isInsidePath(path))
+    throw new GenerationError(`invalid output path '${path}': must be relative, use '/' and stay inside`)
+  return path
+    .trim()
+    .replace(/\/+/g, '/')
+    .split('/')
+    .filter((s) => s !== '.')
+    .join('/')
 }
 
 /** A line holding only one tag, `user` / `enduser` excepted (their lines place the markers). */

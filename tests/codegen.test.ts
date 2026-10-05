@@ -13,7 +13,7 @@ import {
   type OutputDir
 } from '@/codegen/run'
 import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '@/codegen/sections'
-import { parseManifest, type TemplateSet } from '@/codegen/templateSet'
+import { parseManifest, TemplateSetError, type TemplateSet } from '@/codegen/templateSet'
 import { fromFile } from '@/model/serialize'
 import { TEMPLATE_SETS } from '@/model/templateSets'
 import type { FileProject } from '@/model/schema'
@@ -136,6 +136,15 @@ describe('templates', () => {
     expect(outputPath('include//a/./b.hpp')).toBe('include/a/b.hpp')
     for (const bad of ['/etc/x', '../x', 'a/../../x', 'C:/x', 'a\\b', ''])
       expect(() => outputPath(bad)).toThrow()
+  })
+
+  it('keeps template files inside the template set', () => {
+    const manifest = (template: string, partial = '_p.liquid') =>
+      `name: t\npartials: [${partial}]\noutputs:\n  - { template: ${template}, path: out }\n`
+    expect(parseManifest(manifest('./a.liquid')).outputs[0]?.template).toBe('./a.liquid')
+    for (const bad of ['../../etc/passwd', '/etc/passwd', 'a/../../x', 'C:/x'])
+      expect(() => parseManifest(manifest(bad))).toThrow(TemplateSetError)
+    expect(() => parseManifest(manifest('a.liquid', '../x'))).toThrow(TemplateSetError)
   })
 })
 

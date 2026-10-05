@@ -4,8 +4,20 @@ import { z } from 'zod'
 
 export const MANIFEST = 'manifest.yaml'
 
+/** Whether `path` is relative, `/`-separated and stays inside its directory (`.` segments allowed). */
+export function isInsidePath(path: string): boolean {
+  const p = path.trim().replace(/\/+/g, '/')
+  if (!p || p.startsWith('/') || p.includes('\\') || /^[A-Za-z]:/.test(p)) return false
+  return !p.split('/').some((s) => s === '..' || s === '')
+}
+
+const TemplatePath = z
+  .string()
+  .min(1)
+  .refine(isInsidePath, 'must be relative, use / and stay inside the template set')
+
 const Output = z.object({
-  template: z.string().min(1).describe('template file, relative to the manifest'),
+  template: TemplatePath.describe('template file, relative to the manifest'),
   path: z
     .string()
     .min(1)
@@ -35,7 +47,7 @@ export const ManifestSchema = z.object({
     .describe('lines holding only a `{% tag %}` (other than `user`) leave no line nor indentation'),
   squeezeBlankLines: z.boolean().default(true).describe('collapse runs of blank lines into one'),
   partials: z
-    .array(z.string())
+    .array(TemplatePath)
     .optional()
     .describe('templates only used by `render` / `include`, which name them without `.liquid`'),
   outputs: z.array(Output)

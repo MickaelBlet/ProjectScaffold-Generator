@@ -27,6 +27,8 @@ outputs:
     comment: '#'
 ```
 
+Template and partial paths are relative to the manifest and stay inside its directory (no `..`, no absolute path); generated file paths stay inside the output directory.
+
 ## User sections and whitespace
 
 - `{% user 'id' %}default{% enduser %}` writes a user section. `id` is any Liquid expression, unique in the file; the markers take the indentation of the tag's line.
