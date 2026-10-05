@@ -5,12 +5,14 @@ import {
   contentTop,
   emptyProject,
   findView,
+  indexById,
   isolatedModuleId,
   isolatedViewId,
   LAYOUT_PAD,
   minSize,
   modulePath,
   modulePaths,
+  parentIds,
   viewExists
 } from '@/model/project'
 import { GLOBAL_VIEW, type Module, type Project } from '@/model/types'
@@ -25,6 +27,18 @@ const mod = (id: string, parentId: string | null, y: number, height: number): Mo
   methods: [],
   ports: [],
   layout: { x: 0, y, width: 100, height }
+})
+
+describe('indexes', () => {
+  it('are built once per array', () => {
+    const modules = [mod('a', null, 0, 10), mod('b', 'a', 0, 10)]
+    expect(indexById(modules).get('b')).toBe(modules[1])
+    expect(indexById(modules)).toBe(indexById(modules))
+    expect([...parentIds(modules)]).toEqual(['a'])
+    const next = [...modules, mod('c', 'b', 0, 10)]
+    expect(indexById(next).get('c')).toBe(next[2])
+    expect([...parentIds(next)].sort()).toEqual(['a', 'b'])
+  })
 })
 
 describe('belowContent', () => {

@@ -136,6 +136,23 @@ export function growAncestors(d: Project, id: Id): void {
   }
 }
 
+const byIdCache = new WeakMap<readonly { id: Id }[], ReadonlyMap<Id, { id: Id }>>()
+const parentsCache = new WeakMap<readonly Module[], ReadonlySet<Id>>()
+
+/** `items` by id, built once per array: for arrays never changed in place (store states, not drafts). */
+export function indexById<T extends { id: Id }>(items: readonly T[]): ReadonlyMap<Id, T> {
+  let index = byIdCache.get(items)
+  if (!index) byIdCache.set(items, (index = new Map(items.map((x) => [x.id, x]))))
+  return index as ReadonlyMap<Id, T>
+}
+
+/** Ids of the modules holding others, built once per array (as `indexById`). */
+export function parentIds(modules: readonly Module[]): ReadonlySet<Id> {
+  let parents = parentsCache.get(modules)
+  if (!parents) parentsCache.set(modules, (parents = new Set(modules.flatMap((m) => m.parentId ?? []))))
+  return parents
+}
+
 export function childModules(p: Project, parentId: Id | null): Module[] {
   return p.modules.filter((m) => m.parentId === parentId)
 }

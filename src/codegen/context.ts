@@ -712,7 +712,7 @@ export function buildContext(file: FileProject): GenContext {
   const port = (path: string, name: string): GenPort | undefined =>
     byPath.get(path)?.ports.find((p) => p.name === name)
 
-  for (const l of links) {
+  for (const [i, l] of links.entries()) {
     const { from, to } = l
     if (from.project || to.project) {
       const local = from.project ? to : from
@@ -778,10 +778,7 @@ export function buildContext(file: FileProject): GenContext {
     }
     remoteInterfaces.set(face.name, face)
     const index = remoteLinks.length
-    const settings = resolveSettings(
-      file.links.find((f) => f.name === l.name)!,
-      index
-    )
+    const settings = resolveSettings(file.links[i]!, index)
     remoteLinks.push({
       index,
       link: l,
