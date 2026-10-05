@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Text fields (inspectors, editor tables) fill the height of their row.
+- Code generation panel: a template folder just picked or filled with a copy of the built-in templates is listed at once (it stayed on the built-in templates in the desktop app on Windows), also when the folder already held a template set.
 
 ### Security
 
