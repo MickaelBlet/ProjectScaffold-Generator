@@ -3,7 +3,11 @@
 {% include '_xml_banner' %}
 {%- liquid
   assign root = project.ident | snake
-  assign exe = root | append: '_' | append: item.name | snake
+  if item.binary
+    assign exe = root | append: '_' | append: item.binary | snake
+  else
+    assign exe = root | append: '_app'
+  endif
   assign id = root | append: '/components/' | append: item.name | uuid
   assign author = ''
   for entry in project.metadata
@@ -29,8 +33,8 @@
     </descriptor>
     <implementation id="DCE:{{ id | append: '/cpp' | uuid }}">
         <code type="Executable">
-            <localfile name="{{ exe }}"/>
-            <entrypoint>{{ exe }}</entrypoint>
+            <localfile name="/bin/{{ exe }}"/>
+            <entrypoint>/bin/{{ exe }}</entrypoint>
         </code>
         <programminglanguage name="C++"/>
         <humanlanguage name="EN"/>

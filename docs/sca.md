@@ -48,11 +48,11 @@ A component per concrete top-level module: `class Plant : public ::sca::Resource
 
 ## Descriptors
 
-In `dom/`, the layout of an SDR root, where `cmake --install` puts them with the executables.
+In `dom/`, the layout of an SDR root, where `cmake --install` puts them with the executables (`dom/bin`).
 
 | File                                   | Content                                                                                                                                                                                                                                              |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dom/components/<Name>/<Name>.spd.xml` | software package                                                                                                                                                                                                                                     |
+| `dom/components/<Name>/<Name>.spd.xml` | software package, its code the executable of its binary (`/bin/<ns>_<binary>`, or `<ns>_app`)                                                                                                                                                        |
 | `dom/components/<Name>/<Name>.scd.xml` | its provides / uses ports with their repository ids                                                                                                                                                                                                  |
 | `dom/components/<Name>/<Name>.prf.xml` | attributes of primitive types as `simple`, vectors of them as `simplesequence`; others listed in comments                                                                                                                                            |
 | `dom/waveforms/<ns>/<ns>.sad.xml`      | a placement per component (found in the naming service as `<Name>_1`), the binaries as host collocations, the first component as assembly controller, a connection per link between components, the ports linked to other projects as external ports |
@@ -61,5 +61,5 @@ Ids are UUIDs made from the names, stable across generations.
 
 ## Executables
 
-- One per component, `<ns>_<name>`, started by a Core Framework with the SCA execute parameters (`NAMING_CONTEXT_IOR`, `NAME_BINDING`, `COMPONENT_IDENTIFIER`: bound in that naming context until released) or alone (its IOR printed).
+- One per binary, `<ns>_<binary>` (`src/main/<binary>_main.cpp`), serving its components in one process; `<ns>_app` (`src/main/main.cpp`) serves the components of no binary (all of them when the project has none). Each component is bound by its usage name (`<Name>_1`), where the SAD finds it, in the naming context of the SCA execute parameters (`NAMING_CONTEXT_IOR`; with one component, `NAME_BINDING` and `COMPONENT_IDENTIFIER` apply), else in the `NameService` (`-ORBInitRef NameService=...`), else their IORs are printed. Served until SIGINT / SIGTERM or the release of every component.
 - `<ns>_waveform`: the whole waveform in one process without a Core Framework. Its components are activated, connected as the SAD connects them, initialized and started until SIGINT / SIGTERM.

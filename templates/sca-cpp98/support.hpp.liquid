@@ -1,7 +1,7 @@
 {% include '_banner' %}
 // SCA support of the generated components, the same in every project: the base of a component
-// (CF::Resource), its uses ports (CF::Port), and the runtime starting components (alone, as a Core
-// Framework starts them, or a whole waveform in one process).
+// (CF::Resource), its uses ports (CF::Port), and the runtime serving components (those of a binary,
+// found by a Core Framework in the naming service, or a whole waveform in one process).
 #pragma once
 
 #include <omniORB4/CORBA.h>
@@ -238,9 +238,11 @@ public:
     /// Stops serving: deactivates the components (to delete after it).
     void shutdown();
 
-    /// Serves a component started alone: activated with the execute parameters, bound in the naming
-    /// context given (else its IOR printed), until released or stopped.
-    void serve(Resource& component, const ExecParams& params, const std::string& name);
+    /// Serves components, each with its name, until SIGINT, SIGTERM or the release of every one:
+    /// activated, bound by their names in the naming context of the execute parameters (one
+    /// component: as NAME_BINDING, COMPONENT_IDENTIFIER its identifier), else in the NameService
+    /// (-ORBInitRef NameService=...), else their IORs printed.
+    void serve(const std::vector<std::pair<Resource*, std::string> >& components, const ExecParams& params);
 
 private:
     // Not copyable.
@@ -256,25 +258,5 @@ private:
 /// Writes an error to the standard error.
 void reportError(const char* where, const ::CORBA::Exception& e);
 void reportError(const char* where, const char* what);
-
-/// `main` of a component started alone or by a Core Framework.
-template <class Component>
-int runComponent(int argc, char** argv, const char* name)
-{
-    try {
-        Runtime runtime(argc, argv);
-        const ExecParams params(argc, argv);
-        Component* component = new Component;
-        runtime.serve(*component, params, name);
-        runtime.shutdown();
-        delete component;
-        return 0;
-    } catch (const ::CORBA::Exception& e) {
-        reportError(name, e);
-    } catch (const std::exception& e) {
-        reportError(name, e.what());
-    }
-    return 1;
-}
 
 } // namespace sca

@@ -2,8 +2,9 @@
 # `npm run generate -- <project file> -t sca-cpp98 -o <dir>`.
 # Types, constants and interfaces become IDL (idl/<project>.idl); each concrete top-level module an
 # SCA component (CF::Resource: provides ports as servants of their interface, uses ports as
-# CF::Port, attributes as properties) with its executable and descriptors (SPD, SCD, PRF); the
-# project a waveform (SAD; binaries as host collocations) and a launcher running it in one process.
+# CF::Port, attributes as properties) with its descriptors (SPD, SCD, PRF); each binary an
+# executable serving its components (those of no binary: one more); the project a waveform (SAD;
+# binaries as host collocations) and a launcher running it in one process.
 # Everything C++ / IDL lives in these files: the `_cx_*` partials spell the C++ mapping of IDL, the
 # `_idl_*` ones the IDL of the model; edit them freely.
 name: sca-cpp98
@@ -90,11 +91,17 @@ outputs:
     each: modules
     when: item.kind != 'interface'
     path: "src/{% render '_source', e: item %}"
+  # Executables: one per binary serving its components, one serving the components of no binary.
+  - template: binary_main.cpp.liquid
+    each: binaries
+    as: binary
+    when: "modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', binary.name | first"
+    path: src/main/{{ binary.name | snake }}_main.cpp
+  - template: binary_main.cpp.liquid
+    each: "modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', nil | slice: 0 | map: 'binary'"
+    as: binary
+    path: src/main/main.cpp
   # Components: concrete top-level modules.
-  - template: component_main.cpp.liquid
-    each: modules
-    when: item.depth == 0 and item.abstract == false
-    path: src/main/{{ item.name | snake }}_main.cpp
   - template: spd.xml.liquid
     each: modules
     when: item.depth == 0 and item.abstract == false

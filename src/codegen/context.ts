@@ -228,6 +228,8 @@ export interface GenModule {
   /** Path of the enclosing module; null at the top level. */
   parent: string | null
   depth: number
+  /** Binary its top-level module runs in; null when none. */
+  binary: string | null
   description: string
   kind: ModuleKind
   /** Not concrete: cannot be held by value. */
@@ -542,7 +544,8 @@ export function buildContext(file: FileProject): GenContext {
   const modules: GenModule[] = []
   const byPath = new Map<string, GenModule>()
   const basesOf = new Map<GenModule, string[]>()
-  const walk = (m: FileModule, namespace: string[]): GenModule => {
+  const binaryNames = new Set((file.binaries ?? []).map((b) => b.name))
+  const walk = (m: FileModule, namespace: string[], binary: string | null): GenModule => {
     const path = [...namespace, m.name].join('.')
     const g: GenModule = {
       entity: 'module',
@@ -551,6 +554,7 @@ export function buildContext(file: FileProject): GenContext {
       namespace,
       parent: namespace.length ? namespace.join('.') : null,
       depth: namespace.length,
+      binary,
       description: m.description ?? '',
       kind: m.kind ?? 'class',
       abstract: !!m.kind && m.kind !== 'class',
@@ -582,11 +586,11 @@ export function buildContext(file: FileProject): GenContext {
     modules.push(g)
     byPath.set(path, g)
     basesOf.set(g, m.bases ?? [])
-    g.children = (m.modules ?? []).map((c) => walk(c, [...namespace, m.name]))
+    g.children = (m.modules ?? []).map((c) => walk(c, [...namespace, m.name], binary))
     g.instances = g.children.filter(instantiated)
     return g
   }
-  const top = file.modules.map((m) => walk(m, []))
+  const top = file.modules.map((m) => walk(m, [], m.binary && binaryNames.has(m.binary) ? m.binary : null))
   for (const [g, bases] of basesOf)
     g.bases = bases.flatMap((b) => {
       const base = byPath.get(b)

@@ -262,30 +262,53 @@ void Runtime::shutdown()
     orb_->shutdown(true);
 }
 
-void Runtime::serve(Resource& component, const ExecParams& params, const std::string& name)
+void Runtime::serve(const std::vector<std::pair<Resource*, std::string> >& components, const ExecParams& params)
 {
-    const std::string identifier = params.identifier.empty() ? name : params.identifier;
-    ::CF::Resource_var ref = activate(component, identifier);
+    // A Core Framework names the component of a process serving one.
+    const bool one = components.size() == 1;
     for (std::size_t i = 0; i < params.others.size(); ++i)
-        std::cerr << name << ": execute parameter " << params.others[i].first << " ignored" << std::endl;
+        std::cerr << "execute parameter " << params.others[i].first << " ignored" << std::endl;
+    std::vector< ::CF::Resource_var> refs;
+    std::vector< ::CosNaming::Name> bindings;
+    for (std::size_t i = 0; i < components.size(); ++i) {
+        const std::string& name = components[i].second;
+        refs.push_back(activate(*components[i].first, one && !params.identifier.empty() ? params.identifier : name));
+        ::CosNaming::Name binding;
+        binding.length(1);
+        binding[0].id = (one && !params.nameBinding.empty() ? params.nameBinding : name).c_str();
+        bindings.push_back(binding);
+    }
     ::CosNaming::NamingContext_var context;
-    ::CosNaming::Name binding;
+    std::size_t bound = 0;
     if (!params.namingContextIor.empty()) {
         ::CORBA::Object_var object = orb_->string_to_object(params.namingContextIor.c_str());
         context = ::CosNaming::NamingContext::_narrow(object);
-        binding.length(1);
-        binding[0].id = (params.nameBinding.empty() ? identifier : params.nameBinding).c_str();
-        context->rebind(binding, ref);
+        for (; bound < refs.size(); ++bound) context->rebind(bindings[bound], refs[bound].in());
     } else {
-        ::CORBA::String_var ior = orb_->object_to_string(ref);
-        std::cout << ior.in() << std::endl;
+        try {
+            ::CORBA::Object_var object = orb_->resolve_initial_references("NameService");
+            context = ::CosNaming::NamingContext::_narrow(object);
+            if (!::CORBA::is_nil(context))
+                for (; bound < refs.size(); ++bound) context->rebind(bindings[bound], refs[bound].in());
+        } catch (const ::CORBA::ORB::InvalidName&) {
+            // No naming service configured (omniORB: NO_RESOURCES).
+        } catch (const ::CORBA::NO_RESOURCES&) {
+        } catch (const ::CORBA::SystemException& e) {
+            reportError("NameService", e);
+        }
+        if (bound < refs.size()) {
+            for (std::size_t i = 0; i < refs.size(); ++i) {
+                ::CORBA::String_var ior = orb_->object_to_string(refs[i].in());
+                std::cout << components[i].second << " " << ior.in() << std::endl;
+            }
+        }
     }
     wait();
-    if (!::CORBA::is_nil(context)) {
+    for (std::size_t i = 0; i < bound; ++i) {
         try {
-            context->unbind(binding);
+            context->unbind(bindings[i]);
         } catch (const ::CORBA::Exception& e) {
-            reportError(name.c_str(), e);
+            reportError(components[i].second.c_str(), e);
         }
     }
 }

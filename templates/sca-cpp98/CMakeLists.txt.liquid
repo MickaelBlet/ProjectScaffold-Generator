@@ -101,20 +101,34 @@ endif()
 {% enduser %}
 {% if components.size > 0 %}
 
-# A component: its executable, installed with its descriptors in dom/components/<name> (the SDR
-# layout of a Core Framework).
+# The descriptors of a component, installed in dom/components/<name> (the SDR layout of a Core
+# Framework).
 {% for path in components %}
 {% assign m = modules | where: 'path', path | first %}
-{% assign exe = ns | append: '_' | append: m.name | snake %}
-add_executable({{ exe }} src/main/{{ m.name | snake }}_main.cpp)
-target_link_libraries({{ exe }} PRIVATE {{ ns }})
-install(TARGETS {{ exe }} DESTINATION dom/components/{{ m.name }})
 install(FILES
     dom/components/{{ m.name }}/{{ m.name }}.spd.xml
     dom/components/{{ m.name }}/{{ m.name }}.scd.xml
     dom/components/{{ m.name }}/{{ m.name }}.prf.xml
     DESTINATION dom/components/{{ m.name }})
 {% endfor %}
+
+# An executable per binary serving its components (src/main/main.cpp: those of no binary),
+# installed in dom/bin where their SPDs name it.
+{% for b in binaries %}
+{% assign served = modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', b.name | first %}
+{% if served %}
+{% assign exe = ns | append: '_' | append: b.name | snake %}
+add_executable({{ exe }} src/main/{{ b.name | snake }}_main.cpp)
+target_link_libraries({{ exe }} PRIVATE {{ ns }})
+install(TARGETS {{ exe }} DESTINATION dom/bin)
+{% endif %}
+{% endfor %}
+{% assign served = modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', nil | first %}
+{% if served %}
+add_executable({{ ns }}_app src/main/main.cpp)
+target_link_libraries({{ ns }}_app PRIVATE {{ ns }})
+install(TARGETS {{ ns }}_app DESTINATION dom/bin)
+{% endif %}
 
 # The waveform: its SAD, and every component in one process without a Core Framework.
 add_executable({{ ns }}_waveform src/main/waveform.cpp)

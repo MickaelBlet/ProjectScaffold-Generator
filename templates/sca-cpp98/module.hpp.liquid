@@ -62,7 +62,7 @@
 {{ m.description | doc_comment }}
 {% if component == 'true' %}
 /// SCA component {{ m.name }} (CF::Resource): its ports through getPort, its attributes as properties
-/// (configure / query); its executable and descriptors (dom/components/{{ m.name }}) start it alone.
+/// (configure / query); served by the executable of its binary, described in dom/components/{{ m.name }}.
 {% endif %}
 class {{ class }}{% if inherits != '' %} : {{ inherits | remove_first: '|' | replace: '|', ', ' }}{% endif %} {
 public:

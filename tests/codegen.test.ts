@@ -342,6 +342,31 @@ describe('SCA generation', () => {
     )
   })
 
+  it('generates one executable per binary serving its components', () => {
+    const rover = sca('examples/rover.scaffold.yaml')
+    const paths = Object.keys(rover).filter((p) => p.startsWith('src/main/'))
+    expect(paths.sort()).toEqual([
+      'src/main/ground_main.cpp',
+      'src/main/onboard_main.cpp',
+      'src/main/waveform.cpp'
+    ])
+    expect(rover['src/main/onboard_main.cpp']).toContain(
+      'components.push_back(std::make_pair(new ::rover::Camera, std::string("Camera_1")));'
+    )
+    expect(rover['src/main/onboard_main.cpp']).not.toContain('Supervisor')
+    expect(rover['CMakeLists.txt']).toContain('add_executable(rover_onboard src/main/onboard_main.cpp)')
+    expect(rover['CMakeLists.txt']).not.toContain('add_executable(rover_camera')
+    expect(rover['dom/components/Camera/Camera.spd.xml']).toContain('<localfile name="/bin/rover_onboard"/>')
+    // No binaries: one executable for every component.
+    const plant = sca('tests/fixtures/plant.scaffold.yaml')
+    expect(Object.keys(plant).filter((p) => p.startsWith('src/main/'))).toEqual([
+      'src/main/main.cpp',
+      'src/main/waveform.cpp'
+    ])
+    expect(plant['CMakeLists.txt']).toContain('add_executable(plant_demo_app src/main/main.cpp)')
+    expect(plant['dom/components/Client/Client.spd.xml']).toContain('<localfile name="/bin/plant_demo_app"/>')
+  })
+
   it('gives the descriptors ids stable across generations', () => {
     const a = sca('tests/fixtures/plant.scaffold.yaml')['dom/components/Plant/Plant.spd.xml']!
     const b = sca('tests/fixtures/plant.scaffold.yaml')['dom/components/Plant/Plant.spd.xml']!

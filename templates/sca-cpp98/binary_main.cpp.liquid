@@ -1,0 +1,45 @@
+{% include '_banner' %}
+{%- liquid
+  if binary
+    assign process = binary.name
+    assign components = modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', binary.name
+  else
+    assign process = project.name
+    assign components = modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', nil
+  endif
+-%}
+{% if binary %}
+// Executable of binary {{ binary.name }}: its SCA components in one process, bound in the naming
+// service by their usage names, where the waveform (SAD) finds them, until SIGINT or SIGTERM.
+{% else %}
+// Executable of the SCA components in no binary: in one process, bound in the naming service by
+// their usage names, where the waveform (SAD) finds them, until SIGINT or SIGTERM.
+{% endif %}
+{% for m in components %}
+#include <{% render '_header', e: m %}>
+{% endfor %}
+{% user 'includes' %}
+{% enduser %}
+
+int main(int argc, char** argv)
+{
+    {% user 'main' %}
+    try {
+        ::sca::Runtime runtime(argc, argv);
+        const ::sca::ExecParams params(argc, argv);
+        std::vector<std::pair< ::sca::Resource*, std::string> > components;
+{% for m in components %}
+        components.push_back(std::make_pair(new {% render '_qualified', e: m %}, std::string("{{ m.name }}_1")));
+{% endfor %}
+        runtime.serve(components, params);
+        runtime.shutdown();
+        for (std::size_t i = 0; i < components.size(); ++i) delete components[i].first;
+        return 0;
+    } catch (const ::CORBA::Exception& e) {
+        ::sca::reportError("{{ process }}", e);
+    } catch (const std::exception& e) {
+        ::sca::reportError("{{ process }}", e.what());
+    }
+    return 1;
+    {% enduser %}
+}
