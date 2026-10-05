@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The eye button of the modules in the Explorer: _Hide in view_ / _Show in view_ stay in their right-click menu (and H / Shift+H).
 
+### Fixed
+
+- Text fields (inspectors, editor tables) fill the height of their row.
+
 ## [1.0.0] - 2026-10-05
 
 ### Added
