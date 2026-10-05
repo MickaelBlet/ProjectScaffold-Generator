@@ -50,10 +50,6 @@ export function dependencyOf(p: Project, id: Id): Dependency | undefined {
 export const dependencyAt = (p: Project, file: string): Dependency | undefined =>
   p.dependencies.find((x) => normalizeFile(x.file) === normalizeFile(file))
 
-/** Whether `p` depends on the project saved as `file` (file names compared, as for tabs). */
-export const usesDependency = (p: Project, file: string): boolean =>
-  p.dependencies.some((x) => sameFile(x.file, file))
-
 function modulesByPath(p: Project): Map<string, Module> {
   return new Map(p.modules.map((m) => [modulePath(p, m.id), m]))
 }

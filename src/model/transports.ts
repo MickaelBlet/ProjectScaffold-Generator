@@ -17,9 +17,6 @@ export const TRANSPORT_FIELDS: Record<Transport, readonly TransportField[]> = {
   serial: ['device', 'baud']
 }
 
-/** Transports the code generator implements. */
-export const GENERATED_TRANSPORTS: readonly Transport[] = ['tcp', 'udp', 'http', 'websocket', 'shm']
-
 export const DEFAULT_HOST = '127.0.0.1'
 export const DEFAULT_BASE_PORT = 47000
 export const DEFAULT_SHM_CAPACITY = 1 << 20

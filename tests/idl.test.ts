@@ -533,7 +533,9 @@ describe('IDL import', () => {
   })
 
   const examples = new Map(
-    readdirSync('examples/idl').map((f) => [f, readFileSync(`examples/idl/${f}`, 'utf8')])
+    readdirSync('examples/idl')
+      .filter((f) => f.endsWith('.idl'))
+      .map((f) => [f, readFileSync(`examples/idl/${f}`, 'utf8')])
   )
   it.each([...examples.keys()])('imports examples/idl/%s', (file) => {
     const example = parseIdl(examples.get(file)!, { file, files: examples })

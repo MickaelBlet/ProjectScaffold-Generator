@@ -67,16 +67,12 @@ export function leafHeight(portCount: number): number {
   return MODULE_HEADER + Math.max(1, portCount) * PORT_ROW + 12
 }
 
-export function defaultLayout(x: number, y: number, portCount = 0): Rect {
-  return { x, y, width: MODULE_WIDTH, height: leafHeight(portCount) }
-}
-
 export const LAYOUT_PAD = 20
 
 // Vertical orientation: a band of `in` ports above the header, a band of `out` ports at the bottom.
 export const PORT_BAND = 24
 /** Width taken by one port along a band. */
-export const PORT_COL = 90
+const PORT_COL = 90
 
 /** Height of one line in a module's attribute or method compartment. */
 export const ATTR_ROW = 18
@@ -568,7 +564,7 @@ export function typeUsages(p: Project, typeId: Id): string[] {
 
 // Views
 
-export function globalView(): View {
+function globalView(): View {
   return { id: GLOBAL_VIEW, name: 'Project', rootModuleId: null, hidden: [] }
 }
 
@@ -635,16 +631,4 @@ export function absoluteRect(p: Project, id: Id): Rect {
   const m = p.modules.find((m) => m.id === id)
   const { x, y } = absolutePosition(p, id)
   return { x, y, width: m?.layout.width ?? 0, height: m?.layout.height ?? 0 }
-}
-
-/** Depth of a module in the tree (0 for top level). */
-export function moduleDepth(p: Project, id: Id): number {
-  let d = 0
-  let cur = p.modules.find((m) => m.id === id)
-  while (cur?.parentId) {
-    d++
-    const parentId: Id = cur.parentId
-    cur = p.modules.find((m) => m.id === parentId)
-  }
-  return d
 }
