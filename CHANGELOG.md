@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `examples/idl/filling_cell.scaffold.yaml`: a project depending on the example IDL files, placing their components and using their interfaces and types.
+
 ### Removed
 
 - The eye button of the modules in the Explorer: _Hide in view_ / _Show in view_ stay in their right-click menu (and H / Shift+H).

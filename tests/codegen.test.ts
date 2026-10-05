@@ -292,6 +292,7 @@ describe.each(TEMPLATE_SETS)('built-in %s templates', (set) => {
   const fixtures = [
     'examples/robot.scaffold.yaml',
     'examples/rover.scaffold.yaml',
+    'examples/idl/filling_cell.scaffold.yaml',
     'tests/fixtures/plant.scaffold.yaml',
     'tests/fixtures/relay.scaffold.yaml'
   ]

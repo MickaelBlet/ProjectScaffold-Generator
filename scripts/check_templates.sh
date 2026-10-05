@@ -15,6 +15,7 @@ mkdir -p "$work"
 sets=("$@")
 [ ${#sets[@]} -gt 0 ] || sets=($(ls templates))
 projects=(examples/robot.scaffold.yaml examples/rover.scaffold.yaml examples/station.scaffold.yaml
+  examples/idl/filling_cell.scaffold.yaml
   tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml)
 failed=0
 # Imports a package and all its modules, then makes and closes each system (servers not started).
