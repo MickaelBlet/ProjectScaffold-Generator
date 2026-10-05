@@ -628,7 +628,12 @@ export function visibleModuleIds(p: Project, view: View): Set<Id> {
 export function pruneViews(p: Project): void {
   const ids = new Set(p.modules.map((m) => m.id))
   p.views = p.views.filter((v) => !v.rootModuleId || ids.has(v.rootModuleId))
-  for (const v of p.views) v.hidden = v.hidden.filter((h) => ids.has(h))
+  for (const v of p.views) {
+    v.hidden = v.hidden.filter((h) => ids.has(h))
+    if (!v.layouts) continue
+    for (const id of Object.keys(v.layouts)) if (!ids.has(id)) delete v.layouts[id]
+    if (!Object.keys(v.layouts).length) delete v.layouts
+  }
 }
 
 /** Bounding box of rects. */

@@ -404,6 +404,11 @@ export interface View {
   rootModuleId: Id | null
   /** Modules hidden in this view, with their content. */
   hidden: Id[]
+  /**
+   * Rects of the modules in a drill-down view, parent-relative like `Module.layout` (the root's
+   * as drawn in the view); modules without one are drawn at their own layout.
+   */
+  layouts?: Record<Id, Rect>
   /** Opened from a module and not stored in the project until kept. */
   temporary?: true
 }

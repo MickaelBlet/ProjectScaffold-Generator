@@ -340,7 +340,11 @@ const Rect = z.object({ x: z.number(), y: z.number(), width: z.number(), height:
 const EditorView = z.object({
   name: z.string(),
   root: QualifiedName.optional().describe('module shown with its content; the whole project when absent'),
-  hidden: z.array(QualifiedName).optional()
+  hidden: z.array(QualifiedName).optional(),
+  layout: z
+    .record(QualifiedName, Rect)
+    .optional()
+    .describe('rects of modules in this view (parent-relative), in place of their `layout` entries')
 })
 
 const EditorNote = z.object({

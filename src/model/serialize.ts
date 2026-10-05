@@ -23,7 +23,8 @@ import {
   modulePath,
   modulePaths,
   newId,
-  portRows
+  portRows,
+  subtreeIds
 } from './project'
 import {
   METHOD_QUALIFIERS,
@@ -43,6 +44,7 @@ import {
   type Param,
   type Qualifier,
   type Project,
+  type Rect,
   type Side,
   type TypeDef,
   type TypeRef,
@@ -85,6 +87,16 @@ const optMeta = (m: Metadata): Metadata | undefined => (Object.keys(m).length ? 
 const portLabels = (ports: { name: string; label?: Side }[]): Record<string, Side> | undefined => {
   const set = ports.filter((pt) => pt.label)
   return set.length ? Object.fromEntries(set.map((pt) => [pt.name, pt.label!])) : undefined
+}
+
+/** Own rects of a drill-down view, by module path: those of the modules in its root's subtree. */
+function viewLayouts(p: Project, v: View): Record<string, Rect> | undefined {
+  if (!v.rootModuleId || !v.layouts) return undefined
+  const inside = subtreeIds(p, v.rootModuleId)
+  const entries = Object.entries(v.layouts).filter(([id]) => inside.has(id))
+  return entries.length
+    ? Object.fromEntries(entries.map(([id, r]) => [modulePath(p, id), { ...r }]))
+    : undefined
 }
 
 /** Drop keys whose value is undefined so the output stays clean. */
@@ -285,7 +297,8 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       editor.views = p.views.map((v) => ({
         name: v.name,
         root: v.rootModuleId ? modulePath(p, v.rootModuleId) : undefined,
-        hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined
+        hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined,
+        layout: viewLayouts(p, v)
       }))
     const styled = p.modules.filter((m) => m.locked || portLabels(m.ports))
     if (styled.length)
@@ -850,7 +863,19 @@ export function fromFile(data: unknown, prev?: Project): Project {
     const root = v.root ? moduleAt(v.root) : undefined
     if (v.root && !root) return []
     const hidden = (v.hidden ?? []).flatMap((h) => moduleAt(h) ?? [])
-    return [{ id: idOf(was, () => `view:${i}`), name: v.name, rootModuleId: root ?? null, hidden }]
+    const layouts = Object.entries(v.layout ?? {}).flatMap(([path, r]) => {
+      const id = moduleAt(path)
+      return id ? [[id, { ...r }] as const] : []
+    })
+    return [
+      {
+        id: idOf(was, () => `view:${i}`),
+        name: v.name,
+        rootModuleId: root ?? null,
+        hidden,
+        ...(root && layouts.length ? { layouts: Object.fromEntries(layouts) } : {})
+      }
+    ]
   })
   const notes: Note[] = (f.editor?.notes ?? []).map((n, i) => ({
     id: prev?.notes[i]?.id ?? newId(),

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Module views have their own layout: modules moved or resized in a module's own view (the module itself is resized) keep their place in the _Project_ view, and the other way round. Stored in `editor.views[].layout`; _View › Reset view layout_ goes back to the _Project_ view's layout.
 - `examples/idl/filling_cell.scaffold.yaml`: a project depending on the example IDL files, placing their components and using their interfaces and types.
 
 ### Changed
