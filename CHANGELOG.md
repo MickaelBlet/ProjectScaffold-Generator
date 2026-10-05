@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- The eye button of the modules in the Explorer: _Hide in view_ / _Show in view_ stay in their right-click menu (and H / Shift+H).
+
 ## [1.0.0] - 2026-10-05
 
 ### Added

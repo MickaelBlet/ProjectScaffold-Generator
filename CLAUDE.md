@@ -60,6 +60,8 @@ scripts/build_all.sh [--check] [web|cli|vscode|desktop]...   # all of the above 
 - `commands.ts` is the single command registry behind menus (`shell/MenuBar.tsx`), context menus, the command palette and shortcuts; `actions.ts` holds the editing actions on the active document. `shell/controllers.ts` gives commands handles on mounted canvases and dock layouts.
 - `canvas/`: React Flow (`@xyflow/react`). `flowGraph.ts` builds nodes/edges from the project; `portSides.ts` / `linkRoute.ts` place ports and route links; layout via ELK (`model/autoLayout.ts`).
 - Panels are dockview panels (`panels/`, `shell/DockShell.tsx`).
+- `panels/ExplorerPanel.tsx`: one tree of every entity (views, binaries, dependencies, constants, types, interfaces, modules, links); module tree helpers (re-parent, hide in view) in `panels/moduleTree.ts`.
+- All styles in one global `src/renderer/src/styles.css`.
 
 ### Hosts
 
@@ -70,6 +72,6 @@ scripts/build_all.sh [--check] [web|cli|vscode|desktop]...   # all of the above 
 
 ## Conventions
 
-- Update `CHANGELOG.md` `[Unreleased]` (Keep a Changelog) and the user documentation (`README.md`, `docs/*.md`, `vscode/README.md`) for user-visible changes; update `examples/` and the schema when the file format changes.
+- Update `CHANGELOG.md` `[Unreleased]` (Keep a Changelog) and the user documentation (`README.md`, `docs/*.md`, `vscode/README.md`) for user-visible changes; update `examples/` and the schema when the file format changes. A release removes the `[Unreleased]` heading: add it back above the latest version (its compare link at the bottom stays).
 - Build scripts install with `npm ci` when `node_modules` is older than the lockfile.
 - Commit each finished feature or fix with the `commit-gpg` skill (GPG-signed commit, CHANGELOG checked).
