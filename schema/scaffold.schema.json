@@ -705,6 +705,12 @@
                       "side",
                       "at"
                     ]
+                  },
+                  "label": {
+                    "description": "where the badges sit along the link: 0 source, 1 target (default: the middle)",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
                   }
                 }
               }

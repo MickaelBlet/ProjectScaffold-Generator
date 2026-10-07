@@ -328,7 +328,8 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           {
             points: l.route!.points.length ? l.route!.points.map((pt) => ({ ...pt })) : undefined,
             from: l.route!.from && { ...l.route!.from },
-            to: l.route!.to && { ...l.route!.to }
+            to: l.route!.to && { ...l.route!.to },
+            label: l.route!.label
           }
         ])
       )

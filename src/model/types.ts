@@ -377,6 +377,8 @@ export interface LinkRoute {
   points: { x: number; y: number }[]
   from?: LinkAnchor
   to?: LinkAnchor
+  /** Where the badges sit along the link, 0 (source) to 1 (target); unset: in the middle. */
+  label?: number
 }
 
 export interface Link {

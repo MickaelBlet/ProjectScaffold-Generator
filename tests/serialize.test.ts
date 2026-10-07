@@ -89,11 +89,11 @@ describe('serialize', () => {
   it('round-trips hand-set link shapes, left out of exports', () => {
     const p = fromFile(example)
     p.links[0]!.route = { points: [{ x: 10, y: 20 }], from: { side: 'bottom', at: 0.5 } }
-    p.links[1]!.route = { points: [], to: { side: 'top', at: 0.25 } }
+    p.links[1]!.route = { points: [], to: { side: 'top', at: 0.25 }, label: 0.3 }
     const file = toFile(p, { editor: true })
     expect(file.editor?.links).toEqual({
       [p.links[0]!.name]: { points: [{ x: 10, y: 20 }], from: { side: 'bottom', at: 0.5 } },
-      [p.links[1]!.name]: { to: { side: 'top', at: 0.25 } }
+      [p.links[1]!.name]: { to: { side: 'top', at: 0.25 }, label: 0.3 }
     })
     expect(fromFile(file).links.map((l) => l.route)).toEqual(p.links.map((l) => l.route))
     expect(toFile(p, { editor: false }).editor).toBeUndefined()

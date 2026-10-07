@@ -376,7 +376,13 @@ const EditorLink = z.object({
     .optional()
     .describe('bend points, relative to the innermost module holding both ends (absolute at the top level)'),
   from: Anchor.optional().describe('attachment of the source end on its module'),
-  to: Anchor.optional().describe('attachment of the target end on its module')
+  to: Anchor.optional().describe('attachment of the target end on its module'),
+  label: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe('where the badges sit along the link: 0 source, 1 target (default: the middle)')
 })
 
 const Editor = z
