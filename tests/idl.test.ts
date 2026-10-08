@@ -11,7 +11,7 @@ import {
 } from '@/model/idl'
 import { addDependency, dependencyOf } from '@/model/dependencies'
 import { pasteClip } from '@/model/clipboard'
-import { emptyProject } from '@/model/project'
+import { emptyProject, modulePath } from '@/model/project'
 import { printTypeExpr, printTypeRef } from '@/model/typeExpr'
 import { validate } from '@/model/validate'
 import type { Id } from '@/model/types'
@@ -351,19 +351,30 @@ describe('IDL import', () => {
     const { project: p, warnings } = idlProject('idl/main.idl', files)
     expect(warnings).toEqual([])
     const iface = (id: Id | null) => p.interfaces.find((i) => i.id === id)?.name
+    // Nested like the IDL modules, each inside its parent.
     expect(
-      p.modules.map((m) => [m.name, m.ports.map((pt) => [pt.name, pt.role, iface(pt.interfaceId)])])
+      p.modules.map((m) => [
+        modulePath(p, m.id),
+        m.ports.map((pt) => [pt.name, pt.role, iface(pt.interfaceId)])
+      ])
     ).toEqual([
       ['main', [['top', 'in', 'Top']]],
+      ['A', []],
       [
-        'A_Ctl',
+        'A.Ctl',
         [
           ['arm', 'in', 'Arm'],
           ['gripper', 'in', 'gripper']
         ]
       ],
-      ['B_Ctl', [['lamp', 'in', 'Lamp']]]
+      ['B', []],
+      ['B.Ctl', [['lamp', 'in', 'Lamp']]]
     ])
+    for (const m of p.modules.filter((x) => x.parentId)) {
+      const parent = p.modules.find((x) => x.id === m.parentId)!
+      expect(m.layout.x + m.layout.width).toBeLessThanOrEqual(parent.layout.width)
+      expect(m.layout.y + m.layout.height).toBeLessThanOrEqual(parent.layout.height)
+    }
     expect(validate(p).filter((x) => x.severity === 'error')).toEqual([])
     // A file with components: only those.
     files.set('idl/main.idl', 'interface I { void go(); };\ncomponent C { provides I i; };')

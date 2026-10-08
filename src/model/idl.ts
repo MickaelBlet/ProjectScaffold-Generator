@@ -6,7 +6,16 @@
 // when two share it. Components and connectors become modules with ports. What the model cannot
 // express is approximated or left out, and reported.
 import { isReservedTypeName, mapTypeRef, walkTypeRef } from './typeExpr'
-import { defaultSize, emptyProject, newId, uniqueName } from './project'
+import {
+  childModules,
+  contentTop,
+  defaultSize,
+  emptyProject,
+  growAncestors,
+  LAYOUT_PAD,
+  newId,
+  uniqueName
+} from './project'
 import { CLIP_FORMAT, pasteClip, type Clip } from './clipboard'
 import { dependencyName } from './dependencies'
 import type { FileConstant, FileInterface, FileMessage, FileTypeDef, FileTypeRef } from './schema'
@@ -2506,45 +2515,106 @@ export interface IdlProject {
   missing: string[]
 }
 
+/** Module standing for an IDL module of a file without components (see `interfaceServers`). */
+interface IdlServer {
+  /** Qualified IDL module, '' for the file scope. */
+  scope: string
+  /** Its component, named after the qualified scope until nested (see `nestServers`). */
+  component: IdlComponent
+}
+
 /**
  * Modules of a file `main` defining interfaces but no components (plain CORBA IDL): one per IDL
- * module holding interfaces (named after it; the file's name at file scope), providing each of
- * them on an `in` port.
+ * module holding interfaces, and per IDL module enclosing those (the file's own module at file
+ * scope), providing each of its interfaces on an `in` port.
  */
-function interfaceServers(idl: IdlFile, main: string): IdlComponent[] {
+function interfaceServers(idl: IdlFile, main: string): IdlServer[] {
   const own = (name: string): boolean => (idl.origins[name] ?? main) === main
   if (idl.components.some((c) => own(c.name))) return []
   const byScope = new Map<string, FileInterface[]>()
+  const add = (scope: string): FileInterface[] => {
+    const parent = scope.lastIndexOf('::')
+    if (parent > 0) add(scope.slice(0, parent))
+    if (!byScope.has(scope)) byScope.set(scope, [])
+    return byScope.get(scope)!
+  }
   for (const i of idl.interfaces) {
     const scope = idl.scopes[i.name]
-    if (scope === undefined || !own(i.name)) continue
-    byScope.set(scope, [...(byScope.get(scope) ?? []), i])
+    if (scope !== undefined && own(i.name)) add(scope).push(i)
   }
-  const simple = (scope: string): string => (scope ? lastSegment(`::${scope}`) : dependencyName(stem(main)))
-  const count = new Map<string, number>()
-  for (const scope of byScope.keys()) count.set(simple(scope), (count.get(simple(scope)) ?? 0) + 1)
   const taken = idl.components.map((c) => c.name)
   return [...byScope].map(([scope, interfaces]) => {
-    const base = count.get(simple(scope))! > 1 ? scope.split('::').join('_') : simple(scope)
-    const name = uniqueName(base, taken)
+    const name = uniqueName(scope ? scope.split('::').join('_') : dependencyName(stem(main)), taken)
     taken.push(name)
     const ports: string[] = []
     return {
-      name,
-      description: scope
-        ? `Serves the interfaces of IDL module ${scope}.`
-        : 'Serves the interfaces of the file.',
-      bases: [],
-      attributes: [],
-      methods: [],
-      ports: interfaces.map((i) => {
-        const port = uniqueName(i.name.charAt(0).toLowerCase() + i.name.slice(1), ports)
-        ports.push(port)
-        return { name: port, role: 'in' as const, interface: i.name, description: '' }
-      }),
-      needs: []
+      scope,
+      component: {
+        name,
+        description: !scope
+          ? 'Serves the interfaces of the file.'
+          : interfaces.length
+            ? `Serves the interfaces of IDL module ${scope}.`
+            : `IDL module ${scope}.`,
+        bases: [],
+        attributes: [],
+        methods: [],
+        ports: interfaces.map((i) => {
+          const port = uniqueName(i.name.charAt(0).toLowerCase() + i.name.slice(1), ports)
+          ports.push(port)
+          return { name: port, role: 'in' as const, interface: i.name, description: '' }
+        }),
+        needs: []
+      }
     }
   })
+}
+
+/**
+ * Nest the modules of `servers` in `p` like their IDL modules, named after them: the innermost
+ * first, each laid out in a row in its parent, which grows to fit; the outermost in a row.
+ */
+function nestServers(p: Project, servers: IdlServer[]): void {
+  const modules = new Map(
+    servers.flatMap((s) => {
+      const m = p.modules.find((x) => x.name === s.component.name && !x.parentId)
+      return m ? [[s.scope, m] as const] : []
+    })
+  )
+  const parentOf = (scope: string): string | null =>
+    scope.includes('::') ? scope.slice(0, scope.lastIndexOf('::')) : null
+  const depth = (scope: string): number => (scope ? scope.split('::').length : 0)
+  const row = (children: Module[], y: (m: Module) => number): void => {
+    let x = 0
+    for (const c of children) {
+      c.layout.x = x
+      c.layout.y = y(c)
+      x += c.layout.width + MODULE_GAP
+    }
+  }
+  for (const scope of [...modules.keys()].sort((a, b) => depth(b) - depth(a))) {
+    const parent = modules.get(scope)!
+    const children = [...modules].filter(([s]) => parentOf(s) === scope).map(([, m]) => m)
+    row(children, () => contentTop(p.orientation, parent))
+    for (const c of children) {
+      c.layout.x += LAYOUT_PAD / 2
+      c.parentId = parent.id
+      growAncestors(p, c.id)
+    }
+  }
+  const roots = p.modules.filter((m) => !m.parentId)
+  for (const [scope, m] of modules)
+    if (scope)
+      m.name = uniqueName(
+        lastSegment(`::${scope}`),
+        childModules(p, m.parentId)
+          .filter((x) => x !== m)
+          .map((x) => x.name)
+      )
+  row(
+    roots.filter((m) => [...modules.values()].includes(m)),
+    () => 0
+  )
 }
 
 /**
@@ -2562,7 +2632,7 @@ export function idlProject(path: string, files: ReadonlyMap<string, string>): Id
   const parsed = parseIdl(text, { file: main, files: all })
   const project: Project = { ...emptyProject(), name: stem(main) }
   const servers = interfaceServers(parsed, main)
-  const idl = { ...parsed, components: [...parsed.components, ...servers] }
+  const idl = { ...parsed, components: [...parsed.components, ...servers.map((s) => s.component)] }
   const { clip, unresolved } = idlImport(idl, project, undefined, true)
   if (clip) pasteClip(project, clip, { parent: null, at: { x: 0, y: 0 } })
 
@@ -2596,7 +2666,7 @@ export function idlProject(path: string, files: ReadonlyMap<string, string>): Id
     if (dep) e.dependency = dep.id
   }
   // Components of included files are modules of their own project.
-  const ours = new Set(servers.map((c) => c.name))
+  const ours = new Set(servers.map((s) => s.component.name))
   const theirs = new Set(
     project.modules.filter((m) => !ours.has(m.name) && deps.has(idl.origins[m.name] ?? main)).map((m) => m.id)
   )
@@ -2604,6 +2674,7 @@ export function idlProject(path: string, files: ReadonlyMap<string, string>): Id
     project.modules = project.modules.filter((m) => !theirs.has(m.id))
     for (const m of project.modules) if (m.bases) m.bases = m.bases.filter((b) => !theirs.has(b))
   }
+  nestServers(project, servers)
   return {
     project,
     warnings: [
