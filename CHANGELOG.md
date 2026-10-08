@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - _Sync selection_ no longer opens or switches views to show the element under the text cursor: it is shown when the focused view draws it.
 - A view opened while the text editor has the focus opens with the view shown until then, not over the text editor.
 - Text fields (inspectors, editor tables) fill the height of their row.
+- Canvas: a link attached by hand to the place of its port ends at the port's handle: its arrow was drawn over the handle.
 - Canvas: a module with attributes or methods whose ports are moved to other edges is tall enough for them: its bottom ports stayed below its border.
 - Code generation panel: a template folder just picked or filled with a copy of the built-in templates is listed at once (it stayed on the built-in templates in the desktop app on Windows), also when the folder already held a template set.
 
