@@ -1070,6 +1070,42 @@ editor:
       y: 840
       width: 200
       height: 100
+  views:
+    - name: Datalink
+      root: Datalink
+      layout:
+        Datalink:
+          x: 280
+          y: 260
+          width: 380
+          height: 160
+      links:
+        datalink_video:
+          from:
+            side: top
+            at: 0.416
+          to:
+            side: bottom
+            at: 0.3
+      labels:
+        VideoWall:
+          video: top
+      outside:
+        MissionControl:
+          x: 300
+          y: 680
+          width: 300
+          height: 100
+        VideoWall:
+          x: 380
+          y: 20
+          width: 200
+          height: 100
+        Drone/Radio:
+          x: 880
+          y: 260
+          width: 300
+          height: 100
   style:
     Datalink:
       labels:
@@ -1080,22 +1116,18 @@ editor:
   dependencies:
     Drone:
       Radio:
-        x: 191
+        x: 320
         y: 20
     Weather:
       WeatherService:
         x: 60
-        y: 280
+        y: 260
   orientation: vertical
   links:
     weather_feed:
       to:
         side: top
         at: 0.4
-    datalink_video:
-      to:
-        side: left
-        at: 0.217
   notes:
     - kind: note
       text: "Radio (project Drone) and WeatherService (project Weather) are modules of dependencies placed here (dashed): double-click to open their project."
