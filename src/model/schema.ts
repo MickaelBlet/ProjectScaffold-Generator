@@ -337,16 +337,6 @@ const Link = z.object({
 
 const Rect = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
 
-const EditorView = z.object({
-  name: z.string(),
-  root: QualifiedName.optional().describe('module shown with its content; the whole project when absent'),
-  hidden: z.array(QualifiedName).optional(),
-  layout: z
-    .record(QualifiedName, Rect)
-    .optional()
-    .describe('rects of modules in this view (parent-relative), in place of their `layout` entries')
-})
-
 const EditorNote = z.object({
   kind: z.enum(['note', 'frame']),
   text: z.string(),
@@ -383,6 +373,36 @@ const EditorLink = z.object({
     .max(1)
     .optional()
     .describe('where the badges sit along the link: 0 source, 1 target (default: the middle)')
+})
+
+const EditorView = z.object({
+  name: z.string(),
+  root: QualifiedName.optional().describe('module shown with its content; the whole project when absent'),
+  hidden: z.array(QualifiedName).optional(),
+  layout: z
+    .record(QualifiedName, Rect)
+    .optional()
+    .describe('rects of modules in this view (parent-relative), in place of their `layout` entries'),
+  links: z
+    .record(Identifier, EditorLink)
+    .optional()
+    .describe('link shapes in this view (with a root), by link name; others are drawn automatically'),
+  labels: z
+    .record(QualifiedName, z.record(Identifier, Side))
+    .optional()
+    .describe(
+      'direction where port names are drawn in this view (with a root), by module path and port name'
+    ),
+  notes: z.array(EditorNote).optional().describe('notes and frames of this view (with a root)'),
+  outside: z
+    .record(
+      QualifiedName,
+      z.object({ x: z.number(), y: z.number(), width: z.number().optional(), height: z.number().optional() })
+    )
+    .optional()
+    .describe(
+      'places (and sizes) of the stand-ins of outside modules linked to the content (with a root), by module path; others are lined up along the view'
+    )
 })
 
 const Editor = z

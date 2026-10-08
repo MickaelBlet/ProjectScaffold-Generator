@@ -24,7 +24,8 @@ import {
   modulePaths,
   newId,
   portRows,
-  subtreeIds
+  subtreeIds,
+  viewNotes
 } from './project'
 import {
   METHOD_QUALIFIERS,
@@ -36,6 +37,7 @@ import {
   type Dependency,
   type Interface,
   type Link,
+  type LinkRoute,
   type Message,
   type Metadata,
   type Method,
@@ -88,6 +90,53 @@ const portLabels = (ports: { name: string; label?: Side }[]): Record<string, Sid
   const set = ports.filter((pt) => pt.label)
   return set.length ? Object.fromEntries(set.map((pt) => [pt.name, pt.label!])) : undefined
 }
+
+/** File entry of a link shape. */
+const routeEntry = (r: LinkRoute) => ({
+  points: r.points.length ? r.points.map((pt) => ({ ...pt })) : undefined,
+  from: r.from && { ...r.from },
+  to: r.to && { ...r.to },
+  label: r.label
+})
+
+/** Link shapes of a drill-down view, by link name. */
+function viewRoutes(p: Project, v: View) {
+  if (!v.rootModuleId || !v.routes) return undefined
+  const entries = p.links.flatMap((l) =>
+    v.routes![l.id] ? [[l.name, routeEntry(v.routes![l.id]!)] as const] : []
+  )
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+/** Places and sizes of the stand-ins of a drill-down view, by module path. */
+function viewStandIns(p: Project, v: View): View['standIns'] {
+  if (!v.rootModuleId || !v.standIns) return undefined
+  const own = v.standIns
+  const entries = p.modules.flatMap((m) => {
+    const at = own[m.id]
+    return at ? [[modulePath(p, m.id), { ...at }] as const] : []
+  })
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+/** Port name sides of a drill-down view, by module path and port name. */
+function viewPortLabels(p: Project, v: View): Record<string, Record<string, Side>> | undefined {
+  if (!v.rootModuleId || !v.portLabels) return undefined
+  const own = v.portLabels
+  const entries = p.modules.flatMap((m) => {
+    const labels = portLabels(m.ports.map((pt) => ({ name: pt.name, label: own[pt.id] })))
+    return labels ? [[modulePath(p, m.id), labels] as const] : []
+  })
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+const noteEntry = (n: Note) => ({
+  kind: n.kind,
+  text: n.text,
+  ...n.layout,
+  color: n.color,
+  locked: n.locked || undefined
+})
 
 /** Own rects of a drill-down view, by module path: those of the modules in its root's subtree. */
 function viewLayouts(p: Project, v: View): Record<string, Rect> | undefined {
@@ -298,7 +347,11 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         name: v.name,
         root: v.rootModuleId ? modulePath(p, v.rootModuleId) : undefined,
         hidden: v.hidden.length ? v.hidden.map((h) => modulePath(p, h)) : undefined,
-        layout: viewLayouts(p, v)
+        layout: viewLayouts(p, v),
+        links: viewRoutes(p, v),
+        labels: viewPortLabels(p, v),
+        outside: viewStandIns(p, v),
+        notes: v.rootModuleId && viewNotes(p, v).length ? viewNotes(p, v).map(noteEntry) : undefined
       }))
     const styled = p.modules.filter((m) => m.locked || portLabels(m.ports))
     if (styled.length)
@@ -321,26 +374,9 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
       )
     if (p.orientation !== 'horizontal') editor.orientation = p.orientation
     const routed = p.links.filter((l) => l.route)
-    if (routed.length)
-      editor.links = Object.fromEntries(
-        routed.map((l) => [
-          l.name,
-          {
-            points: l.route!.points.length ? l.route!.points.map((pt) => ({ ...pt })) : undefined,
-            from: l.route!.from && { ...l.route!.from },
-            to: l.route!.to && { ...l.route!.to },
-            label: l.route!.label
-          }
-        ])
-      )
-    if (p.notes.length)
-      editor.notes = p.notes.map((n) => ({
-        kind: n.kind,
-        text: n.text,
-        ...n.layout,
-        color: n.color,
-        locked: n.locked || undefined
-      }))
+    if (routed.length) editor.links = Object.fromEntries(routed.map((l) => [l.name, routeEntry(l.route!)]))
+    const notes = p.notes.filter((n) => !n.viewId)
+    if (notes.length) editor.notes = notes.map(noteEntry)
     file.editor = editor
   }
   return clean(file)
@@ -859,7 +895,20 @@ export function fromFile(data: unknown, prev?: Project): Project {
     return id && moduleIds.has(id) ? id : undefined
   }
   const prevViews = named(prev?.views, f.editor?.views ?? [])
-  const views: View[] = (f.editor?.views ?? []).flatMap((v, i) => {
+  const linkByName = new Map(links.map((l) => [l.name, l]))
+  /** Notes of a file entry, keeping the ids of `before` (by index). */
+  const readNotes = (entries: NonNullable<FileEditor['notes']>, before: Note[], viewId?: Id): Note[] =>
+    entries.map((n, i) => ({
+      id: before[i]?.id ?? newId(),
+      kind: n.kind,
+      text: n.text,
+      layout: { x: n.x, y: n.y, width: n.width, height: n.height },
+      ...(n.color ? { color: n.color } : {}),
+      ...(n.locked ? { locked: true } : {}),
+      ...(viewId ? { viewId } : {})
+    }))
+  const viewNoteList: Note[] = []
+  const views: View[] = (f.editor?.views ?? []).flatMap((v, i): View[] => {
     const was = prevViews[i]
     const root = v.root ? moduleAt(v.root) : undefined
     if (v.root && !root) return []
@@ -868,24 +917,50 @@ export function fromFile(data: unknown, prev?: Project): Project {
       const id = moduleAt(path)
       return id ? [[id, { ...r }] as const] : []
     })
+    const id = idOf(was, () => `view:${i}`)
+    if (!root) return [{ id, name: v.name, rootModuleId: null, hidden }]
+    const routes = Object.entries(v.links ?? {}).flatMap(([name, r]) => {
+      const l = linkByName.get(name)
+      return l ? [[l.id, clean({ ...r, points: r.points ?? [] })] as const] : []
+    })
+    const portLabels = Object.entries(v.labels ?? {}).flatMap(([path, labels]) => {
+      const m = modules.find((m) => m.id === moduleAt(path))
+      return Object.entries(labels).flatMap(([name, side]) => {
+        const pt = m?.ports.find((pt) => pt.name === name)
+        return pt ? [[pt.id, side] as const] : []
+      })
+    })
+    const standIns = Object.entries(v.outside ?? {}).flatMap(([path, at]) => {
+      const id = moduleAt(path)
+      return id ? [[id, { ...at }] as const] : []
+    })
+    viewNoteList.push(
+      ...readNotes(
+        v.notes ?? [],
+        (prev?.notes ?? []).filter((n) => n.viewId === id),
+        id
+      )
+    )
     return [
       {
-        id: idOf(was, () => `view:${i}`),
+        id,
         name: v.name,
-        rootModuleId: root ?? null,
+        rootModuleId: root,
         hidden,
-        ...(root && layouts.length ? { layouts: Object.fromEntries(layouts) } : {})
+        ...(layouts.length ? { layouts: Object.fromEntries(layouts) } : {}),
+        ...(routes.length ? { routes: Object.fromEntries(routes) } : {}),
+        ...(portLabels.length ? { portLabels: Object.fromEntries(portLabels) } : {}),
+        ...(standIns.length ? { standIns: Object.fromEntries(standIns) } : {})
       }
     ]
   })
-  const notes: Note[] = (f.editor?.notes ?? []).map((n, i) => ({
-    id: prev?.notes[i]?.id ?? newId(),
-    kind: n.kind,
-    text: n.text,
-    layout: { x: n.x, y: n.y, width: n.width, height: n.height },
-    ...(n.color ? { color: n.color } : {}),
-    ...(n.locked ? { locked: true } : {})
-  }))
+  const notes: Note[] = [
+    ...readNotes(
+      f.editor?.notes ?? [],
+      (prev?.notes ?? []).filter((n) => !n.viewId)
+    ),
+    ...viewNoteList
+  ]
 
   if (problems.length) throw new LoadError(problems)
   return {

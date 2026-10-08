@@ -9,6 +9,7 @@ import {
   type LinkConstraints,
   type Method,
   type Module,
+  type Note,
   type Port,
   type PortRole,
   type Qualifier,
@@ -613,6 +614,31 @@ export function viewExists(p: Pick<Project, 'views' | 'modules'>, viewId: Id): b
   return viewId === GLOBAL_VIEW || findView(p, viewId).id === viewId
 }
 
+/** Notes drawn in a view: a drill-down view's own, else those of the whole project. */
+export function viewNotes(p: Project, view: View): Note[] {
+  return p.notes.filter((n) => (view.rootModuleId ? n.viewId === view.id : !n.viewId))
+}
+
+/** Place of a note in the project file: `editor.notes[i]`, or `editor.views[j].notes[i]` for a drill-down view's. */
+export function notePath(p: Project, id: Id): (string | number)[] | null {
+  const n = p.notes.find((n) => n.id === id)
+  if (!n) return null
+  const i = p.notes.filter((x) => x.viewId === n.viewId).indexOf(n)
+  if (!n.viewId) return ['editor', 'notes', i]
+  const j = p.views.findIndex((v) => v.id === n.viewId)
+  return j < 0 ? null : ['editor', 'views', j, 'notes', i]
+}
+
+/** The note at a place of the project file (see notePath). */
+export function noteAtPath(p: Project, path: readonly (string | number)[]): Note | undefined {
+  const [, section, a, , b] = path
+  if (section === 'notes' && typeof a === 'number') return p.notes.filter((n) => !n.viewId)[a]
+  if (section !== 'views' || typeof a !== 'number' || path[3] !== 'notes' || typeof b !== 'number')
+    return undefined
+  const view = p.views[a]
+  return view && p.notes.filter((n) => n.viewId === view.id)[b]
+}
+
 /** Ids of the modules drawn in a view: the root's subtree (or everything) minus hidden subtrees. */
 export function visibleModuleIds(p: Project, view: View): Set<Id> {
   // Imported modules are drawn in the global view only.
@@ -624,15 +650,31 @@ export function visibleModuleIds(p: Project, view: View): Set<Id> {
   return scope
 }
 
-/** Drop view references to deleted modules; views rooted in a deleted module go away. */
+/**
+ * Drop view references to deleted modules, ports and links; views rooted in a deleted module go
+ * away, with their notes.
+ */
 export function pruneViews(p: Project): void {
   const ids = new Set(p.modules.map((m) => m.id))
+  const portIds = new Set(p.modules.flatMap((m) => m.ports.map((pt) => pt.id)))
+  const linkIds = new Set(p.links.map((l) => l.id))
   p.views = p.views.filter((v) => !v.rootModuleId || ids.has(v.rootModuleId))
+  const viewIds = new Set(p.views.map((v) => v.id))
+  if (p.notes.some((n) => n.viewId && !viewIds.has(n.viewId)))
+    p.notes = p.notes.filter((n) => !n.viewId || viewIds.has(n.viewId))
   for (const v of p.views) {
     v.hidden = v.hidden.filter((h) => ids.has(h))
-    if (!v.layouts) continue
-    for (const id of Object.keys(v.layouts)) if (!ids.has(id)) delete v.layouts[id]
-    if (!Object.keys(v.layouts).length) delete v.layouts
+    for (const [key, kept] of [
+      ['layouts', ids],
+      ['standIns', ids],
+      ['portLabels', portIds],
+      ['routes', linkIds]
+    ] as const) {
+      const own = v[key]
+      if (!own) continue
+      for (const id of Object.keys(own)) if (!kept.has(id)) delete own[id]
+      if (!Object.keys(own).length) delete v[key]
+    }
   }
 }
 

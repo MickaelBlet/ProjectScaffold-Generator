@@ -109,7 +109,7 @@ export function copyProject(source: Project, target: Project, withNotes: boolean
   const have = new Set(globalTypeNames(target))
   return copyItems(source, [
     ...childModules(source, null).map((m) => m.id),
-    ...(withNotes ? source.notes.map((n) => n.id) : []),
+    ...(withNotes ? source.notes.flatMap((n) => (n.viewId ? [] : n.id)) : []),
     ...[...source.types, ...source.interfaces, ...source.consts]
       .filter((e) => !have.has(e.name))
       .map((e) => e.id)
@@ -135,6 +135,8 @@ export interface PasteOptions {
   /** Absolute position of the pasted content's top-left corner; else shifted by `offset`. */
   at?: { x: number; y: number }
   offset?: number
+  /** Drill-down view the pasted notes go to; else the views of the whole project. */
+  viewId?: Id
 }
 
 /** Paste a clip into a project draft; returns the ids of the pasted top-level entities. */
@@ -302,8 +304,11 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
 
   for (const n of clip.notes) {
     const id = newId()
+    const note = structuredClone(n)
+    delete note.viewId
     d.notes.push({
-      ...structuredClone(n),
+      ...note,
+      ...(options.viewId && { viewId: options.viewId }),
       id,
       locked: undefined,
       layout: { ...n.layout, x: Math.round(n.layout.x + shift.x), y: Math.round(n.layout.y + shift.y) }

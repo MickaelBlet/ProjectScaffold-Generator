@@ -479,6 +479,192 @@
                         "height"
                       ]
                     }
+                  },
+                  "links": {
+                    "description": "link shapes in this view (with a root), by link name; others are drawn automatically",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "points": {
+                          "description": "bend points, relative to the innermost module holding both ends (absolute at the top level)",
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "x": {
+                                "type": "number"
+                              },
+                              "y": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "x",
+                              "y"
+                            ]
+                          }
+                        },
+                        "from": {
+                          "description": "attachment of the source end on its module",
+                          "type": "object",
+                          "properties": {
+                            "side": {
+                              "type": "string",
+                              "enum": [
+                                "left",
+                                "right",
+                                "top",
+                                "bottom"
+                              ]
+                            },
+                            "at": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "position along the side: 0 left / top, 1 right / bottom"
+                            }
+                          },
+                          "required": [
+                            "side",
+                            "at"
+                          ]
+                        },
+                        "to": {
+                          "description": "attachment of the target end on its module",
+                          "type": "object",
+                          "properties": {
+                            "side": {
+                              "type": "string",
+                              "enum": [
+                                "left",
+                                "right",
+                                "top",
+                                "bottom"
+                              ]
+                            },
+                            "at": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1,
+                              "description": "position along the side: 0 left / top, 1 right / bottom"
+                            }
+                          },
+                          "required": [
+                            "side",
+                            "at"
+                          ]
+                        },
+                        "label": {
+                          "description": "where the badges sit along the link: 0 source, 1 target (default: the middle)",
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        }
+                      }
+                    }
+                  },
+                  "labels": {
+                    "description": "direction where port names are drawn in this view (with a root), by module path and port name",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right",
+                          "top",
+                          "bottom"
+                        ]
+                      }
+                    }
+                  },
+                  "notes": {
+                    "description": "notes and frames of this view (with a root)",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "note",
+                            "frame"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        },
+                        "color": {
+                          "type": "string"
+                        },
+                        "locked": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "text",
+                        "x",
+                        "y",
+                        "width",
+                        "height"
+                      ]
+                    }
+                  },
+                  "outside": {
+                    "description": "places (and sizes) of the stand-ins of outside modules linked to the content (with a root), by module path; others are lined up along the view",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "width": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ]
+                    }
                   }
                 },
                 "required": [

@@ -373,7 +373,10 @@ export interface LinkAnchor {
 
 /** Editor-only shape of a link, set by hand. */
 export interface LinkRoute {
-  /** Bend points, relative to the innermost module holding both ends (absolute at the top level). */
+  /**
+   * Bend points, relative to the innermost module holding both ends (absolute at the top level,
+   * and in a drill-down view not drawing that module).
+   */
   points: { x: number; y: number }[]
   from?: LinkAnchor
   to?: LinkAnchor
@@ -411,6 +414,15 @@ export interface View {
    * as drawn in the view); modules without one are drawn at their own layout.
    */
   layouts?: Record<Id, Rect>
+  /** Link shapes in a drill-down view, by link id; links without one have the automatic shape. */
+  routes?: Record<Id, LinkRoute>
+  /** Sides of port names in a drill-down view, by port id; ports without one have the default. */
+  portLabels?: Record<Id, Side>
+  /**
+   * Places (and sizes, when resized) of the stand-ins of outside modules in a drill-down view (as
+   * drawn, the root at its rect), by module id; others are lined up along the root.
+   */
+  standIns?: Record<Id, { x: number; y: number; width?: number; height?: number }>
   /** Opened from a module and not stored in the project until kept. */
   temporary?: true
 }
@@ -428,6 +440,8 @@ export interface Note {
   color?: string
   /** Position and size are fixed on the canvas. */
   locked?: boolean
+  /** Drill-down view the note is drawn in; unset: the views of the whole project. */
+  viewId?: Id
 }
 
 /** Port of a module of another project, as last read from it. */
