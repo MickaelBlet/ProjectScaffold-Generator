@@ -71,6 +71,8 @@ export interface IdlFile {
   needs: Record<string, string[]>
   /** File defining each type, interface, constant and component, by name. */
   origins: Record<string, string>
+  /** IDL module defining each interface written in the files (`Robot::Control`, '' at file scope), by name. */
+  scopes: Record<string, string>
   /** Files each file includes. */
   includes: Record<string, string[]>
   /** Included files found nowhere. */
@@ -2187,6 +2189,11 @@ class Parser {
         ...all.map((e): [string, string] => [e.def.name, e.file ?? this.main]),
         ...this.constDefs.map((c): [string, string] => [c.def.name, c.file])
       ]),
+      scopes: Object.fromEntries(
+        pick('interface')
+          .filter((e) => !e.synthetic)
+          .map((e) => [e.def.name, e.q.slice(0, Math.max(e.q.lastIndexOf('::'), 0)).replace(/^::/, '')])
+      ),
       includes: {},
       missing,
       warnings: this.warnings
@@ -2500,8 +2507,50 @@ export interface IdlProject {
 }
 
 /**
+ * Modules of a file `main` defining interfaces but no components (plain CORBA IDL): one per IDL
+ * module holding interfaces (named after it; the file's name at file scope), providing each of
+ * them on an `in` port.
+ */
+function interfaceServers(idl: IdlFile, main: string): IdlComponent[] {
+  const own = (name: string): boolean => (idl.origins[name] ?? main) === main
+  if (idl.components.some((c) => own(c.name))) return []
+  const byScope = new Map<string, FileInterface[]>()
+  for (const i of idl.interfaces) {
+    const scope = idl.scopes[i.name]
+    if (scope === undefined || !own(i.name)) continue
+    byScope.set(scope, [...(byScope.get(scope) ?? []), i])
+  }
+  const simple = (scope: string): string => (scope ? lastSegment(`::${scope}`) : dependencyName(stem(main)))
+  const count = new Map<string, number>()
+  for (const scope of byScope.keys()) count.set(simple(scope), (count.get(simple(scope)) ?? 0) + 1)
+  const taken = idl.components.map((c) => c.name)
+  return [...byScope].map(([scope, interfaces]) => {
+    const base = count.get(simple(scope))! > 1 ? scope.split('::').join('_') : simple(scope)
+    const name = uniqueName(base, taken)
+    taken.push(name)
+    const ports: string[] = []
+    return {
+      name,
+      description: scope
+        ? `Serves the interfaces of IDL module ${scope}.`
+        : 'Serves the interfaces of the file.',
+      bases: [],
+      attributes: [],
+      methods: [],
+      ports: interfaces.map((i) => {
+        const port = uniqueName(i.name.charAt(0).toLowerCase() + i.name.slice(1), ports)
+        ports.push(port)
+        return { name: port, role: 'in' as const, interface: i.name, description: '' }
+      }),
+      needs: []
+    }
+  })
+}
+
+/**
  * The project an IDL file stands for, to depend on it like on a project file: its definitions,
- * its components as modules, and the files it includes as its dependencies (`indirect` those it
+ * its components as modules (else its IDL modules serving their interfaces, see
+ * `interfaceServers`), and the files it includes as its dependencies (`indirect` those it
  * includes through others), their definitions being theirs. `files`: the file (`path`) and those
  * it may include, by path.
  */
@@ -2510,8 +2559,10 @@ export function idlProject(path: string, files: ReadonlyMap<string, string>): Id
   const main = normalizePath(path)
   const text = all.get(main)
   if (text === undefined) throw new IdlError(`${baseName(main)}: not read`)
-  const idl = parseIdl(text, { file: main, files: all })
+  const parsed = parseIdl(text, { file: main, files: all })
   const project: Project = { ...emptyProject(), name: stem(main) }
+  const servers = interfaceServers(parsed, main)
+  const idl = { ...parsed, components: [...parsed.components, ...servers] }
   const { clip, unresolved } = idlImport(idl, project, undefined, true)
   if (clip) pasteClip(project, clip, { parent: null, at: { x: 0, y: 0 } })
 
@@ -2545,8 +2596,9 @@ export function idlProject(path: string, files: ReadonlyMap<string, string>): Id
     if (dep) e.dependency = dep.id
   }
   // Components of included files are modules of their own project.
+  const ours = new Set(servers.map((c) => c.name))
   const theirs = new Set(
-    project.modules.filter((m) => deps.has(idl.origins[m.name] ?? main)).map((m) => m.id)
+    project.modules.filter((m) => !ours.has(m.name) && deps.has(idl.origins[m.name] ?? main)).map((m) => m.id)
   )
   if (theirs.size) {
     project.modules = project.modules.filter((m) => !theirs.has(m.id))

@@ -14,6 +14,7 @@ import { pasteClip } from '@/model/clipboard'
 import { emptyProject } from '@/model/project'
 import { printTypeExpr, printTypeRef } from '@/model/typeExpr'
 import { validate } from '@/model/validate'
+import type { Id } from '@/model/types'
 
 const SRC = `
 #include "base.idl"
@@ -337,6 +338,36 @@ describe('IDL import', () => {
       ['b', 'idl/b.idl', true]
     ])
     expect(d.types.map((t) => t.name).sort()).toEqual(['A', 'B', 'M'])
+  })
+
+  it('reads the IDL modules of a file without components as modules serving their interfaces', () => {
+    const files = new Map([
+      [
+        'idl/main.idl',
+        '#include "a.idl"\ninterface Top { void t(); };\nmodule A { module Ctl { interface Arm { void go(); }; interface gripper : Arm {}; }; };\nmodule B { module Ctl { interface Lamp { void on(); }; }; };'
+      ],
+      ['idl/a.idl', 'module Other { interface Far { void f(); }; };']
+    ])
+    const { project: p, warnings } = idlProject('idl/main.idl', files)
+    expect(warnings).toEqual([])
+    const iface = (id: Id | null) => p.interfaces.find((i) => i.id === id)?.name
+    expect(
+      p.modules.map((m) => [m.name, m.ports.map((pt) => [pt.name, pt.role, iface(pt.interfaceId)])])
+    ).toEqual([
+      ['main', [['top', 'in', 'Top']]],
+      [
+        'A_Ctl',
+        [
+          ['arm', 'in', 'Arm'],
+          ['gripper', 'in', 'gripper']
+        ]
+      ],
+      ['B_Ctl', [['lamp', 'in', 'Lamp']]]
+    ])
+    expect(validate(p).filter((x) => x.severity === 'error')).toEqual([])
+    // A file with components: only those.
+    files.set('idl/main.idl', 'interface I { void go(); };\ncomponent C { provides I i; };')
+    expect(idlProject('idl/main.idl', files).project.modules.map((m) => m.name)).toEqual(['C'])
   })
 
   it('resolves scoped names and qualifies names several modules use', () => {
