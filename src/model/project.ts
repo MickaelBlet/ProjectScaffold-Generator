@@ -656,17 +656,20 @@ export function visibleModuleIds(p: Project, view: View): Set<Id> {
  */
 export function pruneViews(p: Project): void {
   const ids = new Set(p.modules.map((m) => m.id))
-  const portIds = new Set(p.modules.flatMap((m) => m.ports.map((pt) => pt.id)))
+  const placed = p.dependencies.flatMap((x) => x.modules)
+  // Placed modules of dependencies can be outside a view, hidden in it, with port name sides.
+  const anyIds = new Set([...ids, ...placed.map((m) => m.id)])
+  const portIds = new Set([...p.modules, ...placed].flatMap((m) => m.ports.map((pt) => pt.id)))
   const linkIds = new Set(p.links.map((l) => l.id))
   p.views = p.views.filter((v) => !v.rootModuleId || ids.has(v.rootModuleId))
   const viewIds = new Set(p.views.map((v) => v.id))
   if (p.notes.some((n) => n.viewId && !viewIds.has(n.viewId)))
     p.notes = p.notes.filter((n) => !n.viewId || viewIds.has(n.viewId))
   for (const v of p.views) {
-    v.hidden = v.hidden.filter((h) => ids.has(h))
+    v.hidden = v.hidden.filter((h) => anyIds.has(h))
     for (const [key, kept] of [
       ['layouts', ids],
-      ['standIns', ids],
+      ['standIns', anyIds],
       ['portLabels', portIds],
       ['routes', linkIds]
     ] as const) {

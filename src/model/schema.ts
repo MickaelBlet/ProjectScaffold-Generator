@@ -18,6 +18,13 @@ const Identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be a valid
 const QualifiedName = z
   .string()
   .regex(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/, 'must be a dot-separated module path')
+/** A module path, or `Dependency/Module.Path` for a placed module of a dependency. */
+const ModulePath = z
+  .string()
+  .regex(
+    /^([A-Za-z_][A-Za-z0-9_]*\/)?[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/,
+    'must be a dot-separated module path, with its dependency name and a slash for a module of a dependency'
+  )
 const Description = z.string().optional()
 const Metadata = z.record(z.string(), z.string()).optional()
 
@@ -378,7 +385,7 @@ const EditorLink = z.object({
 const EditorView = z.object({
   name: z.string(),
   root: QualifiedName.optional().describe('module shown with its content; the whole project when absent'),
-  hidden: z.array(QualifiedName).optional(),
+  hidden: z.array(ModulePath).optional(),
   layout: z
     .record(QualifiedName, Rect)
     .optional()
@@ -388,20 +395,20 @@ const EditorView = z.object({
     .optional()
     .describe('link shapes in this view (with a root), by link name; others are drawn automatically'),
   labels: z
-    .record(QualifiedName, z.record(Identifier, Side))
+    .record(ModulePath, z.record(Identifier, Side))
     .optional()
     .describe(
-      'direction where port names are drawn in this view (with a root), by module path and port name'
+      'direction where port names are drawn in this view (with a root), by module path (Dependency/Module for modules of dependencies) and port name'
     ),
   notes: z.array(EditorNote).optional().describe('notes and frames of this view (with a root)'),
   outside: z
     .record(
-      QualifiedName,
+      ModulePath,
       z.object({ x: z.number(), y: z.number(), width: z.number().optional(), height: z.number().optional() })
     )
     .optional()
     .describe(
-      'places (and sizes) of the stand-ins of outside modules linked to the content (with a root), by module path; others are lined up along the view'
+      'places (and sizes) of the stand-ins of outside modules linked to the content (with a root), by module path (Dependency/Module for modules of dependencies); others are lined up along the view'
     )
 })
 

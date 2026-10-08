@@ -35,6 +35,7 @@ import {
   type Field,
   type Id,
   type Dependency,
+  type ImportedModule,
   type Interface,
   type Link,
   type LinkRoute,
@@ -112,9 +113,9 @@ function viewRoutes(p: Project, v: View) {
 function viewStandIns(p: Project, v: View): View['standIns'] {
   if (!v.rootModuleId || !v.standIns) return undefined
   const own = v.standIns
-  const entries = p.modules.flatMap((m) => {
-    const at = own[m.id]
-    return at ? [[modulePath(p, m.id), { ...at }] as const] : []
+  const entries = [...modulePaths(p)].flatMap(([id, path]) => {
+    const at = own[id]
+    return at ? [[path, { ...at }] as const] : []
   })
   return entries.length ? Object.fromEntries(entries) : undefined
 }
@@ -123,7 +124,7 @@ function viewStandIns(p: Project, v: View): View['standIns'] {
 function viewPortLabels(p: Project, v: View): Record<string, Record<string, Side>> | undefined {
   if (!v.rootModuleId || !v.portLabels) return undefined
   const own = v.portLabels
-  const entries = p.modules.flatMap((m) => {
+  const entries = [...p.modules, ...p.dependencies.flatMap((x) => x.modules)].flatMap((m) => {
     const labels = portLabels(m.ports.map((pt) => ({ name: pt.name, label: own[pt.id] })))
     return labels ? [[modulePath(p, m.id), labels] as const] : []
   })
@@ -894,6 +895,11 @@ export function fromFile(data: unknown, prev?: Project): Project {
     const id = moduleByPath.get(path)?.id ?? prevIds.get(path)
     return id && moduleIds.has(id) ? id : undefined
   }
+  // Placed modules of dependencies too ('Dependency/Module'), for modules outside a view.
+  const importedByPath = new Map(
+    dependencies.flatMap((x) => x.modules.map((m): [string, ImportedModule] => [`${x.name}/${m.path}`, m]))
+  )
+  const anyModuleAt = (path: string): Id | undefined => moduleAt(path) ?? importedByPath.get(path)?.id
   const prevViews = named(prev?.views, f.editor?.views ?? [])
   const linkByName = new Map(links.map((l) => [l.name, l]))
   /** Notes of a file entry, keeping the ids of `before` (by index). */
@@ -912,7 +918,7 @@ export function fromFile(data: unknown, prev?: Project): Project {
     const was = prevViews[i]
     const root = v.root ? moduleAt(v.root) : undefined
     if (v.root && !root) return []
-    const hidden = (v.hidden ?? []).flatMap((h) => moduleAt(h) ?? [])
+    const hidden = (v.hidden ?? []).flatMap((h) => anyModuleAt(h) ?? [])
     const layouts = Object.entries(v.layout ?? {}).flatMap(([path, r]) => {
       const id = moduleAt(path)
       return id ? [[id, { ...r }] as const] : []
@@ -924,14 +930,14 @@ export function fromFile(data: unknown, prev?: Project): Project {
       return l ? [[l.id, clean({ ...r, points: r.points ?? [] })] as const] : []
     })
     const portLabels = Object.entries(v.labels ?? {}).flatMap(([path, labels]) => {
-      const m = modules.find((m) => m.id === moduleAt(path))
+      const m = modules.find((m) => m.id === moduleAt(path)) ?? importedByPath.get(path)
       return Object.entries(labels).flatMap(([name, side]) => {
         const pt = m?.ports.find((pt) => pt.name === name)
         return pt ? [[pt.id, side] as const] : []
       })
     })
     const standIns = Object.entries(v.outside ?? {}).flatMap(([path, at]) => {
-      const id = moduleAt(path)
+      const id = anyModuleAt(path)
       return id ? [[id, { ...at }] as const] : []
     })
     viewNoteList.push(

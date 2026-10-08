@@ -446,7 +446,7 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                      "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
                     }
                   },
                   "layout": {
@@ -569,11 +569,11 @@
                     }
                   },
                   "labels": {
-                    "description": "direction where port names are drawn in this view (with a root), by module path and port name",
+                    "description": "direction where port names are drawn in this view (with a root), by module path (Dependency/Module for modules of dependencies) and port name",
                     "type": "object",
                     "propertyNames": {
                       "type": "string",
-                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                      "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
                     },
                     "additionalProperties": {
                       "type": "object",
@@ -638,11 +638,11 @@
                     }
                   },
                   "outside": {
-                    "description": "places (and sizes) of the stand-ins of outside modules linked to the content (with a root), by module path; others are lined up along the view",
+                    "description": "places (and sizes) of the stand-ins of outside modules linked to the content (with a root), by module path (Dependency/Module for modules of dependencies); others are lined up along the view",
                     "type": "object",
                     "propertyNames": {
                       "type": "string",
-                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                      "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
                     },
                     "additionalProperties": {
                       "type": "object",
