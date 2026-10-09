@@ -23,28 +23,24 @@
         echo '0'
       endcase
     when 'ref'
-      assign def = allTypes | where: 'name', t.name | first
+      assign def = typeByKey[t.key]
       case def.kind
       when 'struct'
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
         echo '()'
       when 'enum'
         if def.values.size > 0
-          echo prefix
-          render '_py_id', name: t.name
+          render '_py_ref', t: t, prefix: prefix
           echo '.'
           render '_py_id', name: def.values[0].name
         else
           echo '0'
         endif
       when 'union'
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
         echo '()'
       when 'bitmask'
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
         echo '(0)'
       when 'alias'
         render '_py_zero', t: def.type, prefix: prefix

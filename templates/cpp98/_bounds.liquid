@@ -13,7 +13,7 @@
     endif
   when 'ref'
     if t.typeKind == 'alias'
-      assign def = allTypes | where: 'name', t.name | first
+      assign def = typeByKey[t.key]
       render '_bounds', t: def.type, v: v, depth: depth
     endif
   when 'optional'

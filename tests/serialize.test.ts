@@ -242,7 +242,8 @@ describe('reload from edited text', () => {
     for (const l of file.links)
       for (const e of [l.from, l.to]) if (e.module === 'Core.Sensor') e.module = 'Core.Lidar'
     file.links[0]!.name = 'renamed_link'
-    const next = fromFile(file, prev)
+    // Types of the module are named after it.
+    const next = fromFile(JSON.parse(JSON.stringify(file).replaceAll('"Core.Sensor.', '"Core.Lidar.')), prev)
     expect(ids(next)).toEqual(ids(prev))
     expect(next.modules[1]!.name).toBe('Lidar')
     expect(next.modules[1]!.layout).toEqual(prev.modules[1]!.layout)
@@ -347,11 +348,13 @@ describe('module methods', () => {
         params: [{ name: 'mode', type: { kind: 'ref', id: mode.id }, direction: 'in', const: true }],
         returns: { kind: 'primitive', name: 'bool' }
       },
+      { name: 'tune', params: [{ name: 'filter', type: { kind: 'ref' } }], returns: null },
       { name: 'reset', description: '', params: [], returns: null },
       { name: 'isRunning', const: true },
       { name: 'instances', static: true }
     ])
     expect(controller.methods.map((x) => [!!x.static, !!x.const])).toEqual([
+      [false, false],
       [false, false],
       [false, false],
       [false, true],
@@ -367,7 +370,9 @@ describe('module methods', () => {
     const sensor = p.modules.find((m) => m.name === 'Sensor')!
     expect(sensor.attributes.map((a) => [a.name, !!a.static, !!a.const])).toEqual([
       ['rateHz', false, false],
-      ['maxRateHz', true, true]
+      ['maxRateHz', true, true],
+      ['filter', false, false],
+      ['last', false, false]
     ])
     expect('static' in sensor.attributes[0]!).toBe(false)
     const file = toFile(p, { editor: false })
@@ -378,12 +383,19 @@ describe('module methods', () => {
     const p = fromFile(example)
     const sensor = p.modules.find((m) => m.name === 'Sensor')!
     const controller = p.modules.find((m) => m.name === 'Controller')!
-    expect(sensor.attributes.map((a) => a.access)).toEqual([undefined, 'protected'])
-    expect(controller.methods.map((x) => x.access)).toEqual([undefined, 'protected', 'private', undefined])
+    expect(sensor.attributes.map((a) => a.access)).toEqual([undefined, 'protected', undefined, 'protected'])
+    expect(controller.methods.map((x) => x.access)).toEqual([
+      undefined,
+      undefined,
+      'protected',
+      'private',
+      undefined
+    ])
     sensor.attributes[1]!.access = 'public' as never
     const file = toFile(p, { editor: false })
     expect('access' in file.modules[0]!.modules![0]!.attributes![1]!).toBe(false)
     expect(file.modules[0]!.modules![1]!.methods!.map((x) => x.access)).toEqual([
+      undefined,
       undefined,
       'protected',
       'private',

@@ -6,7 +6,7 @@
 {%- liquid
   assign next = depth | plus: 1
   if t.kind == 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     assign defKind = def.kind
   else
     assign defKind = ''
@@ -59,7 +59,7 @@
 {%- liquid
   capture field
     echo target | append: '.'
-    render '_cx_member_id', name: f.name, scope: def.name
+    render '_cx_member_id', name: f.name, scope: def.flatName
   endcapture
 -%}
 {% if given contains key %}
@@ -73,7 +73,7 @@
 {% assign c = def.cases | where: 'name', entry[0] | first %}
 {%- liquid
   capture modifier
-    render '_cx_member_id', name: c.name, scope: def.name
+    render '_cx_member_id', name: c.name, scope: def.flatName
   endcapture
   capture kind
     render '_cx_kind', t: c.type

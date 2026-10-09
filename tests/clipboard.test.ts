@@ -95,11 +95,15 @@ describe('clipboard', () => {
     )
     const target = into.modules.find((m) => m.name === 'Operator2')!
     const clip = copyProject(example, into, false)!
-    expect(clip.types).toEqual([])
+    // Only the types of the modules, with them.
+    const ofModules = example.types.filter((t) => t.module)
+    expect(clip.types.map((t) => t.id)).toEqual(ofModules.map((t) => t.id))
     expect(clip.interfaces).toEqual([])
     expect(clip.notes).toEqual([])
     const p = produce(into, (d) => void pasteClip(d, clip, { parent: target.id, at: { x: 0, y: 0 } }))
-    expect(p.types).toHaveLength(example.types.length)
+    expect(p.types).toHaveLength(into.types.length + ofModules.length)
+    const sensor = p.modules.find((m) => modulePath(p, m.id) === 'Operator2.Core.Sensor')!
+    expect(p.types.filter((t) => t.module === sensor.id).map((t) => t.name)).toEqual(['Filter', 'Sample'])
     expect(p.interfaces).toHaveLength(example.interfaces.length)
     expect(p.modules).toHaveLength(into.modules.length + example.modules.length)
     expect(p.links).toHaveLength(into.links.length + example.links.length)
@@ -131,7 +135,7 @@ describe('clipboard attributes', () => {
     expect(copy.attributes.map((a) => a.name)).toEqual(['mode'])
     expect(copy.attributes[0]!.id).not.toBe(controller.attributes[0]!.id)
     expect(copy.attributes[0]!.type).toEqual(controller.attributes[0]!.type)
-    expect(copy.methods.map((x) => x.name)).toEqual(['setMode', 'reset', 'isRunning', 'instances'])
+    expect(copy.methods.map((x) => x.name)).toEqual(['setMode', 'tune', 'reset', 'isRunning', 'instances'])
     expect(copy.methods[0]!.id).not.toBe(controller.methods[0]!.id)
     expect(copy.methods[0]!.params[0]!.id).not.toBe(controller.methods[0]!.params[0]!.id)
   })

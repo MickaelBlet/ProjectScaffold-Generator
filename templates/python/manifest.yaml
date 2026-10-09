@@ -21,6 +21,7 @@ partials:
   - _py_args.liquid
   - _py_connection.liquid
   - _py_type.liquid
+  - _py_ref.liquid
   - _py_encode.liquid
   - _py_encoder.liquid
   - _py_decode.liquid
@@ -44,6 +45,9 @@ outputs:
     path: "{{ project.ident | snake }}/wire.py"
   - template: data.py.liquid
     path: "{{ project.ident | snake }}/data.py"
+  - template: module_types.py.liquid
+    path: "{{ project.ident | snake }}/module_types.py"
+    when: allModuleTypes.size > 0
   - template: constants.py.liquid
     path: "{{ project.ident | snake }}/constants.py"
     when: constants.size > 0

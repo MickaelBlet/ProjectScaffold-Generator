@@ -8,6 +8,7 @@ import {
   type FileInterface,
   type FileMessage,
   type FileModule,
+  type FileModuleTypeDef,
   type FileProject,
   type FileTypeDef
 } from './schema'
@@ -17,14 +18,17 @@ import {
   childModules,
   compartmentsHeight,
   findImported,
+  isModuleType,
   IMPORTED_PREFIX,
   leafHeight,
   MODULE_WIDTH,
   modulePath,
   modulePaths,
+  moduleTypes,
   newId,
   portRows,
   subtreeIds,
+  typeNames,
   viewNotes
 } from './project'
 import {
@@ -160,7 +164,7 @@ function clean<T>(v: T): T {
 }
 
 export function toFile(p: Project, options: { editor: boolean }): FileProject {
-  const typeName = new Map<Id, string>([...p.types, ...p.interfaces].map((e) => [e.id, e.name]))
+  const typeName = new Map<Id, string>([...typeNames(p), ...p.interfaces.map((i) => [i.id, i.name] as const)])
   const ref = (t: TypeRef): FileTypeRef =>
     mapTypeRef(t, (r) => ({ kind: 'ref', name: typeName.get(r.id) ?? '__deleted__' }))
   const field = (f: Field) => ({ name: f.name, type: ref(f.type), description: opt(f.description) })
@@ -245,6 +249,11 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         return { kind: 'primitive', name: t.name, description: opt(t.description) }
     }
   }
+  /** A type of a module, with its access. */
+  const moduleTypeDef = (t: TypeDef): FileModuleTypeDef => {
+    const { kind, name, ...rest } = typeDef(t)
+    return { kind, name, ...access(t), ...rest } as FileModuleTypeDef
+  }
   const iface = (i: Interface) => ({
     name: i.name,
     description: opt(i.description),
@@ -253,7 +262,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
   const owned = (dependency: Id | undefined) => {
     const consts = p.consts.filter((c) => c.dependency === dependency)
     return {
-      types: p.types.filter((t) => t.dependency === dependency).map(typeDef),
+      types: p.types.filter((t) => t.dependency === dependency && !isModuleType(t)).map(typeDef),
       interfaces: p.interfaces.filter((i) => i.dependency === dependency).map(iface),
       constants: consts.length
         ? consts.map((c) => ({
@@ -266,10 +275,23 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     }
   }
 
+  /** Types of the modules of a dependency, by module path in the order of the types. */
+  const dependencyModuleTypes = (dependency: Id) => {
+    const byModule = new Map<string, FileModuleTypeDef[]>()
+    for (const t of p.types)
+      if (t.dependency === dependency && t.modulePath) {
+        const list = byModule.get(t.modulePath) ?? []
+        if (!list.length) byModule.set(t.modulePath, list)
+        list.push(moduleTypeDef(t))
+      }
+    return byModule.size ? [...byModule].map(([module, types]) => ({ module, types })) : undefined
+  }
+
   const binaryName = new Map(p.binaries.map((b) => [b.id, b.name]))
   const moduleTree = (parentId: Id | null): FileModule[] =>
     childModules(p, parentId).map((m) => {
       const children = moduleTree(m.id)
+      const types = moduleTypes(p, m.id)
       return {
         name: m.name,
         description: opt(m.description),
@@ -278,6 +300,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         metadata: optMeta(m.metadata),
         color: m.color,
         binary: m.binaryId ? binaryName.get(m.binaryId) : undefined,
+        types: types.length ? types.map(moduleTypeDef) : undefined,
         attributes: m.attributes.length ? m.attributes.map(attribute) : undefined,
         methods: m.methods.length ? m.methods.map(method) : undefined,
         ports: m.ports.map((pt) => ({
@@ -331,6 +354,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           indirect: x.indirect || undefined,
           shared: x.shared.length ? [...x.shared] : undefined,
           ...owned(x.id),
+          moduleTypes: dependencyModuleTypes(x.id),
           modules: x.modules.length
             ? x.modules.map((m) => ({
                 module: m.path,
@@ -465,11 +489,47 @@ export function fromFile(data: unknown, prev?: Project): Project {
     at: DataPath
     dependency?: Id
   }
-  const typeEntries: Entry<FileTypeDef>[] = [
-    ...f.types.map((e, i) => ({ e, at: ['types', i] })),
-    ...fileDependencies.flatMap((x, xi) =>
-      x.types.map((e, i) => ({ e, at: ['dependencies', xi, 'types', i], dependency: dependencyIds[xi]! }))
-    )
+  /** A type, with its name as the file writes it (`key`) and the path of the module owning it. */
+  interface TypeEntry extends Entry<FileTypeDef | FileModuleTypeDef> {
+    key: string
+    /** Path of the module of this project owning it. */
+    module?: string
+    /** Path of the module of its dependency owning it. */
+    modulePath?: string
+  }
+  const ownModuleTypes = (list: FileModule[], parentPath: string, at: DataPath): TypeEntry[] =>
+    list.flatMap((fm, i) => {
+      const path = parentPath ? `${parentPath}.${fm.name}` : fm.name
+      return [
+        ...(fm.types ?? []).map((e, j) => ({
+          e,
+          at: [...at, i, 'types', j],
+          key: `${path}.${e.name}`,
+          module: path
+        })),
+        ...ownModuleTypes(fm.modules ?? [], path, [...at, i, 'modules'])
+      ]
+    })
+  const typeEntries: TypeEntry[] = [
+    ...f.types.map((e, i) => ({ e, at: ['types', i], key: e.name })),
+    ...ownModuleTypes(f.modules, '', ['modules']),
+    ...fileDependencies.flatMap((x, xi) => [
+      ...x.types.map((e, i) => ({
+        e,
+        at: ['dependencies', xi, 'types', i],
+        key: e.name,
+        dependency: dependencyIds[xi]!
+      })),
+      ...(x.moduleTypes ?? []).flatMap((g, gi) =>
+        g.types.map((e, i) => ({
+          e,
+          at: ['dependencies', xi, 'moduleTypes', gi, 'types', i],
+          key: `${x.name}/${g.module}.${e.name}`,
+          dependency: dependencyIds[xi]!,
+          modulePath: g.module
+        }))
+      )
+    ])
   ]
   const interfaceEntries: Entry<FileInterface>[] = [
     ...f.interfaces.map((e, i) => ({ e, at: ['interfaces', i] })),
@@ -483,15 +543,17 @@ export function fromFile(data: unknown, prev?: Project): Project {
   ]
   const owner = (dependency: Id | undefined) => (dependency ? { dependency } : {})
 
-  const prevTypes = named(
-    prev?.types,
-    typeEntries.map((x) => x.e)
+  const prevTypeNames = prev ? typeNames(prev) : new Map<Id, string>()
+  const prevTypes = pair(
+    prev?.types ?? [],
+    (t) => prevTypeNames.get(t.id)!,
+    typeEntries.map((x) => x.key)
   )
   const prevInterfaces = named(
     prev?.interfaces,
     interfaceEntries.map((x) => x.e)
   )
-  const typeDefIds = typeEntries.map((x, i) => declare(x.e.name, 'type', prevTypes[i], [...x.at, 'name']))
+  const typeDefIds = typeEntries.map((x, i) => declare(x.key, 'type', prevTypes[i], [...x.at, 'name']))
   const interfaceIds = interfaceEntries.map((x, i) =>
     declare(x.e.name, 'interface', prevInterfaces[i], [...x.at, 'name'])
   )
@@ -580,8 +642,15 @@ export function fromFile(data: unknown, prev?: Project): Project {
     })
   }
 
-  const types: TypeDef[] = typeEntries.map(({ e: t, at, dependency }, i) => {
-    const base = { id: typeDefIds[i]!, name: t.name, description: t.description ?? '', ...owner(dependency) }
+  const types: TypeDef[] = typeEntries.map(({ e: t, at, dependency, modulePath }, i) => {
+    const base = {
+      id: typeDefIds[i]!,
+      name: t.name,
+      description: t.description ?? '',
+      ...owner(dependency),
+      ...(modulePath && { modulePath }),
+      ...('access' in t && access(t))
+    }
     const was = prevTypes[i]
     switch (t.kind) {
       case 'struct': {
@@ -786,6 +855,11 @@ export function fromFile(data: unknown, prev?: Project): Project {
     return extent
   }
   addModules(f.modules, null, '', 0, ['modules'])
+  // Types of modules: owned by the module at their path.
+  typeEntries.forEach((x, i) => {
+    const mod = x.module === undefined ? undefined : moduleByPath.get(x.module)
+    if (mod) types[i]!.module = mod.id
+  })
   for (const { mod, path, bases, at } of derived)
     mod.bases = bases.flatMap((b, j) => {
       const base = moduleByPath.get(b)

@@ -67,19 +67,17 @@
     endfor
     echo '}'
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     case def.kind
     when 'enum'
-      echo prefix
-      render '_py_id', name: t.name
+      render '_py_ref', t: t, prefix: prefix
       echo '.'
       render '_py_id', name: v
     when 'union'
       # The case of the one-entry mapping, with its first label.
       for entry in v
         assign c = def.cases | where: 'name', entry[0] | first
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
         echo '('
         if c.label == nil
           echo 'None'
@@ -92,13 +90,11 @@
       endfor
     when 'bitmask'
       if v.size == 0
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
         echo '(0)'
       endif
       for flag in v
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
         echo '.'
         render '_py_id', name: flag
         unless forloop.last
@@ -109,8 +105,7 @@
       render '_py_value', v: v, t: def.type, prefix: prefix
     when 'struct'
       # The fields given; the others keep their defaults.
-      echo prefix
-      render '_py_id', name: t.name
+      render '_py_ref', t: t, prefix: prefix
       echo '('
       assign first = true
       for f in def.fields

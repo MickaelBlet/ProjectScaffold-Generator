@@ -8,7 +8,9 @@ import {
   IDENTIFIER_RE,
   IMPORTED_PREFIX,
   importedParent,
+  isModuleType,
   modulePath,
+  modulePaths,
   newId,
   typeUsageTargets,
   uniqueName
@@ -37,6 +39,17 @@ const entities = (p: Pick<Project, Kind>): Entity[] => [...p.types, ...p.interfa
 const isInterface = (e: Entity): e is Interface => 'messages' in e
 const isConst = (e: Entity): e is ConstDef => 'value' in e
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+/** Whether an entity is a type of a module (never shared between dependencies, never conflicting). */
+const scoped = (e: Entity): e is TypeDef => !isInterface(e) && !isConst(e) && isModuleType(e)
+
+/** Name of an entity in its project: `Path.Name` for a type of a module. */
+function keyer(p: Pick<Project, 'modules' | 'dependencies'>): (e: Entity) => string {
+  const paths = modulePaths(p)
+  return (e) => {
+    if (!scoped(e)) return e.name
+    return `${e.module ? paths.get(e.module) : e.modulePath}.${e.name}`
+  }
+}
 
 /** An identifier made from a project name, for a new dependency. */
 export function dependencyName(name: string): string {
@@ -126,10 +139,11 @@ function placedTree(
 
 /** Content of an entity without ids, references by name: equal for the same definition in two projects. */
 function shaper(p: Project): (e: Entity) => string {
-  const names = new Map(entities(p).map((e) => [e.id, e.name]))
+  const key = keyer(p)
+  const names = new Map(entities(p).map((e) => [e.id, key(e)]))
   return (e) =>
     JSON.stringify(e, (key, value: unknown) => {
-      if (key === 'id' || key === 'dependency') return undefined
+      if (key === 'id' || key === 'dependency' || key === 'module' || key === 'modulePath') return undefined
       if (key === 'raises' && Array.isArray(value)) return value.map((id) => names.get(id as Id) ?? '')
       const ref = value as { kind?: unknown; id?: unknown } | null
       if (ref && typeof ref === 'object' && ref.kind === 'ref' && typeof ref.id === 'string')
@@ -154,6 +168,22 @@ function rebind(e: Entity, idOf: (id: Id) => Id): void {
   } else if (e.kind === 'alias') e.type = ref(e.type)
 }
 
+/**
+ * Names binding the references of the entities of `source` (saved as `file`) once copied: their
+ * names, a type of a module by the file of its project and its `Path.Name`.
+ */
+function refNames(source: Project, file: string): Map<Id, string> {
+  const paths = modulePaths(source)
+  const files = new Map(source.dependencies.map((x) => [x.id, normalizeFile(resolveRelative(file, x.file))]))
+  return new Map(
+    entities(source).map((e) => {
+      if (!scoped(e)) return [e.id, e.name]
+      if (e.module) return [e.id, `${normalizeFile(file)}|${paths.get(e.module)}.${e.name}`]
+      return [e.id, `${files.get(e.dependency!)}|${e.modulePath}.${e.name}`]
+    })
+  )
+}
+
 /** Whether something outside `inside` (ids) uses a type or interface (nothing refers to constants). */
 function usedOutside(p: Project, e: Entity, inside: Set<Id>): boolean {
   if (isConst(e)) return false
@@ -171,7 +201,7 @@ function usedOutside(p: Project, e: Entity, inside: Set<Id>): boolean {
  */
 function handOver(d: Project, dep: Dependency, list: Entity[] = dependencyEntities(d, dep.id)): Entity[] {
   return list.filter((e) => {
-    const other = d.dependencies.find((x) => x.id !== dep.id && x.shared.includes(e.name))
+    const other = !scoped(e) && d.dependencies.find((x) => x.id !== dep.id && x.shared.includes(e.name))
     if (!other) return true
     e.dependency = other.id
     other.shared = other.shared.filter((n) => n !== e.name)
@@ -238,24 +268,28 @@ class Sync {
     return dep
   }
 
-  /** Make the entities of `dep` those of `source` owned by `owner` (its own ones when undefined). */
-  entities(dep: Dependency, source: Project, owner: Id | undefined): void {
-    const names = new Map(entities(source).map((e) => [e.id, e.name]))
+  /**
+   * Make the entities of `dep` those of `source` (saved as `file`) owned by `owner` (its own ones
+   * when undefined). Types of modules come with the path of their module.
+   */
+  entities(dep: Dependency, source: Project, owner: Id | undefined, file: string): void {
+    const names = refNames(source, file)
+    const sourceKey = keyer(source)
     const sourceShape = shaper(source)
+    const paths = modulePaths(source)
     const shared: string[] = []
     for (const kind of KINDS) {
       const here = shaper(this.d)
+      const hereKey = keyer(this.d)
       const list = this.d[kind] as Entity[]
       const current = list.filter((e) => e.dependency === dep.id)
       const next = (source[kind] as Entity[]).filter((e) => e.dependency === owner)
-      const was = pair(
-        current,
-        (e) => e.name,
-        next.map((e) => e.name)
-      )
+      const was = pair(current, hereKey, next.map(sourceKey))
       const kept = new Set<Entity>()
       for (const [i, e] of next.entries()) {
-        const taken = entities(this.d).find((x) => x.name === e.name && x.dependency !== dep.id)
+        const taken =
+          !scoped(e) &&
+          entities(this.d).find((x) => !scoped(x) && x.name === e.name && x.dependency !== dep.id)
         const target = was[i]
         if (taken) {
           const alike =
@@ -272,10 +306,15 @@ class Sync {
         }
         if (target) {
           kept.add(target)
-          if (target.name !== e.name) this.result.renamed.push(`${target.name} → ${e.name}`)
-          else if (here(target) === sourceShape(e)) continue
+          // A type of a module in a renamed module is not renamed itself.
+          if (target.name !== e.name) this.result.renamed.push(`${hereKey(target)} → ${sourceKey(e)}`)
+          else if (hereKey(target) === sourceKey(e) && here(target) === sourceShape(e)) continue
         }
         const copy = { ...structuredClone(e), id: target?.id ?? newId(), dependency: dep.id } as Entity
+        if (scoped(copy) && copy.module) {
+          copy.modulePath = paths.get(copy.module)!
+          delete copy.module
+        }
         const at = target ? list.indexOf(target) : -1
         if (at >= 0) list[at] = copy
         else list.push(copy)
@@ -306,7 +345,7 @@ class Sync {
       const target = targets.get(n.id)
       if (!target || this.fresh.has(target.id)) continue
       this.fresh.add(target.id)
-      this.entities(target, source, n.id)
+      this.entities(target, source, n.id, file)
       const uses = namesOf(n.uses)
       if (!same(target.uses, uses)) target.uses = uses
     }
@@ -326,7 +365,7 @@ class Sync {
     const dep = this.dependencyFor(resolveRelative(file, n.file), n.name)
     if (!dep) return undefined
     this.fresh.add(dep.id)
-    this.entities(dep, source, n.id)
+    this.entities(dep, source, n.id, file)
     dep.uses = n.uses.flatMap((u) => {
       const used = source.dependencies.find((x) => x.name === u)
       const t = used && this.snapshot(source, file, used)
@@ -412,13 +451,22 @@ class Sync {
   /** Bring `dep` up to date from its project `source`. */
   take(dep: Dependency, source: Project): void {
     this.fresh.add(dep.id)
-    this.entities(dep, source, undefined)
+    this.entities(dep, source, undefined, dep.file)
     this.modules(dep, source)
   }
 
   finish(): DependencyResult {
     const d = this.d
-    const ids = new Map(entities(d).map((e) => [e.name, e.id]))
+    const files = new Map(d.dependencies.map((x) => [x.id, normalizeFile(x.file)]))
+    const ids = new Map(
+      entities(d).flatMap((e) =>
+        !scoped(e)
+          ? [[e.name, e.id] as const]
+          : e.modulePath
+            ? [[`${files.get(e.dependency!)}|${e.modulePath}.${e.name}`, e.id] as const]
+            : []
+      )
+    )
     for (const { entity, names } of this.copied)
       rebind(entity, (id) => ids.get(names.get(id) ?? '') ?? newId())
     const gone = new Set<Entity>()
@@ -616,7 +664,7 @@ export function removeDependency(d: Project, dependencyId: Id): string[] {
   const users = holders(d, dep)
   // Entities another dependency also defines stay, with that one.
   const own = dependencyEntities(d, dep.id).filter(
-    (e) => !d.dependencies.some((x) => x.shared.includes(e.name))
+    (e) => scoped(e) || !d.dependencies.some((x) => x.shared.includes(e.name))
   )
   const inside = new Set(dependencyEntities(d, dep.id).map((e) => e.id))
   users.push(...own.filter((e) => usedOutside(d, e, inside)).map((e) => e.name))
@@ -661,9 +709,17 @@ export function applyDependencyRenames(d: Project, file: string, r: Renames): vo
     }
     const rename = (kind: Kind, renames: Map<string, string>): void => {
       for (const e of d[kind] as Entity[]) {
-        const to = e.dependency === dep.id ? renames.get(e.name) : undefined
-        if (to && !entities(d).some((x) => x.name === to)) e.name = to
+        const to = e.dependency === dep.id && !scoped(e) ? renames.get(e.name) : undefined
+        if (to && !entities(d).some((x) => !scoped(x) && x.name === to)) e.name = to
       }
+    }
+    for (const t of d.types) {
+      const to =
+        t.dependency === dep.id && t.modulePath ? r.moduleTypes.get(`${t.modulePath}.${t.name}`) : undefined
+      if (!to) continue
+      const at = to.lastIndexOf('.')
+      t.modulePath = to.slice(0, at)
+      t.name = to.slice(at + 1)
     }
     rename('types', r.types)
     rename('interfaces', r.interfaces)

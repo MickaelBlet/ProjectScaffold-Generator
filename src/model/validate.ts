@@ -2,6 +2,13 @@
 import {
   allTypeRefs,
   ancestorModules,
+  canUseType,
+  globalTypeNames,
+  isModuleType,
+  memberNames,
+  moduleTypes,
+  refContext,
+  typeNames,
   findImported,
   findPort,
   IDENTIFIER_RE,
@@ -108,8 +115,8 @@ export function validate(p: Project): Problem[] {
       `Unknown template set '${p.templates}' (built-in: ${TEMPLATE_SETS.join(', ')}): ${DEFAULT_TEMPLATE_SET} used`
     )
 
-  // Types, interfaces & constants namespace
-  for (const n of duplicates([...p.types, ...p.interfaces, ...p.consts].map((e) => e.name)))
+  // Types, interfaces & constants namespace (types of modules: their module's)
+  for (const n of duplicates(globalTypeNames(p)))
     push('error', { kind: 'project' }, `Duplicate type/interface/constant name '${n}'`)
 
   for (const c of p.consts) {
@@ -312,6 +319,13 @@ export function validate(p: Project): Problem[] {
       push('error', target, `${path}: runs in no binary (the project has binaries)`)
     for (const n of duplicates(m.ports.map((pt) => pt.name)))
       push('error', target, `${path}: duplicate port '${n}'`)
+    const ownTypes = moduleTypes(p, m.id)
+    for (const n of duplicates(ownTypes.map((t) => t.name)))
+      push('error', target, `${path}: duplicate type '${n}'`)
+    const members = new Set(memberNames(p, m))
+    for (const t of ownTypes)
+      if (members.has(t.name))
+        push('error', target, `${path}: '${t.name}' is both a type and a member or submodule`)
     for (const n of duplicates(m.attributes.map((a) => a.name)))
       push('error', target, `${path}: duplicate attribute '${n}'`)
     for (const a of m.attributes) {
@@ -420,6 +434,26 @@ export function validate(p: Project): Problem[] {
     )
       push('error', project, `Dependency '${x.name}' uses itself through other dependencies`)
   }
+  // Types of modules: in modules only, as their access allows.
+  const qualified = typeNames(p)
+  const rank = { public: 0, protected: 1, private: 2 } as const
+  for (const { ref, where, owner, access } of allTypeRefs(p)) {
+    if (fromLibrary.has(owner.id)) continue
+    const context = refContext(p, owner)
+    walkTypeRef(ref, (n) => {
+      const used = n.kind === 'ref' && types.get(n.id)
+      if (!used || !isModuleType(used)) return
+      const name = qualified.get(used.id)!
+      const target = { kind: owner.kind, id: owner.id }
+      const of = used.module ? modulePath(p, used.module) : used.modulePath
+      if (!context) push('error', target, `${where}: '${name}' is a type of module ${of}, used by modules only`)
+      else if (!canUseType(p, context, used))
+        push('error', target, `${where}: '${name}' is ${used.access ?? 'public'} in ${of}`)
+      else if (access && rank[used.access ?? 'public'] > rank[access])
+        push('warning', target, `${where}: ${access} member uses ${used.access} type '${name}'`)
+    })
+  }
+
   const owners = new Map([...p.types, ...p.interfaces, ...p.consts].map((e) => [e.id, e.dependency]))
   for (const { ref, where, owner } of allTypeRefs(p)) {
     const dependency = owner.kind === 'module' ? undefined : owners.get(owner.id)

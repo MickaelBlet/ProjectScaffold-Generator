@@ -215,7 +215,7 @@ describe('generation context', () => {
     expect(ctx.types.map((t) => t.name)).toEqual(['Primitive'])
     expect(ctx.allTypes.find((t) => t.name === 'Pose')?.dependency).toBe('Common')
     const controller = ctx.modules.find((m) => m.path === 'Core.Controller')!
-    expect(controller.uses.types.map((t) => t.name)).toEqual(['Mode'])
+    expect(controller.uses.types.map((t) => t.name)).toEqual(['Filter', 'Mode'])
     expect(controller.uses.builtins).toEqual(['bool', 'uint32'])
   })
 

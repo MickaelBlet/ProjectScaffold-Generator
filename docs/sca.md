@@ -18,6 +18,7 @@ The [`sca-cpp98`](../templates/sca-cpp98) template set makes a waveform of the p
 | -------------------------- | ------------------------------------------------------------------------- |
 | enum values, bitmask flags | prefixed with their type, `State_On` (IDL puts them in the module)        |
 | structs and unions         | declared first when they name themselves                                  |
+| types of modules           | by flat name, `Core_Sensor_Filter`, typedef'd in the component's class    |
 | constants                  | those IDL can write                                                       |
 | interfaces                 | interfaces                                                                |
 | `vector<Reading>`          | typedef `ReadingSeq`                                                      |

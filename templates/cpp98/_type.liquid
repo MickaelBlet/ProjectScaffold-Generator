@@ -1,5 +1,6 @@
 {%- comment -%}
-  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`; `void` for none.
+  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`, `::robot::core::sensor::Mode`
+  for a type of a module; `void` for none.
   Template arguments are spaced where C++98 needs it: `< ::a::B>` (`<:` is a digraph) and
   `vector<int> >` (`>>` is a shift). Parameter: t.
 {%- endcomment -%}
@@ -17,6 +18,10 @@
       else
         echo project.ident | snake
       endif
+      for part in t.scope
+        echo '::'
+        echo part | snake
+      endfor
       echo '::'
       render '_id', name: t.name
     else

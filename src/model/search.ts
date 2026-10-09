@@ -1,5 +1,5 @@
 // Full-text search over the project (names, descriptions and metadata) and over text files.
-import { modulePath } from './project'
+import { modulePath, typeNames } from './project'
 import type { ProblemTarget } from './validate'
 import type { Project } from './types'
 
@@ -85,22 +85,25 @@ export function searchProject(p: Project, query: string): SearchHit[] {
     check(target, l.name, 'description', l.description)
     check(target, l.name, 'transport', l.constraints.remote.transport)
   }
+  const typeName = typeNames(p)
   for (const t of p.types) {
     const target = { kind: 'type', id: t.id } as const
-    check(target, t.name, t.kind, t.name)
-    check(target, t.name, 'description', t.description)
+    // Qualified for a type of a module: Core.Sensor.Mode.
+    const name = typeName.get(t.id)!
+    check(target, name, t.kind, t.name)
+    check(target, name, 'description', t.description)
     if (t.kind === 'struct' || t.kind === 'exception')
       for (const f of t.fields) {
-        check(target, `${t.name}.${f.name}`, 'field', f.name)
-        check(target, `${t.name}.${f.name}`, 'field description', f.description)
+        check(target, `${name}.${f.name}`, 'field', f.name)
+        check(target, `${name}.${f.name}`, 'field description', f.description)
       }
-    if (t.kind === 'enum') for (const v of t.values) check(target, `${t.name}.${v.name}`, 'value', v.name)
+    if (t.kind === 'enum') for (const v of t.values) check(target, `${name}.${v.name}`, 'value', v.name)
     if (t.kind === 'union')
       for (const c of t.cases) {
-        check(target, `${t.name}.${c.name}`, 'case', c.name)
-        check(target, `${t.name}.${c.name}`, 'case description', c.description)
+        check(target, `${name}.${c.name}`, 'case', c.name)
+        check(target, `${name}.${c.name}`, 'case description', c.description)
       }
-    if (t.kind === 'bitmask') for (const v of t.flags) check(target, `${t.name}.${v.name}`, 'flag', v.name)
+    if (t.kind === 'bitmask') for (const v of t.flags) check(target, `${name}.${v.name}`, 'flag', v.name)
   }
   for (const i of p.interfaces) {
     const target = { kind: 'interface', id: i.id } as const

@@ -1,5 +1,6 @@
 {%- comment -%}
-  Header of an entity, relative to `include/`: `robot/core/Sensor.hpp`. Parameter: e.
+  Header of an entity, relative to `include/`: `robot/core/Sensor.hpp`, `robot/core/sensor/Mode.hpp`
+  for a type of module `Core.Sensor`. Parameter: e.
 {%- endcomment -%}
 {%- liquid
   assign root = project.ident | snake
@@ -10,7 +11,14 @@
     else
       echo root
     endif
-    if e.entity == 'type'
+    if e.entity == 'type' and e.scope.size > 0
+      # A type of a module: beside the content of the module.
+      for part in e.scope
+        echo '/'
+        echo part | snake
+      endfor
+      echo '/'
+    elsif e.entity == 'type'
       echo '/types/'
     else
       echo '/interfaces/'

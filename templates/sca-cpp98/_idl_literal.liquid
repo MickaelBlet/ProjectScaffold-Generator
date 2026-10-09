@@ -36,17 +36,17 @@
       echo v
     endcase
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     assign ns = def.dependency | default: project.ident | snake
     case def.kind
     when 'enum'
-      echo '::' | append: ns | append: '::' | append: def.name | append: '_' | append: v
+      echo '::' | append: ns | append: '::' | append: def.flatName | append: '_' | append: v
     when 'bitmask'
       if v.size == 0
         echo '0'
       endif
       for flag in v
-        echo '::' | append: ns | append: '::' | append: def.name | append: '_' | append: flag
+        echo '::' | append: ns | append: '::' | append: def.flatName | append: '_' | append: flag
         unless forloop.last
           echo ' | '
         endunless

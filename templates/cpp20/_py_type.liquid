@@ -21,15 +21,14 @@
         echo 'int'
       endcase
     when 'ref'
-      assign def = allTypes | where: 'name', t.name | first
+      assign def = typeByKey[t.key]
       case def.kind
       when 'alias'
         render '_py_type', t: def.type, prefix: prefix
       when 'primitive'
         echo 'Any'
       else
-        echo prefix
-        render '_py_id', name: t.name
+        render '_py_ref', t: t, prefix: prefix
       endcase
     when 'optional'
       echo 'Optional['

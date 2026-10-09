@@ -9,7 +9,7 @@
       echo 'true'
     endif
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     assign next = depth | plus: 1
     if next > 16
       echo 'true'

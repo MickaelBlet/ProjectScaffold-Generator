@@ -84,7 +84,20 @@ export interface Owned {
   dependency?: Id
 }
 
-export interface StructDef extends Owned {
+/**
+ * Module owning a type, like a type nested in a C++ class: usable by modules only (attributes,
+ * methods, the module's other types), as its access allows.
+ */
+export interface Scoped {
+  /** Module of this project owning it. */
+  module?: Id
+  /** Path of the module owning it in its dependency (with `dependency`). */
+  modulePath?: string
+  /** Who may use it: public (default), protected (the module and derived ones) or private (the module). */
+  access?: StoredAccess
+}
+
+export interface StructDef extends Owned, Scoped {
   id: Id
   kind: 'struct'
   name: string
@@ -98,7 +111,7 @@ export interface EnumValue {
   value: number
 }
 
-export interface EnumDef extends Owned {
+export interface EnumDef extends Owned, Scoped {
   id: Id
   kind: 'enum'
   name: string
@@ -115,7 +128,7 @@ export interface BitmaskFlag {
 }
 
 /** Set of flags, combined with `|`. */
-export interface BitmaskDef extends Owned {
+export interface BitmaskDef extends Owned, Scoped {
   id: Id
   kind: 'bitmask'
   name: string
@@ -125,7 +138,7 @@ export interface BitmaskDef extends Owned {
 }
 
 /** Exception: raised by messages and methods (their `raises`), never used as a type. */
-export interface ExceptionDef extends Owned {
+export interface ExceptionDef extends Owned, Scoped {
   id: Id
   kind: 'exception'
   name: string
@@ -142,7 +155,7 @@ export interface UnionCase extends Field {
 }
 
 /** Discriminated union: one of its cases, selected by the discriminator. */
-export interface UnionDef extends Owned {
+export interface UnionDef extends Owned, Scoped {
   id: Id
   kind: 'union'
   name: string
@@ -152,7 +165,7 @@ export interface UnionDef extends Owned {
   cases: UnionCase[]
 }
 
-export interface AliasDef extends Owned {
+export interface AliasDef extends Owned, Scoped {
   id: Id
   kind: 'alias'
   name: string
@@ -161,7 +174,7 @@ export interface AliasDef extends Owned {
 }
 
 /** Custom primitive: an opaque type that generators map to a native type. */
-export interface PrimitiveDef extends Owned {
+export interface PrimitiveDef extends Owned, Scoped {
   id: Id
   kind: 'primitive'
   name: string

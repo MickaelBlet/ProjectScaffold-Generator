@@ -91,7 +91,7 @@
       echo ')'
     endfor
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     case def.kind
     when 'enum'
       render '_type', t: t

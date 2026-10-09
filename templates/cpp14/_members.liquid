@@ -1,8 +1,15 @@
 {%- comment -%}
-  Attribute accessors and methods of a module with an access level (`public`, `protected`,
+  Types (aliases), attribute accessors and methods of a module with an access level (`public`, `protected`,
   `private`): attribute members stay private, private attributes have no accessors.
   Parameters: m, names (taken by the model: no accessor of that name), access.
 {%- endcomment -%}
+{% assign types = m.types | where: 'access', access %}
+{% if types.size > 0 %}
+
+{% for t in types %}
+    using {% render '_name', e: t %} = {% render '_qualified', e: t %};
+{% endfor %}
+{% endif %}
 {% assign attributes = m.attributes | where: 'access', access %}
 {% if access != 'private' and attributes.size > 0 %}
 

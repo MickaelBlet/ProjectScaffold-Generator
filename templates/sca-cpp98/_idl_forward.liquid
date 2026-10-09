@@ -4,7 +4,7 @@
 {%- liquid
   if e.kind == 'struct' or e.kind == 'union'
     echo '    ' | append: e.kind | append: ' '
-    render '_idl_id', name: e.name
+    render '_idl_id', name: e.flatName
     echo ';\n'
   endif
 -%}

@@ -9,9 +9,13 @@ import {
   childModules,
   globalTypeNames,
   growAncestors,
+  isModuleType,
   linkOrigin,
+  memberNames,
+  moduleTypes,
   newId,
   subtreeIds,
+  typeNames,
   uniqueName
 } from './project'
 import type {
@@ -47,8 +51,10 @@ export interface Clip {
   interfaces: Interface[]
   /** Absent in clips of older versions. */
   consts?: ConstDef[]
-  /** Names of the source project's types and interfaces, to rebind references elsewhere. */
+  /** Names of the source project's types (qualified) and interfaces, to rebind references elsewhere. */
   names: Record<Id, string>
+  /** Types selected themselves, not only copied with their module (absent in older clips: all). */
+  selectedTypes?: Id[]
 }
 
 /** Copy the entities with these ids; null when none can be copied. */
@@ -86,10 +92,12 @@ export function copyItems(p: Project, ids: Id[]): Clip | null {
         return { ...l, route: { ...l.route, points: l.route.points.map((pt) => add(pt, origin)) } }
       }),
     notes: p.notes.filter((n) => selected.has(n.id)),
-    types: p.types.filter((t) => selected.has(t.id)),
+    // Types of copied modules come with them.
+    types: p.types.filter((t) => selected.has(t.id) || (t.module && moduleIds.has(t.module))),
+    selectedTypes: p.types.filter((t) => selected.has(t.id)).map((t) => t.id),
     interfaces: p.interfaces.filter((i) => selected.has(i.id)),
     consts: p.consts.filter((c) => selected.has(c.id)),
-    names: Object.fromEntries([...p.types, ...p.interfaces].map((e) => [e.id, e.name]))
+    names: Object.fromEntries([...typeNames(p), ...p.interfaces.map((i) => [i.id, i.name] as const)])
   }
   const empty =
     !clip.modules.length &&
@@ -110,7 +118,8 @@ export function copyProject(source: Project, target: Project, withNotes: boolean
   return copyItems(source, [
     ...childModules(source, null).map((m) => m.id),
     ...(withNotes ? source.notes.flatMap((n) => (n.viewId ? [] : n.id)) : []),
-    ...[...source.types, ...source.interfaces, ...source.consts]
+    // Types of modules come with their module.
+    ...[...source.types.filter((t) => !isModuleType(t)), ...source.interfaces, ...source.consts]
       .filter((e) => !have.has(e.name))
       .map((e) => e.id)
   ])
@@ -147,12 +156,18 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
 
   // Types and interfaces first: pasted modules and fields may reference them.
   for (const e of [...clip.types, ...clip.interfaces]) typeIds.set(e.id, newId())
+  const moduleIds = new Map<Id, Id>()
+  for (const m of clip.modules) moduleIds.set(m.id, newId())
+  let names: Map<string, Id> | undefined
   const rebind = (id: Id): Id => {
     const copied = typeIds.get(id)
     if (copied) return copied
     if ([...d.types, ...d.interfaces].some((e) => e.id === id)) return id
-    const name = clip.names[id]
-    return [...d.types, ...d.interfaces].find((e) => e.name === name)?.id ?? id
+    names ??= new Map([
+      ...[...typeNames(d)].map(([k, v]) => [v, k] as const),
+      ...d.interfaces.map((i) => [i.name, i.id] as const)
+    ])
+    return names.get(clip.names[id] ?? '') ?? id
   }
   const ref = (t: TypeRef): TypeRef => mapTypeRef(t, (r) => ({ kind: 'ref', id: rebind(r.id) }))
   const field = <F extends Field>(f: F): F => ({ ...f, id: newId(), type: ref(f.type) })
@@ -164,11 +179,19 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
     ...(m.raises ? { raises: m.raises.map(rebind) } : {})
   })
 
+  const selectedTypes = new Set(clip.selectedTypes ?? clip.types.map((t) => t.id))
   for (const t of clip.types) {
+    // A type of a module: of its copy, else of the module when here, else of the project.
+    const module = t.module && (moduleIds.get(t.module) ?? d.modules.find((m) => m.id === t.module)?.id)
+    const owner = module && d.modules.find((m) => m.id === module)
+    const taken = !module
+      ? globalTypeNames(d)
+      : [...moduleTypes(d, module).map((x) => x.name), ...(owner ? memberNames(d, owner) : [])]
     const base = {
       id: typeIds.get(t.id)!,
-      name: uniqueName(t.name, globalTypeNames(d)),
-      description: t.description
+      name: uniqueName(t.name, taken),
+      description: t.description,
+      ...(module && { module, ...(t.access && { access: t.access }) })
     }
     if (t.kind === 'struct' || t.kind === 'exception')
       d.types.push({ ...base, kind: t.kind, fields: t.fields.map(field) })
@@ -190,7 +213,7 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
       d.types.push({ ...base, kind: 'union', discriminator: ref(t.discriminator), cases: t.cases.map(field) })
     else if (t.kind === 'alias') d.types.push({ ...base, kind: 'alias', type: ref(t.type) })
     else d.types.push({ ...base, kind: 'primitive' })
-    pasted.push(base.id)
+    if (selectedTypes.has(t.id)) pasted.push(base.id)
   }
   for (const c of clip.consts ?? []) {
     const id = newId()
@@ -220,9 +243,7 @@ export function pasteClip(d: Project, clip: Clip, options: PasteOptions): Id[] {
   const offset = options.offset ?? 30
   const shift = options.at ? { x: options.at.x - box.x, y: options.at.y - box.y } : { x: offset, y: offset }
 
-  const moduleIds = new Map<Id, Id>()
   const portIds = new Map<Id, Id>()
-  for (const m of clip.modules) moduleIds.set(m.id, newId())
   for (const m of clip.modules) {
     const isRoot = m.id in clip.rootParents
     let parentId: Id | null

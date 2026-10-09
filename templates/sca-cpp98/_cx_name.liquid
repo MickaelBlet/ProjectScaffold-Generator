@@ -44,7 +44,7 @@
       echo project.ident | snake
     endif
     echo '::'
-    render '_cx_id', name: t.name
+    render '_cx_id', name: t.flatName
   else
     echo '::' | append: owner | append: '::'
     render '_idl_name', t: t

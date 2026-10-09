@@ -20,6 +20,28 @@ modules:
     modules:
       - name: Sensor
         color: "#8a4fd1"
+        types:
+          - kind: enum
+            name: Filter
+            description: Smoothing of the readings
+            underlying: uint8
+            values:
+              - name: None
+                value: 0
+              - name: LowPass
+                value: 1
+          - kind: struct
+            name: Sample
+            access: protected
+            fields:
+              - name: value
+                type:
+                  kind: primitive
+                  name: float32
+              - name: stampUs
+                type:
+                  kind: primitive
+                  name: uint64
         attributes:
           - name: rateHz
             type:
@@ -34,6 +56,16 @@ modules:
               kind: primitive
               name: float32
             default: 200
+          - name: filter
+            type:
+              kind: ref
+              name: Core.Sensor.Filter
+            default: LowPass
+          - name: last
+            access: protected
+            type:
+              kind: ref
+              name: Core.Sensor.Sample
         ports:
           - name: out
             role: out
@@ -58,6 +90,14 @@ modules:
             returns:
               kind: primitive
               name: bool
+          - name: tune
+            description: Smoothing the sensors should use
+            params:
+              - name: filter
+                type:
+                  kind: ref
+                  name: Core.Sensor.Filter
+            returns: null
           - name: reset
             access: protected
             params: []

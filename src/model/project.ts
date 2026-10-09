@@ -17,7 +17,9 @@ import {
   type Qualifier,
   type Project,
   type Rect,
+  type Scoped,
   type StoredAccess,
+  type TypeDef,
   type TypeRef,
   type View,
   TRANSPORTS
@@ -531,13 +533,113 @@ export function uniqueName(base: string, taken: Iterable<string>): string {
   for (let i = 2; ; i++) if (!set.has(`${base}${i}`)) return `${base}${i}`
 }
 
-/** Names that must be unique together: user types, interfaces and constants share one namespace. */
+/**
+ * Names that must be unique together: user types, interfaces and constants share one namespace
+ * (types of modules have their module's).
+ */
 export function globalTypeNames(p: Project, exceptId?: Id): string[] {
-  return [...p.types, ...p.interfaces, ...p.consts].filter((e) => e.id !== exceptId).map((e) => e.name)
+  return [...p.types.filter((t) => !isModuleType(t)), ...p.interfaces, ...p.consts]
+    .filter((e) => e.id !== exceptId)
+    .map((e) => e.name)
+}
+
+// Types of modules
+
+/** Whether a type belongs to a module, of this project or of a dependency. */
+export const isModuleType = (t: Scoped): boolean => !!t.module || !!t.modulePath
+
+/** Types of a module of this project. */
+export const moduleTypes = (p: Pick<Project, 'types'>, moduleId: Id): TypeDef[] =>
+  p.types.filter((t) => t.module === moduleId)
+
+/**
+ * Names of the types as the file writes them, by id: `Name` for the project's and dependencies'
+ * types, `Core.Sensor.Mode` for a type of module `Core.Sensor`, `Dep/Core.Sensor.Mode` for a type of a
+ * module of dependency `Dep`.
+ */
+export function typeNames(p: Pick<Project, 'types' | 'modules' | 'dependencies'>): Map<Id, string> {
+  const paths = modulePaths(p)
+  const deps = new Map(p.dependencies.map((x) => [x.id, x.name]))
+  return new Map(p.types.map((t) => [t.id, qualifiedTypeName(t, paths, deps)]))
+}
+
+function qualifiedTypeName(
+  t: TypeDef,
+  paths: ReadonlyMap<Id, string>,
+  deps: ReadonlyMap<Id, string>
+): string {
+  if (t.module) return `${paths.get(t.module) ?? '?'}.${t.name}`
+  if (t.modulePath) return `${deps.get(t.dependency ?? '') ?? '?'}/${t.modulePath}.${t.name}`
+  return t.name
+}
+
+/** Name of a type as the file writes it (see `typeNames`). */
+export function typeQualifiedName(p: Project, t: TypeDef): string {
+  if (!isModuleType(t)) return t.name
+  return qualifiedTypeName(t, modulePaths(p), new Map(p.dependencies.map((x) => [x.id, x.name])))
+}
+
+/**
+ * Whether modules (`contextModuleId`; null: a type, interface or constant of the project) may use
+ * a type: the project's and dependencies' anywhere, those of modules in modules only, as their
+ * access allows (protected: the module and those deriving from it; private: the module).
+ */
+export function canUseType(p: Project, contextModuleId: Id | null, t: TypeDef): boolean {
+  if (!isModuleType(t)) return true
+  if (!contextModuleId) return false
+  if (!t.access) return true
+  if (!t.module) return false
+  if (t.module === contextModuleId) return true
+  return t.access === 'protected' && ancestorModules(p, contextModuleId).some((m) => m.id === t.module)
+}
+
+/** Module whose scope a reference held by `owner` is in: null outside modules. */
+export function refContext(p: Project, owner: UsageOwner): Id | null {
+  if (owner.kind === 'module') return owner.id
+  if (owner.kind === 'type') return p.types.find((t) => t.id === owner.id)?.module ?? null
+  return null
+}
+
+export interface TypeScope {
+  /** Name of a type written in this scope: its own name when it finds it, else its qualified name. */
+  nameOf: (id: Id) => string | undefined
+  /** Type a name written in this scope stands for. */
+  idOf: (name: string) => Id | undefined
+  /** Types this scope may use, with the name to write. */
+  usable: { type: TypeDef; name: string }[]
+}
+
+/**
+ * Names of the types in a module (C++-like lookup: its own types, then those of its bases it may
+ * use, then the project's and dependencies'; others by qualified name), or outside modules (null).
+ */
+export function typeScope(p: Project, contextModuleId: Id | null): TypeScope {
+  const qualified = typeNames(p)
+  const byQualified = new Map([...qualified].map(([id, n]) => [n, id]))
+  const byId = new Map(p.types.map((t) => [t.id, t]))
+  const local = new Map<string, Id>()
+  if (contextModuleId)
+    for (const m of [contextModuleId, ...ancestorModules(p, contextModuleId).map((a) => a.id)])
+      for (const t of p.types)
+        if (t.module === m && !local.has(t.name) && canUseType(p, contextModuleId, t)) local.set(t.name, t.id)
+  for (const t of p.types) if (!isModuleType(t) && !local.has(t.name)) local.set(t.name, t.id)
+  const nameOf = (id: Id): string | undefined => {
+    const t = byId.get(id)
+    if (!t) return undefined
+    return local.get(t.name) === id ? t.name : qualified.get(id)
+  }
+  return {
+    nameOf,
+    idOf: (name) => local.get(name) ?? byQualified.get(name),
+    usable: p.types
+      .filter((t) => canUseType(p, contextModuleId, t))
+      .map((t) => ({ type: t, name: nameOf(t.id)! }))
+  }
 }
 
 export type NameTarget =
-  | { kind: 'type' | 'interface' | 'const'; id?: Id }
+  | { kind: 'type'; id?: Id; module?: Id }
+  | { kind: 'interface' | 'const'; id?: Id }
   | { kind: 'module'; id?: Id; parentId: Id | null }
   | { kind: 'port'; id?: Id; moduleId: Id }
   | { kind: 'other' }
@@ -555,6 +657,7 @@ export function nameError(p: Project, target: NameTarget, name: string): string 
     case 'interface':
     case 'const':
       if (isReservedTypeName(name)) return `'${name}' is a reserved type name`
+      if (target.kind === 'type' && target.module) return moduleTypeNameError(p, target.module, name, target.id)
       if (globalTypeNames(p, target.id).includes(name))
         return `A type, interface or constant named '${name}' already exists`
       return null
@@ -571,6 +674,26 @@ export function nameError(p: Project, target: NameTarget, name: string): string 
     default:
       return null
   }
+}
+
+/** Check the name of a type of a module: unique among its types, members and submodules. */
+function moduleTypeNameError(p: Project, moduleId: Id, name: string, exceptId?: Id): string | null {
+  const mod = p.modules.find((m) => m.id === moduleId)
+  if (moduleTypes(p, moduleId).some((t) => t.id !== exceptId && t.name === name))
+    return `This module already has a type named '${name}'`
+  if (mod && memberNames(p, mod).includes(name))
+    return `This module already has an attribute, method, port or submodule named '${name}'`
+  return null
+}
+
+/** Names of a module's attributes, methods, ports and submodules: its types take none of them. */
+export function memberNames(p: Project, m: Module): string[] {
+  return [
+    ...m.attributes.map((a) => a.name),
+    ...m.methods.map((x) => x.name),
+    ...m.ports.map((pt) => pt.name),
+    ...childModules(p, m.id).map((c) => c.name)
+  ]
 }
 
 /** Check the name of a custom transport (`except`: its index when renamed). */
@@ -593,18 +716,24 @@ export interface UsageOwner {
   id: Id
 }
 
-/** Every type reference in the project, with a label of where it is used and the entity holding it. */
+/**
+ * Every type reference in the project, with a label of where it is used, the entity holding it and,
+ * in modules, the access of the member or type holding it.
+ */
 export function* allTypeRefs(
   p: Project
-): Generator<{ ref: TypeRef; where: string; owner: UsageOwner; raised?: boolean }> {
+): Generator<{ ref: TypeRef; where: string; owner: UsageOwner; raised?: boolean; access?: Access }> {
+  const names = typeNames(p)
   for (const t of p.types) {
     const owner = { kind: 'type', id: t.id } as const
+    const name = names.get(t.id)!
+    const access = isModuleType(t) ? (t.access ?? 'public') : undefined
     if (t.kind === 'struct' || t.kind === 'exception')
-      for (const f of t.fields) yield { ref: f.type, where: `${t.name}.${f.name}`, owner }
-    if (t.kind === 'alias') yield { ref: t.type, where: t.name, owner }
+      for (const f of t.fields) yield { ref: f.type, where: `${name}.${f.name}`, owner, access }
+    if (t.kind === 'alias') yield { ref: t.type, where: name, owner, access }
     if (t.kind === 'union') {
-      yield { ref: t.discriminator, where: `${t.name} discriminator`, owner }
-      for (const c of t.cases) yield { ref: c.type, where: `${t.name}.${c.name}`, owner }
+      yield { ref: t.discriminator, where: `${name} discriminator`, owner, access }
+      for (const c of t.cases) yield { ref: c.type, where: `${name}.${c.name}`, owner, access }
     }
   }
   for (const c of p.consts) yield { ref: c.type, where: c.name, owner: { kind: 'const', id: c.id } }
@@ -620,12 +749,15 @@ export function* allTypeRefs(
   for (const m of p.modules) {
     const owner = { kind: 'module', id: m.id } as const
     const path = modulePath(p, m.id)
-    for (const a of m.attributes) yield { ref: a.type, where: `${path}.${a.name}`, owner }
+    for (const a of m.attributes)
+      yield { ref: a.type, where: `${path}.${a.name}`, owner, access: a.access ?? 'public' }
     for (const x of m.methods) {
-      for (const prm of x.params) yield { ref: prm.type, where: `${path}.${x.name}(${prm.name})`, owner }
-      if (x.returns) yield { ref: x.returns, where: `${path}.${x.name} returns`, owner }
+      const access = x.access ?? 'public'
+      for (const prm of x.params)
+        yield { ref: prm.type, where: `${path}.${x.name}(${prm.name})`, owner, access }
+      if (x.returns) yield { ref: x.returns, where: `${path}.${x.name} returns`, owner, access }
       for (const id of x.raises ?? [])
-        yield { ref: { kind: 'ref', id }, where: `${path}.${x.name} raises`, owner, raised: true }
+        yield { ref: { kind: 'ref', id }, where: `${path}.${x.name} raises`, owner, raised: true, access }
     }
   }
 }

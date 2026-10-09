@@ -47,6 +47,7 @@ partials:
   - _py_banner.liquid
   - _py_id.liquid
   - _py_type.liquid
+  - _py_ref.liquid
   - _py_encode.liquid
   - _py_encoder.liquid
   - _py_decode.liquid
@@ -60,6 +61,10 @@ outputs:
     when: modules.size > 0
   - template: type.hpp.liquid
     each: types
+    path: "include/{% render '_header', e: item %}"
+  # Types of modules: in the namespace of their module's content, aliased in its class.
+  - template: type.hpp.liquid
+    each: moduleTypes
     path: "include/{% render '_header', e: item %}"
   - template: types.hpp.liquid
     path: include/{{ project.ident | snake }}/types.hpp

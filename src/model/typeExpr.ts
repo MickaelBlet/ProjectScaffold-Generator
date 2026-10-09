@@ -1,5 +1,6 @@
 // Textual type expressions, e.g. `map<string, vector<uint16>>`, `array<Vec3, 4>`; bounds:
-// `string<16>`, `bytes<16>`, `vector<T, 8>` (also list and set), `map<K, V, 8>`.
+// `string<16>`, `bytes<16>`, `vector<T, 8>` (also list and set), `map<K, V, 8>`. Types of modules:
+// `Core.Sensor.Mode`, of a module of a dependency: `Dep/Core.Sensor.Mode`.
 import {
   BOUNDED_PRIMITIVES,
   CONTAINERS,
@@ -24,7 +25,7 @@ type Token = { kind: 'ident' | 'int' | 'punct'; text: string; pos: number }
 
 function tokenize(src: string): Token[] {
   const tokens: Token[] = []
-  const re = /\s+|([A-Za-z_][A-Za-z0-9_]*)|(\d+)|([<>,])/y
+  const re = /\s+|((?:[A-Za-z_]\w*\/)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|(\d+)|([<>,])/y
   while (re.lastIndex < src.length) {
     const pos = re.lastIndex
     const m = re.exec(src)

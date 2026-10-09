@@ -26,6 +26,13 @@ const ModulePath = z
     /^([A-Za-z_][A-Za-z0-9_]*\/)?[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/,
     'must be a dot-separated module path, with its dependency name and a slash for a module of a dependency'
   )
+/** A type: `Name`, `Core.Sensor.Mode` for a type of a module, `Dependency/Core.Sensor.Mode` for one of a dependency's module. */
+const TypeName = z
+  .string()
+  .regex(
+    /^([A-Za-z_][A-Za-z0-9_]*\/)?[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/,
+    'must be a type name, with its module path for a type of a module (and its dependency name and a slash for a module of a dependency)'
+  )
 const Description = z.string().optional()
 const Metadata = z.record(z.string(), z.string()).optional()
 
@@ -52,7 +59,12 @@ export const FileTypeRefSchema: z.ZodType<FileTypeRef> = z
         value: FileTypeRefSchema,
         max: Max.describe('most entries')
       }),
-      z.object({ kind: z.literal('ref'), name: Identifier })
+      z.object({
+        kind: z.literal('ref'),
+        name: TypeName.describe(
+          'type name; a type of a module: Module.Path.Name (Dependency/Module.Path.Name for a module of a dependency)'
+        )
+      })
     ])
   )
   .meta({ id: 'TypeRef' })
@@ -72,16 +84,19 @@ const ValueField = Field.extend({
     )
 })
 
-const TypeDef = z
-  .discriminatedUnion('kind', [
+/** Type definitions, with `extra` properties (a module's types: their access). */
+const typeDefs = <E extends z.ZodRawShape>(extra: E) =>
+  z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('struct'),
+      ...extra,
       name: Identifier,
       description: Description,
       fields: z.array(ValueField)
     }),
     z.object({
       kind: z.literal('enum'),
+      ...extra,
       name: Identifier,
       description: Description,
       underlying: z.enum(INT_PRIMITIVES),
@@ -90,6 +105,7 @@ const TypeDef = z
     z
       .object({
         kind: z.literal('exception'),
+        ...extra,
         name: Identifier,
         description: Description,
         fields: z.array(ValueField)
@@ -98,6 +114,7 @@ const TypeDef = z
     z
       .object({
         kind: z.literal('bitmask'),
+        ...extra,
         name: Identifier,
         description: Description,
         underlying: z.enum(UNSIGNED_PRIMITIVES),
@@ -107,6 +124,7 @@ const TypeDef = z
     z
       .object({
         kind: z.literal('union'),
+        ...extra,
         name: Identifier,
         description: Description,
         discriminator: FileTypeRefSchema.describe('integer primitive, bool, char or enum'),
@@ -125,6 +143,7 @@ const TypeDef = z
       .describe('discriminated union: one of its cases, selected by the discriminator'),
     z.object({
       kind: z.literal('alias'),
+      ...extra,
       name: Identifier,
       description: Description,
       type: FileTypeRefSchema
@@ -132,12 +151,23 @@ const TypeDef = z
     z
       .object({
         kind: z.literal('primitive'),
+        ...extra,
         name: Identifier,
         description: Description
       })
       .describe('custom primitive: an opaque type that generators map to a native type')
   ])
-  .meta({ id: 'TypeDef' })
+
+const TypeDef = typeDefs({}).meta({ id: 'TypeDef' })
+
+const ModuleTypeDef = typeDefs({
+  access: z
+    .enum(ACCESS_LEVELS)
+    .optional()
+    .describe(
+      'public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module'
+    )
+}).meta({ id: 'ModuleTypeDef' })
 
 const Param = Field.extend({
   direction: z
@@ -151,7 +181,7 @@ const Message = z.object({
   description: Description,
   params: z.array(Param),
   returns: FileTypeRefSchema.nullable(),
-  raises: z.array(Identifier).optional().describe('exceptions it may raise (names of exception types)')
+  raises: z.array(TypeName).optional().describe('exceptions it may raise (names of exception types)')
 })
 
 const Access = z.enum(ACCESS_LEVELS).optional()
@@ -206,6 +236,7 @@ export interface FileModule {
   metadata?: Record<string, string>
   color?: string
   binary?: string
+  types?: z.infer<typeof ModuleTypeDef>[]
   attributes?: z.infer<typeof Attribute>[]
   methods?: FileMethod[]
   ports: z.infer<typeof Port>[]
@@ -232,6 +263,12 @@ const Module: z.ZodType<FileModule> = z
       binary: Identifier.optional().describe(
         "name of the binary (`binaries`) it runs in: top-level modules only, inner ones run in their ancestor's"
       ),
+      types: z
+        .array(ModuleTypeDef)
+        .optional()
+        .describe(
+          'types of the module, like types nested in a class: used by modules only (attributes, methods, types of modules), named Module.Path.Name'
+        ),
       attributes: z.array(Attribute).optional().describe('typed properties of the module'),
       methods: z.array(Method).optional().describe('method prototypes of the module'),
       ports: z.array(Port),
@@ -281,6 +318,12 @@ const Dependency = z
     types: z.array(TypeDef).describe('its own types, as last read from it'),
     interfaces: z.array(Interface).describe('its own interfaces, as last read from it'),
     constants: z.array(Constant).optional().describe('its own constants, as last read from it'),
+    moduleTypes: z
+      .array(z.object({ module: QualifiedName, types: z.array(ModuleTypeDef) }))
+      .optional()
+      .describe(
+        'types of its modules, as last read from it, by module path: its public ones are used by the modules of this project as Dependency/Module.Path.Name'
+      ),
     modules: z
       .array(z.object({ module: QualifiedName, ports: z.array(Port) }))
       .optional()
@@ -506,6 +549,7 @@ export const FileProjectSchema = z
 
 export type FileProject = z.infer<typeof FileProjectSchema>
 export type FileTypeDef = z.infer<typeof TypeDef>
+export type FileModuleTypeDef = z.infer<typeof ModuleTypeDef>
 export type FileMessage = z.infer<typeof Message>
 export type FileInterface = z.infer<typeof Interface>
 export type FileMethod = z.infer<typeof Method>

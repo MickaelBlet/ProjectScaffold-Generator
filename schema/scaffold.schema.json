@@ -330,6 +330,29 @@
                   "$ref": "#/$defs/Constant"
                 }
               },
+              "moduleTypes": {
+                "description": "types of its modules, as last read from it, by module path: its public ones are used by the modules of this project as Dependency/Module.Path.Name",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "module": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/ModuleTypeDef"
+                      }
+                    }
+                  },
+                  "required": [
+                    "module",
+                    "types"
+                  ]
+                }
+              },
               "modules": {
                 "description": "its modules placed on this canvas so that links reach them, with their ports as last read: top-level modules, each with all the modules inside it",
                 "type": "array",
@@ -1383,7 +1406,8 @@
             },
             "name": {
               "type": "string",
-              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+              "description": "type name; a type of a module: Module.Path.Name (Dependency/Module.Path.Name for a module of a dependency)"
             }
           },
           "required": [
@@ -1492,7 +1516,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
                 }
               }
             },
@@ -1609,6 +1633,13 @@
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
         },
+        "types": {
+          "description": "types of the module, like types nested in a class: used by modules only (attributes, methods, types of modules), named Module.Path.Name",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModuleTypeDef"
+          }
+        },
         "attributes": {
           "description": "typed properties of the module",
           "type": "array",
@@ -1716,7 +1747,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
                 }
               },
               "access": {
@@ -1805,6 +1836,395 @@
       "required": [
         "name",
         "ports"
+      ]
+    },
+    "ModuleTypeDef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "struct"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "default": {
+                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive",
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "fields"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "enum"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "underlying": {
+              "type": "string",
+              "enum": [
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64"
+              ]
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "underlying",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "exception"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "default": {
+                    "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive",
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "fields"
+          ],
+          "description": "raised by messages and methods (their `raises`), never used as a type"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bitmask"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "underlying": {
+              "type": "string",
+              "enum": [
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64"
+              ]
+            },
+            "flags": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "bit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991,
+                    "description": "value: 1 << bit"
+                  }
+                },
+                "required": [
+                  "name",
+                  "bit"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "underlying",
+            "flags"
+          ],
+          "description": "set of flags, combined with |"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "union"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "discriminator": {
+              "description": "integer primitive, bool, char or enum",
+              "$ref": "#/$defs/TypeRef"
+            },
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/TypeRef"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "labels": {
+                    "description": "discriminator values selecting the case: integers, characters, booleans, enum value names",
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  },
+                  "default": {
+                    "description": "held for the discriminator values no case lists",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "discriminator",
+            "cases"
+          ],
+          "description": "discriminated union: one of its cases, selected by the discriminator"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "alias"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/TypeRef"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "primitive"
+            },
+            "access": {
+              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "type": "string",
+              "enum": [
+                "public",
+                "protected",
+                "private"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "description": "custom primitive: an opaque type that generators map to a native type"
+        }
       ]
     },
     "TransportSettings": {

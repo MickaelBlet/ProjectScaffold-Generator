@@ -20,16 +20,18 @@
 {%- liquid
   assign idl_declared = '|'
   assign idl_done = '|'
-  for pass in types
-    for e in types
-      assign idl_key = '|' | append: e.name | append: '|'
+  # Types of modules too, by their flat name (Core_Sensor_Mode).
+  assign idl_types = types | concat: moduleTypes
+  for pass in idl_types
+    for e in idl_types
+      assign idl_key = '|' | append: e.key | append: '|'
       if idl_done contains idl_key
         continue
       endif
       assign idl_ready = true
       for u in e.uses.types
-        assign idl_used = '|' | append: u.name | append: '|'
-        if u.dependency == nil and u.name != e.name
+        assign idl_used = '|' | append: u.key | append: '|'
+        if u.dependency == nil and u.key != e.key
           unless idl_done contains idl_used
             assign idl_ready = false
           endunless
@@ -38,7 +40,7 @@
       if idl_ready
         assign idl_done = idl_done | append: idl_key
         # A recursive struct or union: declared first, for the sequences of it.
-        assign idl_self = e.uses.types | where: 'name', e.name | size
+        assign idl_self = e.uses.types | where: 'key', e.key | size
         if idl_self > 0
           include '_idl_forward', e: e
         endif
@@ -48,14 +50,14 @@
     endfor
   endfor
   # Types naming each other: all declared first, then defined in their order.
-  for e in types
-    assign idl_key = '|' | append: e.name | append: '|'
+  for e in idl_types
+    assign idl_key = '|' | append: e.key | append: '|'
     unless idl_done contains idl_key
       include '_idl_forward', e: e
     endunless
   endfor
-  for e in types
-    assign idl_key = '|' | append: e.name | append: '|'
+  for e in idl_types
+    assign idl_key = '|' | append: e.key | append: '|'
     unless idl_done contains idl_key
       include '_idl_type_containers', e: e
       include '_idl_decl', e: e

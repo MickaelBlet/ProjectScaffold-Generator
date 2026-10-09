@@ -14,6 +14,8 @@ export interface Renames {
   types: Map<string, string>
   /** Old constant name → new name (own constants). */
   consts: Map<string, string>
+  /** Types of modules, renamed or in a renamed or moved module: old `Path.Name` → new one. */
+  moduleTypes: Map<string, string>
 }
 
 /** Last component of a file path: dependencies name files relative to the project, tabs by their name. */
@@ -88,7 +90,8 @@ export function diffRenames(prev: Project, next: Project): Renames | null {
     ports: new Map(),
     interfaces: new Map(),
     types: new Map(),
-    consts: new Map()
+    consts: new Map(),
+    moduleTypes: new Map()
   }
   if (prev.modules !== next.modules) {
     const before = paths(prev)
@@ -117,12 +120,32 @@ export function diffRenames(prev: Project, next: Project): Renames | null {
   if (prev.types !== next.types)
     for (const t of next.types) {
       const was = prev.types.find((x) => x.id === t.id)
-      if (was && was.name !== t.name && !t.dependency) r.types.set(was.name, t.name)
+      if (was && was.name !== t.name && !t.dependency && !t.module && !was.module)
+        r.types.set(was.name, t.name)
     }
+  if (prev.types !== next.types || prev.modules !== next.modules) {
+    const before = paths(prev)
+    const after = paths(next)
+    const prevTypes = new Map(prev.types.map((t) => [t.id, t]))
+    for (const t of next.types) {
+      const was = prevTypes.get(t.id)
+      if (!t.module || !was?.module) continue
+      const from = `${before.get(was.module)}.${was.name}`
+      const to = `${after.get(t.module)}.${t.name}`
+      if (from !== to) r.moduleTypes.set(from, to)
+    }
+  }
   if (prev.consts !== next.consts)
     for (const c of next.consts) {
       const was = prev.consts.find((x) => x.id === c.id)
       if (was && was.name !== c.name && !c.dependency) r.consts.set(was.name, c.name)
     }
-  return r.modules.size || r.ports.size || r.interfaces.size || r.types.size || r.consts.size ? r : null
+  return r.modules.size ||
+    r.ports.size ||
+    r.interfaces.size ||
+    r.types.size ||
+    r.consts.size ||
+    r.moduleTypes.size
+    ? r
+    : null
 }

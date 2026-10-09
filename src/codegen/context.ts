@@ -11,6 +11,7 @@ import type {
   FileLink,
   FileMethod,
   FileModule,
+  FileModuleTypeDef,
   FileProject,
   FileTypeDef
 } from '../model/schema'
@@ -30,7 +31,17 @@ export type TypeKind = FileTypeDef['kind']
 
 /** Type reference with the kind and owner of the user types it names; `max`: null when unbounded. */
 export type GenTypeRef = TypeRefOf<GenRefTarget, number | null>
-type GenRefTarget = { name: string; typeKind: TypeKind; dependency: string | null }
+type GenRefTarget = {
+  name: string
+  typeKind: TypeKind
+  dependency: string | null
+  /** As the file writes it: `Core.Sensor.Mode` for a type of a module (see `GenType.key`). */
+  key: string
+  /** Path of the module owning the type, outermost first; empty for the others. */
+  scope: string[]
+  /** Name without scope: `Core_Sensor_Mode` for a type of a module (see `GenType.flatName`). */
+  flatName: string
+}
 /** Reference to a user type. */
 export type GenNamedRef = Extract<GenTypeRef, { kind: 'ref' }>
 
@@ -77,6 +88,19 @@ export type GenType = Owned & {
   name: string
   description: string
   uses: GenUses
+  /**
+   * Name as the file writes it, unique: `Name`, `Core.Sensor.Mode` for a type of module
+   * `Core.Sensor`, `Dep/Core.Sensor.Mode` for one of a module of dependency `Dep` (see `typeByKey`).
+   */
+  key: string
+  /** Path of the module owning it, outermost first (`['Core', 'Sensor']`); empty for the others. */
+  scope: string[]
+  /** Path of the module owning it (`Core.Sensor`, in its dependency for a dependency's); null for the others. */
+  module: string | null
+  /** Who may use it (types of modules; public for the others). */
+  access: Access
+  /** Its name with its module's path, for flat namespaces: `Core_Sensor_Mode` for a type of a module. */
+  flatName: string
 } & (
     | { kind: 'struct'; fields: GenField[] }
     | { kind: 'exception'; fields: GenField[] }
@@ -243,9 +267,11 @@ export interface GenModule {
   isBase: boolean
   metadata: Record<string, string>
   color: string | null
+  /** Its own types (`moduleTypes`), like types nested in a class. */
+  types: GenType[]
   attributes: GenAttribute[]
   methods: GenMethod[]
-  /** By its attributes and methods (the interfaces of its ports use their own). */
+  /** By its types, attributes and methods (the interfaces of its ports use their own). */
   uses: GenUses
   ports: GenPort[]
   children: GenModule[]
@@ -325,6 +351,8 @@ export interface GenDependency {
   file: string
   indirect: boolean
   types: GenType[]
+  /** Types of its modules. */
+  moduleTypes: GenType[]
   interfaces: GenInterface[]
   constants: GenConst[]
 }
@@ -359,6 +387,8 @@ export interface GenContext {
   remoteDefaults: { client: { host: string }; server: { host: string }; basePort: number }
   /** The project's own types and interfaces. */
   types: GenType[]
+  /** Types of the project's modules (each module's `types`), depth first. */
+  moduleTypes: GenType[]
   interfaces: GenInterface[]
   /** Every module, depth first. */
   modules: GenModule[]
@@ -380,8 +410,12 @@ export interface GenContext {
   remoteConstants: GenConst[]
   links: GenLink[]
   dependencies: GenDependency[]
-  /** Own types and those of the dependencies. */
+  /** Own types and those of the dependencies (not those of modules). */
   allTypes: GenType[]
+  /** Types of the modules of the project and of the dependencies. */
+  allModuleTypes: GenType[]
+  /** Every type by its `key`: `typeByKey[t.key]` for a type reference `t`. */
+  typeByKey: Record<string, GenType>
   allInterfaces: GenInterface[]
   /** Problems found while building the context (the project itself is valid). */
   warnings: string[]
@@ -389,18 +423,38 @@ export interface GenContext {
 
 export function buildContext(file: FileProject): GenContext {
   const warnings: string[] = []
-  const typeOwner = new Map<string, { kind: TypeKind; dependency: string | null }>()
-  const fileTypes = new Map<string, FileTypeDef>()
-  for (const t of file.types) {
-    typeOwner.set(t.name, { kind: t.kind, dependency: null })
-    fileTypes.set(t.name, t)
+  /** Where a type is, by key: its dependency and the path of its module. */
+  interface TypePlace {
+    dependency: string | null
+    module: string | null
   }
-  for (const d of file.dependencies ?? [])
-    for (const t of d.types)
-      if (!typeOwner.has(t.name)) {
-        typeOwner.set(t.name, { kind: t.kind, dependency: d.name })
-        fileTypes.set(t.name, t)
-      }
+  const typeOwner = new Map<string, { kind: TypeKind } & TypePlace>()
+  const fileTypes = new Map<string, FileTypeDef>()
+  const place = (key: string, t: FileTypeDef, at: TypePlace): void => {
+    if (typeOwner.has(key)) return
+    typeOwner.set(key, { kind: t.kind, ...at })
+    fileTypes.set(key, t)
+  }
+  for (const t of file.types) place(t.name, t, { dependency: null, module: null })
+  const placeModules = (list: FileModule[], parent: string): void => {
+    for (const m of list) {
+      const path = parent ? `${parent}.${m.name}` : m.name
+      for (const t of m.types ?? []) place(`${path}.${t.name}`, t, { dependency: null, module: path })
+      placeModules(m.modules ?? [], path)
+    }
+  }
+  placeModules(file.modules, '')
+  for (const d of file.dependencies ?? []) {
+    for (const t of d.types) place(t.name, t, { dependency: d.name, module: null })
+    for (const g of d.moduleTypes ?? [])
+      for (const t of g.types)
+        place(`${d.name}/${g.module}.${t.name}`, t, { dependency: d.name, module: g.module })
+  }
+  /** Scope and flat name of a type in `module` (a path; in its dependency for a dependency's). */
+  const scoped = (name: string, module: string | null) => {
+    const scope = module ? module.split('.') : []
+    return { scope, flatName: [...scope, name].join('_') }
+  }
 
   /** A discriminator value none of `used` (labels as text) is: for the default case of a union. */
   const unusedLabel = (t: TypeRefOf<{ name: string }>, used: Set<string>, depth = 0): Value | null => {
@@ -422,11 +476,14 @@ export function buildContext(file: FileProject): GenContext {
     withBounds(
       mapTypeRef(t, (r) => {
         const owner = typeOwner.get(r.name)
+        const name = r.name.slice(r.name.lastIndexOf('.') + 1)
         return {
           kind: 'ref',
-          name: r.name,
+          name,
           typeKind: owner?.kind ?? 'primitive',
-          dependency: owner?.dependency ?? null
+          dependency: owner?.dependency ?? null,
+          key: r.name,
+          ...scoped(name, owner?.module ?? null)
         }
       })
     )
@@ -444,13 +501,21 @@ export function buildContext(file: FileProject): GenContext {
     default: (f.default ?? null) as Value
   })
 
-  const typeDef = (t: FileTypeDef, dependency: string | null): GenType => {
+  const typeDef = (
+    t: FileTypeDef | FileModuleTypeDef,
+    dependency: string | null,
+    module: string | null = null
+  ): GenType => {
     const base = {
       entity: 'type' as const,
       name: t.name,
       description: t.description ?? '',
       dependency,
-      uses: noUses()
+      uses: noUses(),
+      key: module ? `${dependency ? `${dependency}/` : ''}${module}.${t.name}` : t.name,
+      module,
+      access: ('access' in t && t.access) || 'public',
+      ...scoped(t.name, module)
     }
     switch (t.kind) {
       case 'struct':
@@ -536,10 +601,12 @@ export function buildContext(file: FileProject): GenContext {
     file: d.file,
     indirect: !!d.indirect,
     types: d.types.map((t) => typeDef(t, d.name)),
+    moduleTypes: (d.moduleTypes ?? []).flatMap((g) => g.types.map((t) => typeDef(t, d.name, g.module))),
     interfaces: d.interfaces.map((i) => iface(i, d.name)),
     constants: (d.constants ?? []).map((c) => constant(c, d.name))
   }))
   const allTypes = [...types, ...dependencies.flatMap((d) => d.types)]
+  const moduleTypes: GenType[] = []
   const allInterfaces = [...interfaces, ...dependencies.flatMap((d) => d.interfaces)]
   const interfaceByName = new Map<string, GenInterface>()
   for (const i of allInterfaces) if (!interfaceByName.has(i.name)) interfaceByName.set(i.name, i)
@@ -566,6 +633,7 @@ export function buildContext(file: FileProject): GenContext {
       isBase: false,
       metadata: { ...(m.metadata ?? {}) },
       color: m.color ?? null,
+      types: (m.types ?? []).map((t) => typeDef(t, null, path)),
       attributes: (m.attributes ?? []).map((a) => ({
         ...field(a),
         access: a.access ?? 'public',
@@ -594,6 +662,7 @@ export function buildContext(file: FileProject): GenContext {
       connections: []
     }
     modules.push(g)
+    moduleTypes.push(...g.types)
     byPath.set(path, g)
     basesOf.set(g, m.bases ?? [])
     g.children = (m.modules ?? []).map((c) => walk(c, [...namespace, m.name], binary))
@@ -609,20 +678,23 @@ export function buildContext(file: FileProject): GenContext {
     })
 
   // What each entity uses, now that every type exists.
-  const typeByName = new Map<string, GenType>()
-  for (const t of allTypes) if (!typeByName.has(t.name)) typeByName.set(t.name, t)
+  const allModuleTypes = [...moduleTypes, ...dependencies.flatMap((d) => d.moduleTypes)]
+  const typeByKey = new Map<string, GenType>()
+  for (const t of [...allTypes, ...allModuleTypes]) if (!typeByKey.has(t.key)) typeByKey.set(t.key, t)
   const usesOf = (refs: GenTypeRef[], builtins: string[] = []): GenUses => {
     const types = new Map<string, GenType>()
     const names = new Set(builtins)
     for (const r of refs)
       walkTypeRef(r, (n) => {
         if (n.kind === 'ref') {
-          const t = typeByName.get(n.name)
-          if (t) types.set(t.name, t)
+          const t = typeByKey.get(n.key)
+          if (t) types.set(t.key, t)
         } else names.add(n.kind === 'primitive' ? n.name : n.kind)
       })
     return {
-      types: [...types.values()].sort((a, b) => (a.name < b.name ? -1 : 1)),
+      types: [...types.values()].sort((a, b) =>
+        a.name !== b.name ? (a.name < b.name ? -1 : 1) : a.key < b.key ? -1 : 1
+      ),
       builtins: [...names].sort()
     }
   }
@@ -631,7 +703,7 @@ export function buildContext(file: FileProject): GenContext {
     ...(m.returns ? [m.returns] : []),
     ...m.raises
   ]
-  for (const t of allTypes)
+  for (const t of [...allTypes, ...allModuleTypes])
     t.uses =
       t.kind === 'struct' || t.kind === 'exception'
         ? usesOf(
@@ -650,8 +722,22 @@ export function buildContext(file: FileProject): GenContext {
     dependency: null,
     uses: usesOf(constants.map((c) => c.type))
   }
+  // A module's types are declared in its class (`using`): it uses them.
+  const refTo = (t: GenType): GenTypeRef => ({
+    kind: 'ref',
+    name: t.name,
+    typeKind: t.kind,
+    dependency: t.dependency,
+    key: t.key,
+    scope: t.scope,
+    flatName: t.flatName
+  })
   for (const m of modules)
-    m.uses = usesOf([...m.attributes.map((a) => a.type), ...m.methods.flatMap(messageRefs)])
+    m.uses = usesOf([
+      ...m.types.map(refTo),
+      ...m.attributes.map((a) => a.type),
+      ...m.methods.flatMap(messageRefs)
+    ])
 
   // One system per binary, or one for the whole project.
   const binaries: GenBinary[] = (file.binaries ?? []).map((b) => ({
@@ -841,6 +927,7 @@ export function buildContext(file: FileProject): GenContext {
     transports: file.transports ?? [],
     remoteDefaults,
     types,
+    moduleTypes,
     interfaces,
     modules,
     binaries,
@@ -855,6 +942,8 @@ export function buildContext(file: FileProject): GenContext {
     links,
     dependencies,
     allTypes,
+    allModuleTypes,
+    typeByKey: Object.fromEntries(typeByKey),
     allInterfaces,
     warnings
   }

@@ -39,7 +39,7 @@
       echo inner | replace: 'simple:', 'sequence:'
     endif
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     if def.kind == 'alias'
       render '_prf_type', t: def.type
     endif

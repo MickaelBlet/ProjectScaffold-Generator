@@ -13,14 +13,15 @@ How the built-in template sets spell the model. The C++17 set is the reference; 
 
 ### Project and files
 
-| Model                 | C++                                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------------ |
-| project `Robot`       | namespace `robot`, CMake library `robot` (+ executable `robot_app` when there are modules)             |
-| user types            | one header each in `include/<ns>/types/`                                                               |
-| constants             | `inline constexpr` (numbers, enums, bitmasks) or `inline const` values in `include/<ns>/constants.hpp` |
-| interface `Telemetry` | abstract class `ITelemetry` (pure virtual messages) in `include/<ns>/interfaces/`                      |
-| module `Core.Sensor`  | class `robot::core::Sensor`, `include/robot/core/Sensor.hpp`, `src/core/Sensor.cpp`                    |
-| dependencies          | included from their own generated code (`<common/types/Pose.hpp>`, namespace `common`)                 |
+| Model                  | C++                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| project `Robot`        | namespace `robot`, CMake library `robot` (+ executable `robot_app` when there are modules)             |
+| user types             | one header each in `include/<ns>/types/`                                                               |
+| types of `Core.Sensor` | one header each in `include/<ns>/core/sensor/`, namespace `robot::core::sensor`                        |
+| constants              | `inline constexpr` (numbers, enums, bitmasks) or `inline const` values in `include/<ns>/constants.hpp` |
+| interface `Telemetry`  | abstract class `ITelemetry` (pure virtual messages) in `include/<ns>/interfaces/`                      |
+| module `Core.Sensor`   | class `robot::core::Sensor`, `include/robot/core/Sensor.hpp`, `src/core/Sensor.cpp`                    |
+| dependencies           | included from their own generated code (`<common/types/Pose.hpp>`, namespace `common`)                 |
 
 ### Types
 
@@ -46,6 +47,7 @@ How the built-in template sets spell the model. The C++17 set is the reference; 
 - `kind`, `bases`, `static` / `const` / `virtual` / `= 0` / `override` as written.
 - Attributes are private members `name_` with a getter and a setter (unless `const`, or a method has that name), in the section of their `access` (none for `private`).
 - Methods are declared in the section of their `access` (`public:`, `protected:`, `private:`).
+- Its types are aliased in the section of their `access`: `using Filter = ::robot::core::sensor::Filter;` (`typedef` in C++98).
 - Nested modules are members of their container, with accessors (`core().sensor()`). Abstract ones with ports are `std::unique_ptr`, created in a user section; abstract ones without ports are only base classes.
 
 ### Ports
@@ -109,6 +111,7 @@ Names that are C++ keywords get a trailing `_`; a warning tells. The keywords ar
 | File                                           | Content                                                                                                                                                                                               |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `data.py`                                      | dataclasses, `IntEnum` / `IntFlag`, unions, with their encoding                                                                                                                                       |
+| `module_types.py`                              | the types of modules, by flat name (`Core_Sensor_Filter`); each module's class names its own (`Filter = module_types.Core_Sensor_Filter`)                                                             |
 | `constants.py`                                 | the constants                                                                                                                                                                                         |
 | `interfaces.py`                                | ABCs: a call takes the inputs and gives back the return value then the out / inout values, as a tuple when there are several                                                                          |
 | `ports.py`                                     | `OutPort`: `port.method()` calls the only peer                                                                                                                                                        |

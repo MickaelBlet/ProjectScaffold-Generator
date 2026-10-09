@@ -5,7 +5,7 @@
 {%- endcomment -%}
 {%- liquid
   capture idld_name
-    render '_idl_id', name: e.name
+    render '_idl_id', name: e.flatName
   endcapture
 %}
 
@@ -15,7 +15,7 @@
     {{ e.kind }} {{ idld_name }} {
 {% for f in e.fields %}
 {{ f.description | doc_comment: '        // ' }}
-        {% render '_idl_type', t: f.type %} {% render '_idl_member', name: f.name, scope: e.name %};{% if f.hasDefault %} // default: {{ f.default | json }}{% endif %}
+        {% render '_idl_type', t: f.type %} {% render '_idl_member', name: f.name, scope: e.flatName %};{% if f.hasDefault %} // default: {{ f.default | json }}{% endif %}
 {% endfor %}
 {% if e.kind == 'struct' and e.fields.size == 0 %}
         octet unused; // an IDL struct has members
@@ -24,13 +24,13 @@
 {% when 'enum' %}
     enum {{ idld_name }} {
 {% for v in e.values %}
-        {{ e.name }}_{{ v.name }}{% unless forloop.last %},{% endunless %} // {{ v.value }}
+        {{ e.flatName }}_{{ v.name }}{% unless forloop.last %},{% endunless %} // {{ v.value }}
 {% endfor %}
     };
 {% when 'bitmask' %}
     typedef {% render '_idl_prim', name: e.underlying %} {{ idld_name }};
 {% for f in e.flags %}
-    const {{ idld_name }} {{ e.name }}_{{ f.name }} = {{ f.value }};
+    const {{ idld_name }} {{ e.flatName }}_{{ f.name }} = {{ f.value }};
 {% endfor %}
 {% when 'union' %}
     union {{ idld_name }} switch ({% render '_idl_type', t: e.discriminator %}) {
@@ -42,14 +42,14 @@
 {% if c.isDefault %}
     default:
 {% endif %}
-        {% render '_idl_type', t: c.type %} {% render '_idl_member', name: c.name, scope: e.name %};
+        {% render '_idl_type', t: c.type %} {% render '_idl_member', name: c.name, scope: e.flatName %};
 {% endfor %}
     };
 {% when 'alias' %}
     typedef {% render '_idl_type', t: e.type %} {{ idld_name }};
 {% when 'primitive' %}
     // Custom primitive: an any until given its IDL type.
-    {% user 'primitive.' | append: e.name %}
+    {% user 'primitive.' | append: e.flatName %}
     typedef any {{ idld_name }};
     {% enduser %}
 {% endcase %}

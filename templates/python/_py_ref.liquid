@@ -1,0 +1,13 @@
+{%- comment -%}
+  Python name of a user type (a type reference): `data.Pose`, `module_types.Core_Sensor_Mode` for a type of
+  a module (in `module_types.py`, by its flat name). Parameters: t, prefix (`data.` outside data.py and
+  module_types.py, else '').
+{%- endcomment -%}
+{%- liquid
+  if t.scope.size > 0 and prefix != ''
+    echo 'module_types.'
+  else
+    echo prefix
+  endif
+  render '_py_id', name: t.flatName
+-%}

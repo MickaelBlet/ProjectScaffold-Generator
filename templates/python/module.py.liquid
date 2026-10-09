@@ -12,6 +12,9 @@ from __future__ import annotations
 from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple  # noqa: F401
 
 from {{ root }} import data, interfaces  # noqa: F401
+{% if allModuleTypes.size > 0 %}
+from {{ root }} import module_types  # noqa: F401
+{% endif %}
 from {{ root }}.ports import OutPort  # noqa: F401
 {% for b in m.bases %}
 from {% render '_py_module_path', m: b %} import {% render '_py_class', e: b %}
@@ -25,6 +28,9 @@ from {% render '_py_module_path', m: c %} import {% render '_py_class', e: c %}
 
 class {{ class }}{% if m.bases.size > 0 %}({% for b in m.bases %}{% render '_py_class', e: b %}{% unless forloop.last %}, {% endunless %}{% endfor %}){% endif %}:
 {{ m.description | doc_comment: '    # ' }}
+{% for t in m.types %}
+    {% if t.access != 'public' %}_{% endif %}{% render '_py_id', name: t.name %} = module_types.{% render '_py_id', name: t.flatName %}
+{% endfor %}
 {% for a in m.attributes %}
 {% if a.static %}
 {{ a.description | doc_comment: '    # ' }}

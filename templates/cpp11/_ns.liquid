@@ -1,6 +1,7 @@
 {%- comment -%}
   Namespace of an entity, without leading `::`: the project's (`robot`), a dependency's
-  (`common`), or a module's parents (`robot::core`). Parameter: e.
+  (`common`), a module's parents (`robot::core`), or for a type of a module the module
+  (`robot::core::sensor`). Parameter: e.
 {%- endcomment -%}
 {%- liquid
   assign root = project.ident | snake
@@ -10,6 +11,13 @@
       echo e.dependency | snake
     else
       echo root
+    endif
+    # A type of a module: in the namespace of the module's content.
+    if e.entity == 'type'
+      for part in e.scope
+        echo '::'
+        echo part | snake
+      endfor
     endif
   when 'module'
     echo root

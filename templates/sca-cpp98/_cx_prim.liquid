@@ -7,7 +7,7 @@
   when 'primitive'
     echo t.name
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     case def.kind
     when 'bitmask'
       echo def.underlying

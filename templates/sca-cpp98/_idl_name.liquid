@@ -12,7 +12,7 @@
       echo t.max
     endif
   when 'ref'
-    echo t.name
+    echo t.flatName
   when 'map'
     render '_idl_name', t: t.key
     render '_idl_name', t: t.value

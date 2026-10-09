@@ -8,6 +8,13 @@ types: []
 interfaces: []
 modules:
   - name: Monitor
+    attributes:
+      - name: filter
+        description: Smoothing asked of the robot's sensors
+        type:
+          kind: ref
+          name: Robot/Core.Sensor.Filter
+        default: None
     ports:
       - name: telemetry
         role: in
@@ -163,6 +170,30 @@ dependencies:
       - kind: primitive
         name: Primitive
     interfaces: []
+    moduleTypes:
+      - module: Core.Sensor
+        types:
+          - kind: enum
+            name: Filter
+            description: Smoothing of the readings
+            underlying: uint8
+            values:
+              - name: None
+                value: 0
+              - name: LowPass
+                value: 1
+          - kind: struct
+            name: Sample
+            access: protected
+            fields:
+              - name: value
+                type:
+                  kind: primitive
+                  name: float32
+              - name: stampUs
+                type:
+                  kind: primitive
+                  name: uint64
     modules:
       - module: Core
         ports:

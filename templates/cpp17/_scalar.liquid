@@ -9,7 +9,7 @@
       echo 'true'
     endunless
   when 'ref'
-    assign def = allTypes | where: 'name', t.name | first
+    assign def = typeByKey[t.key]
     if def.kind == 'enum' or def.kind == 'bitmask'
       echo 'true'
     elsif def.kind == 'alias'
