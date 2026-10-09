@@ -344,7 +344,7 @@ describe('IDL import', () => {
     const files = new Map([
       [
         'idl/main.idl',
-        '#include "a.idl"\ninterface Top { void t(); };\nmodule A { module Ctl { interface Arm { void go(); }; interface gripper : Arm {}; }; };\nmodule B { module Ctl { interface Lamp { void on(); }; }; };'
+        '#include "a.idl"\ninterface Top { void t(); };\nmodule A { module Ctl { interface Arm { long go(); }; interface gripper : Arm {}; }; };\nmodule B { module Ctl { interface Lamp { void on(); }; }; };'
       ],
       ['idl/a.idl', 'module Other { interface Far { void f(); }; };']
     ])
@@ -359,7 +359,13 @@ describe('IDL import', () => {
       ])
     ).toEqual([
       ['main', [['top', 'in', 'Top']]],
-      ['A', []],
+      [
+        'A',
+        [
+          ['arm', 'in', 'Arm'],
+          ['gripper', 'in', 'gripper']
+        ]
+      ],
       [
         'A.Ctl',
         [
@@ -367,8 +373,18 @@ describe('IDL import', () => {
           ['gripper', 'in', 'gripper']
         ]
       ],
-      ['B', []],
+      ['B', [['lamp', 'in', 'Lamp']]],
       ['B.Ctl', [['lamp', 'in', 'Lamp']]]
+    ])
+    // Parents delegate their ports to their content.
+    const end = (e: { moduleId: Id; portId: Id }) => {
+      const m = p.modules.find((x) => x.id === e.moduleId)!
+      return `${modulePath(p, m.id)}.${m.ports.find((pt) => pt.id === e.portId)!.name}`
+    }
+    expect(p.links.map((l) => [l.name, end(l.from), end(l.to), l.constraints.direction])).toEqual([
+      ['A_arm', 'A.arm', 'A.Ctl.arm', 'bidirectional'],
+      ['A_gripper', 'A.gripper', 'A.Ctl.gripper', 'bidirectional'],
+      ['B_lamp', 'B.lamp', 'B.Ctl.lamp', 'unidirectional']
     ])
     for (const m of p.modules.filter((x) => x.parentId)) {
       const parent = p.modules.find((x) => x.id === m.parentId)!

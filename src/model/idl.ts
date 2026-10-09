@@ -9,6 +9,7 @@ import { isReservedTypeName, mapTypeRef, walkTypeRef } from './typeExpr'
 import {
   childModules,
   contentTop,
+  defaultConstraints,
   defaultSize,
   emptyProject,
   growAncestors,
@@ -29,6 +30,7 @@ import {
   type IntPrimitive,
   type Message,
   type Module,
+  type Port,
   type PortRole,
   type Project,
   type TypeDef,
@@ -2572,7 +2574,8 @@ function interfaceServers(idl: IdlFile, main: string): IdlServer[] {
 
 /**
  * Nest the modules of `servers` in `p` like their IDL modules, named after them: the innermost
- * first, each laid out in a row in its parent, which grows to fit; the outermost in a row.
+ * first, each laid out in a row in its parent, which grows to fit; the outermost in a row. A
+ * parent provides the ports of its content too, delegated to them, so that it can be placed alone.
  */
 function nestServers(p: Project, servers: IdlServer[]): void {
   const modules = new Map(
@@ -2584,18 +2587,37 @@ function nestServers(p: Project, servers: IdlServer[]): void {
   const parentOf = (scope: string): string | null =>
     scope.includes('::') ? scope.slice(0, scope.lastIndexOf('::')) : null
   const depth = (scope: string): number => (scope ? scope.split('::').length : 0)
-  const row = (children: Module[], y: (m: Module) => number): void => {
+  const row = (children: Module[], y: number): void => {
     let x = 0
     for (const c of children) {
       c.layout.x = x
-      c.layout.y = y(c)
+      c.layout.y = y
       x += c.layout.width + MODULE_GAP
     }
   }
+  const delegations: { parent: Module; port: Port; child: Module; to: Port }[] = []
   for (const scope of [...modules.keys()].sort((a, b) => depth(b) - depth(a))) {
     const parent = modules.get(scope)!
     const children = [...modules].filter(([s]) => parentOf(s) === scope).map(([, m]) => m)
-    row(children, () => contentTop(p.orientation, parent))
+    for (const child of children)
+      for (const to of child.ports) {
+        const port: Port = {
+          id: newId(),
+          name: uniqueName(
+            to.name,
+            parent.ports.map((x) => x.name)
+          ),
+          role: 'in',
+          interfaceId: to.interfaceId,
+          description: to.description
+        }
+        parent.ports.push(port)
+        delegations.push({ parent, port, child, to })
+      }
+    const size = defaultSize(parent, p.orientation)
+    parent.layout.width = Math.max(parent.layout.width, size.width)
+    parent.layout.height = Math.max(parent.layout.height, size.height)
+    row(children, contentTop(p.orientation, parent))
     for (const c of children) {
       c.layout.x += LAYOUT_PAD / 2
       c.parentId = parent.id
@@ -2613,8 +2635,28 @@ function nestServers(p: Project, servers: IdlServer[]): void {
       )
   row(
     roots.filter((m) => [...modules.values()].includes(m)),
-    () => 0
+    0
   )
+  // Interfaces answering back need links both ways.
+  const replies = (id: Id | null): boolean =>
+    !!p.interfaces
+      .find((i) => i.id === id)
+      ?.messages.some((m) => m.returns || m.params.some((x) => x.direction !== 'in'))
+  for (const { parent, port, child, to } of delegations)
+    p.links.push({
+      id: newId(),
+      name: uniqueName(
+        `${parent.name}_${port.name}`,
+        p.links.map((l) => l.name)
+      ),
+      description: '',
+      from: { moduleId: parent.id, portId: port.id },
+      to: { moduleId: child.id, portId: to.id },
+      constraints: {
+        ...defaultConstraints(),
+        ...(replies(port.interfaceId) ? { direction: 'bidirectional' as const } : {})
+      }
+    })
 }
 
 /**

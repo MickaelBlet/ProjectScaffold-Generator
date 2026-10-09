@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Text fields (inspectors, editor tables) fill the height of their row.
 - Canvas: a link attached by hand to the place of its port ends at the port's handle: its arrow was drawn over the handle.
 - Canvas: a module with attributes or methods whose ports are moved to other edges is tall enough for them: its bottom ports stayed below its border.
-- IDL files depended on without components (plain CORBA IDL) give modules to place: one per IDL module, nested like them (`Robot` holding `Control`; the file's name at file scope), providing each of its interfaces on an `in` port. `scaffold-gen` generates them too.
+- IDL files depended on without components (plain CORBA IDL) give modules to place: one per IDL module, nested like them (`Robot` holding `Control`; the file's name at file scope), providing each of its interfaces on an `in` port; a parent provides the ports of its content too, delegated to them, so that it can be placed alone. `scaffold-gen` generates them too.
 - Code generation panel: a template folder just picked or filled with a copy of the built-in templates is listed at once (it stayed on the built-in templates in the desktop app on Windows), also when the folder already held a template set.
 
 ### Security
