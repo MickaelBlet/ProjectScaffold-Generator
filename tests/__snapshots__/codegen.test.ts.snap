@@ -50,10 +50,6 @@ public:
     /// Switch mode, false when the transition is not allowed
     bool setMode(const ::common::Mode mode);
 
-    void reset();
-
-    bool isRunning() const;
-
     /// Number of controllers alive
     static std::uint32_t instances();
 
@@ -63,6 +59,8 @@ public:
 protected:
     // Calls received by in port telemetry.
     void onTelemetryPublish(const ::common::Pose& pose, const std::map<std::string, std::list<std::uint8_t>>& tags);
+
+    void reset();
     // <user:protected>
     // </user:protected>
 
@@ -80,6 +78,8 @@ private:
     };
     TelemetryIn telemetryIn_{*this};
     ::common::Mode mode_ = ::common::Mode::Idle;
+
+    bool isRunning() const;
     // <user:private>
     // </user:private>
 };

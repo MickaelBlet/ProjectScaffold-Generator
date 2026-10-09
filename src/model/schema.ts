@@ -1,6 +1,7 @@
 // On-disk format (YAML/JSON). Source of truth for the published JSON Schema.
 import { z } from 'zod'
 import {
+  ACCESS_LEVELS,
   INT_PRIMITIVES,
   MODULE_KINDS,
   PARAM_DIRECTIONS,
@@ -153,7 +154,12 @@ const Message = z.object({
   raises: z.array(Identifier).optional().describe('exceptions it may raise (names of exception types)')
 })
 
+const Access = z.enum(ACCESS_LEVELS).optional()
+
 const Attribute = ValueField.extend({
+  access: Access.describe(
+    'public (default): public accessors; protected: accessors for derived modules; private: no accessors'
+  ),
   static: z.boolean().optional().describe('shared by all instances of the module'),
   const: z.boolean().optional().describe('not changed after initialization')
 })
@@ -163,6 +169,9 @@ const MethodParam = Param.extend({
 })
 
 const Method = Message.extend({
+  access: Access.describe(
+    'public (default): called by anyone; protected: by the module and derived modules; private: by the module'
+  ),
   params: z.array(MethodParam),
   static: z.boolean().optional().describe('called without a module instance'),
   const: z.boolean().optional().describe("leaves the module's state unchanged"),

@@ -44,7 +44,8 @@ How the built-in template sets spell the model. The C++17 set is the reference; 
 ### Modules
 
 - `kind`, `bases`, `static` / `const` / `virtual` / `= 0` / `override` as written.
-- Attributes are private members `name_` with a getter and a setter (unless `const`, or a method has that name).
+- Attributes are private members `name_` with a getter and a setter (unless `const`, or a method has that name), in the section of their `access` (none for `private`).
+- Methods are declared in the section of their `access` (`public:`, `protected:`, `private:`).
 - Nested modules are members of their container, with accessors (`core().sensor()`). Abstract ones with ports are `std::unique_ptr`, created in a user section; abstract ones without ports are only base classes.
 
 ### Ports
@@ -105,12 +106,12 @@ Names that are C++ keywords get a trailing `_`; a warning tells. The keywords ar
 
 [`python`](../templates/python) writes a Python 3.8+ package (standard library only, `pyproject.toml`). [`examples/station.scaffold.yaml`](../examples/station.scaffold.yaml) uses it.
 
-| File                                           | Content                                                                                                                                  |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `data.py`                                      | dataclasses, `IntEnum` / `IntFlag`, unions, with their encoding                                                                          |
-| `constants.py`                                 | the constants                                                                                                                            |
-| `interfaces.py`                                | ABCs: a call takes the inputs and gives back the return value then the out / inout values, as a tuple when there are several             |
-| `ports.py`                                     | `OutPort`: `port.method()` calls the only peer                                                                                           |
-| `modules/`                                     | one Python module per module (a module with children is a package); calls received by an in port go to its `on_<port>_<message>` methods |
-| `systems/`                                     | one per binary, run with `python -m <project>`                                                                                           |
-| `wire.py`, `transport.py`, `remote/`, `peers/` | links between binaries, the same as the Python peers of the C++ sets: its binaries call C++ ones and back                                |
+| File                                           | Content                                                                                                                                                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data.py`                                      | dataclasses, `IntEnum` / `IntFlag`, unions, with their encoding                                                                                                                                       |
+| `constants.py`                                 | the constants                                                                                                                                                                                         |
+| `interfaces.py`                                | ABCs: a call takes the inputs and gives back the return value then the out / inout values, as a tuple when there are several                                                                          |
+| `ports.py`                                     | `OutPort`: `port.method()` calls the only peer                                                                                                                                                        |
+| `modules/`                                     | one Python module per module (a module with children is a package); calls received by an in port go to its `on_<port>_<message>` methods; protected and private attributes and methods start with `_` |
+| `systems/`                                     | one per binary, run with `python -m <project>`                                                                                                                                                        |
+| `wire.py`, `transport.py`, `remote/`, `peers/` | links between binaries, the same as the Python peers of the C++ sets: its binaries call C++ ones and back                                                                                             |

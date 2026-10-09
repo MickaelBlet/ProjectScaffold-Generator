@@ -27,6 +27,7 @@ modules:
               name: float32
             default: 50
           - name: maxRateHz
+            access: protected
             static: true
             const: true
             type:
@@ -58,9 +59,11 @@ modules:
               kind: primitive
               name: bool
           - name: reset
+            access: protected
             params: []
             returns: null
           - name: isRunning
+            access: private
             const: true
             params: []
             returns:

@@ -2,6 +2,7 @@
 import { isReservedTypeName, mapTypeRef, printTypeExpr, walkTypeRef } from './typeExpr'
 import {
   GLOBAL_VIEW,
+  type Access,
   type Orientation,
   type Id,
   type Dependency,
@@ -16,6 +17,7 @@ import {
   type Qualifier,
   type Project,
   type Rect,
+  type StoredAccess,
   type TypeRef,
   type View,
   TRANSPORTS
@@ -444,6 +446,15 @@ export function setQualifier(e: { [K in Qualifier]?: boolean }, q: Qualifier, on
   if (on) e[q] = true
   else delete e[q]
 }
+
+/** Set the access level of a type, attribute or method; public is left out. */
+export function setAccess(e: { access?: StoredAccess }, access: Access): void {
+  if (access === 'public') delete e.access
+  else e.access = access
+}
+
+/** UML mark of an access level: `+` public, `#` protected, `-` private. */
+export const ACCESS_MARKS: Record<Access, string> = { public: '+', protected: '#', private: '-' }
 
 /** Set a qualifier of a method, keeping the others consistent: `pure` and `override` imply `virtual`, which excludes `static`. */
 export function setMethodQualifier(m: Method, q: Qualifier, on: boolean): void {

@@ -16,6 +16,7 @@ reserved: >-
   template this thread_local throw true try typedef typeid typename union unsigned using virtual
   void volatile wchar_t while xor xor_eq
 partials:
+  - _members.liquid
   - _banner.liquid
   - _connection.liquid
   - _includes.liquid

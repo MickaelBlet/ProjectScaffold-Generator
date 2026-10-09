@@ -17,6 +17,7 @@ reserved: >-
   void volatile wchar_t while xor xor_eq char8_t concept consteval constinit co_await co_return co_yield
   requires
 partials:
+  - _members.liquid
   - _banner.liquid
   - _connection.liquid
   - _includes.liquid

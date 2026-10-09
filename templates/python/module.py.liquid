@@ -28,7 +28,7 @@ class {{ class }}{% if m.bases.size > 0 %}({% for b in m.bases %}{% render '_py_
 {% for a in m.attributes %}
 {% if a.static %}
 {{ a.description | doc_comment: '    # ' }}
-    {% render '_py_id', name: a.name %}: ClassVar[{% render '_py_type', t: a.type, prefix: 'data.' %}] = {% if a.hasDefault %}{% render '_py_value', v: a.default, t: a.type, prefix: 'data.' %}{% else %}{% render '_py_zero', t: a.type, prefix: 'data.' %}{% endif %}{% if a.const %}  # constant{% endif %}
+    {% if a.access != 'public' %}_{% endif %}{% render '_py_id', name: a.name %}: ClassVar[{% render '_py_type', t: a.type, prefix: 'data.' %}] = {% if a.hasDefault %}{% render '_py_value', v: a.default, t: a.type, prefix: 'data.' %}{% else %}{% render '_py_zero', t: a.type, prefix: 'data.' %}{% endif %}{% if a.const %}  # constant{% endif %}
 {% endif %}
 {% endfor %}
 
@@ -39,7 +39,7 @@ class {{ class }}{% if m.bases.size > 0 %}({% for b in m.bases %}{% render '_py_
 {% for a in m.attributes %}
 {% unless a.static %}
 {{ a.description | doc_comment: '        # ' }}
-        self.{% render '_py_id', name: a.name %}: {% render '_py_type', t: a.type, prefix: 'data.' %} = {% if a.hasDefault %}{% render '_py_value', v: a.default, t: a.type, prefix: 'data.' %}{% else %}{% render '_py_zero', t: a.type, prefix: 'data.' %}{% endif %}{% if a.const %}  # constant{% endif %}
+        self.{% if a.access != 'public' %}_{% endif %}{% render '_py_id', name: a.name %}: {% render '_py_type', t: a.type, prefix: 'data.' %} = {% if a.hasDefault %}{% render '_py_value', v: a.default, t: a.type, prefix: 'data.' %}{% else %}{% render '_py_zero', t: a.type, prefix: 'data.' %}{% endif %}{% if a.const %}  # constant{% endif %}
 {% endunless %}
 {% endfor %}
 {% for p in m.ports %}
@@ -92,9 +92,9 @@ class {{ class }}{% if m.bases.size > 0 %}({% for b in m.bases %}{% render '_py_
 
 {% if x.static %}
     @staticmethod
-    def {% render '_py_id', name: x.name %}({% for p in x.inputs %}{% render '_py_id', name: p.name %}: {% render '_py_type', t: p.type, prefix: 'data.' %}{% unless forloop.last %}, {% endunless %}{% endfor %}) -> {% render '_py_results', msg: x, what: 'hint', prefix: 'data.' %}:
+    def {% if x.access != 'public' %}_{% endif %}{% render '_py_id', name: x.name %}({% for p in x.inputs %}{% render '_py_id', name: p.name %}: {% render '_py_type', t: p.type, prefix: 'data.' %}{% unless forloop.last %}, {% endunless %}{% endfor %}) -> {% render '_py_results', msg: x, what: 'hint', prefix: 'data.' %}:
 {% else %}
-    def {% render '_py_id', name: x.name %}(self{% render '_py_params', msg: x %}) -> {% render '_py_results', msg: x, what: 'hint', prefix: 'data.' %}:
+    def {% if x.access != 'public' %}_{% endif %}{% render '_py_id', name: x.name %}(self{% render '_py_params', msg: x %}) -> {% render '_py_results', msg: x, what: 'hint', prefix: 'data.' %}:
 {% endif %}
 {{ x.description | doc_comment: '        # ' }}
 {% if x.raises.size > 0 %}

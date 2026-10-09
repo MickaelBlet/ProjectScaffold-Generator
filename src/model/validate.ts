@@ -343,6 +343,12 @@ export function validate(p: Project): Problem[] {
             target,
             `${where}: signature differs from ${modulePath(p, inherited.base.id)}.${x.name} it overrides`
           )
+        else if ((x.access ?? 'public') !== (inherited.method!.access ?? 'public'))
+          push(
+            'warning',
+            target,
+            `${where}: access differs from ${modulePath(p, inherited.base.id)}.${x.name} it overrides`
+          )
       } else if (inherited)
         push(
           'warning',

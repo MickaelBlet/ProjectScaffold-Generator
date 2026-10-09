@@ -29,6 +29,7 @@ import {
 } from './project'
 import {
   METHOD_QUALIFIERS,
+  type Access,
   type Attribute,
   type Binary,
   type ConstDef,
@@ -49,6 +50,7 @@ import {
   type Project,
   type Rect,
   type Side,
+  type StoredAccess,
   type TypeDef,
   type TypeRef,
   type Value,
@@ -85,6 +87,9 @@ const opt = (s: string): string | undefined => (s ? s : undefined)
 /** Qualifiers of `q` that are set, the others left out. */
 const qualifiers = (q: { [K in Qualifier]?: boolean }): { [K in Qualifier]?: true } =>
   Object.fromEntries(METHOD_QUALIFIERS.filter((k) => q[k]).map((k) => [k, true]))
+/** Access level of `x` when not public. */
+const access = (x: { access?: Access }): { access?: StoredAccess } =>
+  x.access === 'protected' || x.access === 'private' ? { access: x.access } : {}
 const optMeta = (m: Metadata): Metadata | undefined => (Object.keys(m).length ? { ...m } : undefined)
 /** Name placements of the ports that have one, by port name. */
 const portLabels = (ports: { name: string; label?: Side }[]): Record<string, Side> | undefined => {
@@ -178,11 +183,12 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
   })
   const attribute = (a: Attribute) => {
     const { name, ...rest } = valueField(a)
-    return { name, ...qualifiers(a), ...rest }
+    return { name, ...access(a), ...qualifiers(a), ...rest }
   }
   const method = (m: Method) => ({
     name: m.name,
     description: opt(m.description),
+    ...access(m),
     ...qualifiers(m),
     params: m.params.map((prm) => ({ ...param(prm), ...qualifiers(prm) })),
     returns: m.returns ? ref(m.returns) : null,
@@ -699,12 +705,14 @@ export function fromFile(data: unknown, prev?: Project): Project {
         metadata: { ...(fm.metadata ?? {}) },
         attributes: (fm.attributes ?? []).map((a, j) => ({
           ...valueField(a, path, attributes[j], [...at, i, 'attributes', j]),
+          ...access(a),
           ...qualifiers(a)
         })),
         methods: messages(fm.methods ?? [], path, was?.methods, [...at, i, 'methods']).map((x, j): Method => {
           const fx = fm.methods![j]!
           return {
             ...x,
+            ...access(fx),
             ...qualifiers(fx),
             params: x.params.map((prm, k) => ({ ...prm, ...qualifiers(fx.params[k]!) }))
           }

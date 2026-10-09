@@ -194,12 +194,20 @@ export const QUALIFIERS = ['static', 'const'] as const
 export const METHOD_QUALIFIERS = ['static', 'const', 'virtual', 'pure', 'override'] as const
 export type Qualifier = (typeof METHOD_QUALIFIERS)[number]
 
+/** C++-like access level of a module's types, attributes and methods. */
+export const ACCESS_LEVELS = ['public', 'protected', 'private'] as const
+export type Access = (typeof ACCESS_LEVELS)[number]
+/** Access level as stored: absent for public. */
+export type StoredAccess = Exclude<Access, 'public'>
+
 /** Module attribute: a value field with C++-like qualifiers. */
 export interface Attribute extends ValueField {
   /** Shared by all instances of the module. */
   static?: boolean
   /** Not changed after initialization. */
   const?: boolean
+  /** Who may use its accessors: public (default), protected (derived modules) or private (none). */
+  access?: StoredAccess
 }
 
 /** Parameter of a module method. */
@@ -221,6 +229,8 @@ export interface Method extends Message {
   pure?: boolean
   /** Overrides a virtual method of a base module (virtual only). */
   override?: boolean
+  /** Who may call it: public (default), protected (derived modules) or private (the module). */
+  access?: StoredAccess
 }
 
 /**

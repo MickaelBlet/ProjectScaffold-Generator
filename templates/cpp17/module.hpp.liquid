@@ -56,27 +56,7 @@ public:
     {% render '_qualified', e: c %}& {% render '_accessor', name: c.name %}() { return {% if c.abstract %}*{% endif %}{% render '_accessor', name: c.name %}_; }
 {% endfor %}
 {% endif %}
-{% if m.attributes.size > 0 %}
-
-{% for a in m.attributes %}
-{% assign setter = a.name | ucfirst | prepend: 'set' %}
-{{ a.description | doc_comment: '    /// ' }}
-{% unless names contains a.name %}
-    {% if a.static %}static {% endif %}{% render '_input', t: a.type %} {% render '_id', name: a.name %}(){% unless a.static %} const{% endunless %} { return {% render '_member', name: a.name %}; }
-{% endunless %}
-{% unless a.const or names contains setter %}
-    {% if a.static %}static {% endif %}void {{ setter }}({% render '_input', t: a.type %} value) { {% render '_member', name: a.name %} = value; }
-{% endunless %}
-{% endfor %}
-{% endif %}
-{% for x in m.methods %}
-
-{{ x.description | doc_comment: '    /// ' }}
-{% for r in x.raises %}
-    /// @throws {% render '_type', t: r %}
-{% endfor %}
-    {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{% render '_type', t: x.returns %} {% render '_id', name: x.name %}({% render '_params', params: x.params %}){% if x.const %} const{% endif %}{% if x.override %} override{% endif %}{% if x.pure %} = 0{% endif %};
-{% endfor %}
+{% render '_members', m: m, names: names, access: 'public' %}
 
     {% user 'public' %}
     {% enduser %}
@@ -90,6 +70,7 @@ protected:
 {% endfor %}
 {% endif %}
 {% endfor %}
+{% render '_members', m: m, names: names, access: 'protected' %}
     {% user 'protected' %}
     {% enduser %}
 
@@ -125,6 +106,7 @@ private:
 {% for a in m.attributes %}
     {% if a.static %}inline static {% endif %}{% if a.const %}const {% endif %}{% render '_type', t: a.type %} {% render '_member', name: a.name %}{% if a.hasDefault %} = {% render '_value', v: a.default, t: a.type %}{% else %}{}{% endif %};
 {% endfor %}
+{% render '_members', m: m, names: names, access: 'private' %}
     {% user 'private' %}
     {% enduser %}
 };

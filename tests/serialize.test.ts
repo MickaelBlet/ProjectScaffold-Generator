@@ -374,6 +374,23 @@ describe('module methods', () => {
     expect(file.modules[0]!.modules![0]!.attributes).toEqual(example.modules[0].modules[0].attributes)
   })
 
+  it('round-trips access levels, public left out', () => {
+    const p = fromFile(example)
+    const sensor = p.modules.find((m) => m.name === 'Sensor')!
+    const controller = p.modules.find((m) => m.name === 'Controller')!
+    expect(sensor.attributes.map((a) => a.access)).toEqual([undefined, 'protected'])
+    expect(controller.methods.map((x) => x.access)).toEqual([undefined, 'protected', 'private', undefined])
+    sensor.attributes[1]!.access = 'public' as never
+    const file = toFile(p, { editor: false })
+    expect('access' in file.modules[0]!.modules![0]!.attributes![1]!).toBe(false)
+    expect(file.modules[0]!.modules![1]!.methods!.map((x) => x.access)).toEqual([
+      undefined,
+      'protected',
+      'private',
+      undefined
+    ])
+  })
+
   it('keeps method and parameter ids across a reload', () => {
     const p = fromFile(example)
     const again = reloadText(saveText(p, 'yaml', { editor: true }), 'yaml', p)

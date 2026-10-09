@@ -15,6 +15,7 @@ import type {
   FileTypeDef
 } from '../model/schema'
 import type {
+  Access,
   HostPort,
   ModuleKind,
   ParamDirection,
@@ -133,6 +134,7 @@ export interface GenInterface extends Owned {
 }
 
 export interface GenMethod extends GenMessage {
+  access: Access
   static: boolean
   const: boolean
   virtual: boolean
@@ -141,6 +143,8 @@ export interface GenMethod extends GenMessage {
 }
 
 export interface GenAttribute extends GenField {
+  /** Of its accessors: its member is always private. */
+  access: Access
   static: boolean
   const: boolean
 }
@@ -562,10 +566,16 @@ export function buildContext(file: FileProject): GenContext {
       isBase: false,
       metadata: { ...(m.metadata ?? {}) },
       color: m.color ?? null,
-      attributes: (m.attributes ?? []).map((a) => ({ ...field(a), static: !!a.static, const: !!a.const })),
+      attributes: (m.attributes ?? []).map((a) => ({
+        ...field(a),
+        access: a.access ?? 'public',
+        static: !!a.static,
+        const: !!a.const
+      })),
       uses: noUses(),
       methods: (m.methods ?? []).map((x) => ({
         ...message(x),
+        access: x.access ?? 'public',
         static: !!x.static,
         const: !!x.const,
         virtual: !!x.virtual,
