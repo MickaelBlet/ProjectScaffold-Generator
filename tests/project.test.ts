@@ -3,6 +3,7 @@ import {
   ATTR_ROW,
   belowContent,
   contentTop,
+  defaultConstraints,
   emptyProject,
   findView,
   indexById,
@@ -15,7 +16,7 @@ import {
   parentIds,
   viewExists
 } from '@/model/project'
-import { GLOBAL_VIEW, type Module, type Project } from '@/model/types'
+import { GLOBAL_VIEW, type Interface, type Message, type Module, type Project } from '@/model/types'
 
 const mod = (id: string, parentId: string | null, y: number, height: number): Module => ({
   id,
@@ -132,5 +133,26 @@ describe('temporary views', () => {
     expect(findView(p, 'v').temporary).toBeUndefined()
     expect(viewExists(p, 'v') && viewExists(p, GLOBAL_VIEW)).toBe(true)
     expect(viewExists(p, 'unknown')).toBe(false)
+  })
+})
+
+describe('defaultConstraints', () => {
+  const msg = (m: Partial<Message>): Message => ({
+    id: 'm',
+    name: 'm',
+    description: '',
+    params: [],
+    returns: null,
+    ...m
+  })
+  const iface = (...messages: Message[]): Interface => ({ id: 'i', name: 'I', description: '', messages })
+  const direction = (i?: Interface): string => defaultConstraints(i).direction
+
+  it('is bidirectional for an interface answering the caller', () => {
+    expect(direction()).toBe('unidirectional')
+    expect(direction(iface(msg({})))).toBe('unidirectional')
+    expect(direction(iface(msg({ returns: { kind: 'primitive', name: 'bool' } })))).toBe('bidirectional')
+    const out = { id: 'p', name: 'p', description: '', type: { kind: 'primitive', name: 'bool' } } as const
+    expect(direction(iface(msg({ params: [{ ...out, direction: 'inout' }] })))).toBe('bidirectional')
   })
 })

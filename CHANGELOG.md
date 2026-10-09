@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Modules of dependencies are placed whole: only top-level ones are placed (_Link to another project…_, the Explorer), each with all the modules inside it, drawn where its project puts them, moved and resized in it (the module growing to hold them; kept on refresh), removed with it, and linked to like it. The Explorer lists a dependency's modules as a tree. Refreshing a dependency brings the content up to date; a module placed alone before is placed with its top-level module, at its place, its links kept. Placed content is listed in `dependencies[].modules` with the rest, its `editor.dependencies` position relative to its parent. `examples/station.scaffold.yaml` places `Core`.
 - `sca-cpp98`: one executable per binary (`<ns>_<binary>`) serving its components in one process, bound in the naming service by their usage names, in place of one executable per component; `<ns>_app` serves the components of no binary. SPDs name the executable of their binary (`/bin/...`, installed in `dom/bin`). Templates see the `binary` of each module.
+- New links are bidirectional when their interface has a message returning a value or with `out` / `inout` parameters (IDL operations with results, for instance), in place of unidirectional (an error until changed).
 - Canvas: modules and links look up the project through indexes built once per edit, not a scan per module and link: edits of large projects redraw faster.
 
 ### Removed

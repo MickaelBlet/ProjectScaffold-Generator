@@ -6,6 +6,7 @@ import {
   type Id,
   type Dependency,
   type ImportedModule,
+  type Interface,
   type LinkConstraints,
   type Method,
   type Module,
@@ -45,9 +46,15 @@ export function emptyProject(): Project {
   }
 }
 
-export function defaultConstraints(): LinkConstraints {
+/** Some message of the interface answers the caller: returns a value or has out parameters. */
+export function repliesToCaller(iface: Interface): boolean {
+  return iface.messages.some((m) => m.returns || m.params.some((prm) => prm.direction !== 'in'))
+}
+
+/** Constraints of a new link, bidirectional when its interface answers the caller. */
+export function defaultConstraints(iface?: Interface): LinkConstraints {
   return {
-    direction: 'unidirectional',
+    direction: iface && repliesToCaller(iface) ? 'bidirectional' : 'unidirectional',
     ack: { required: false },
     performance: { class: 'normal' },
     remote: { enabled: false }
