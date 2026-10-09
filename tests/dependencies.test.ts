@@ -18,7 +18,15 @@ import {
   type DependencyResult
 } from '@/model/dependencies'
 import { diffRenames, resolveRelative } from '@/model/sync'
-import { absoluteRect, defaultConstraints, importedSize, modulePath } from '@/model/project'
+import {
+  absoluteRect,
+  contentTop,
+  defaultConstraints,
+  growImportedAncestors,
+  importedSize,
+  LAYOUT_PAD,
+  modulePath
+} from '@/model/project'
 import { validate } from '@/model/validate'
 import type { ImportedModule, Module, Project } from '@/model/types'
 
@@ -585,6 +593,21 @@ describe('placed modules', () => {
       })
     })
     expect(refresh(more).q.dependencies[0]!.modules.map((m) => m.path)).toEqual(treePaths(more, 'Core'))
+  })
+
+  it('keeps content moved in its placed parent, which grows to hold it', () => {
+    const { p, placedId } = monitor()
+    const robotId = p.dependencies[0]!.id
+    const q = produce(p, (d) => {
+      sensorOf(d).position = { x: 2000, y: -5 }
+      growImportedAncestors(d, sensorOf(d).id)
+    })
+    const sensor = sensorOf(q)
+    expect(sensor.position).toEqual({ x: 2000, y: contentTop(q.orientation) })
+    const core = q.dependencies[0]!.modules.find((m) => m.id === placedId)!
+    expect(core.size!.width).toBe(2000 + importedSize(sensor, q.orientation).width + LAYOUT_PAD)
+    const r = produce(q, (d) => void refreshDependencies(d, new Map([[robotId, robot]]), null))
+    expect(sensorOf(r).position).toEqual(sensor.position)
   })
 
   it('detects modules renamed or moved while this project was closed', () => {

@@ -445,7 +445,7 @@ const Editor = z
       )
       .optional()
       .describe(
-        'canvas position and size of the placed modules of dependencies, by dependency and module path (the modules inside a placed one: relative to their parent, as in their project)'
+        'canvas position and size of the placed modules of dependencies, by dependency and module path (the modules inside a placed one: relative to their parent)'
       ),
     orientation: z
       .enum(['horizontal', 'vertical'])

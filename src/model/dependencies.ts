@@ -92,13 +92,15 @@ function rootOf(source: Project, m: Module): Module {
 /**
  * Top-level module `root` of `source` placed at `position`, with its content (parents first, each
  * at its place in its parent, as in `source`). Modules `previous` has at the same path keep their
- * id, ports (by name) and, for the top-level one, its size.
+ * id, ports (by name), size and, for the content, their place in their parent (unless drawn at the
+ * top level before, `alone`).
  */
 function placedTree(
   source: Project,
   root: Module,
   position: { x: number; y: number },
-  previous: ReadonlyMap<string, ImportedModule>
+  previous: ReadonlyMap<string, ImportedModule>,
+  alone: ReadonlySet<Id>
 ): ImportedModule[] {
   const out: ImportedModule[] = []
   const visit = (m: Module, top: boolean): void => {
@@ -107,12 +109,13 @@ function placedTree(
     const { x, y, width, height } = m.layout
     const children = childModules(source, m.id)
     // A module with content is as large as in its project (unless resized here), its content too.
-    const size = top ? (was?.size ?? (children.length ? { width, height } : undefined)) : { width, height }
+    const size = was?.size ?? (top && !children.length ? undefined : { width, height })
+    const kept = !top && was && !alone.has(was.id) ? was.position : undefined
     out.push({
       id: was?.id ?? `${IMPORTED_PREFIX}${newId()}`,
       path,
       ports: portsOf(source, m, was?.ports),
-      position: top ? position : { x, y },
+      position: top ? position : (kept ?? { x, y }),
       ...(size && { size })
     })
     for (const c of children) visit(c, false)
@@ -341,7 +344,8 @@ class Sync {
   modules(dep: Dependency, source: Project): void {
     if (!dep.modules.length) return
     const byPath = modulesByPath(source)
-    // Canvas positions, before paths change.
+    // Parents and canvas positions, before paths change.
+    const parentOf = new Map(dep.modules.map((m) => [m.id, importedParent(dep, m)]))
     const absolute = new Map(
       dep.modules.map((m) => {
         let { x, y } = m.position
@@ -382,8 +386,9 @@ class Sync {
       const path = modulePath(source, root.id)
       if (!roots.has(path)) roots.set(path, { root, at: absolute.get((previous.get(path) ?? im).id)! })
     }
+    const alone = new Set(dep.modules.filter((m) => !parentOf.get(m.id)).map((m) => m.id))
     const placed = [
-      ...[...roots.values()].flatMap(({ root, at }) => placedTree(source, root, at, previous)),
+      ...[...roots.values()].flatMap(({ root, at }) => placedTree(source, root, at, previous, alone)),
       // Modules no longer found stay as they were, but in the content of a module placed here.
       ...dep.modules.filter(
         (m) => !byPath.has(m.path) && ![...roots.keys()].some((r) => m.path.startsWith(`${r}.`))
@@ -553,11 +558,14 @@ export function placeModule(
   const existing = dep.modules.find((x) => x.path === path)
   if (existing) return { id: existing.id, result }
   const inside = (x: ImportedModule): boolean => x.path.startsWith(`${path}.`)
+  // Content placed alone before: its place in the module comes from its project.
+  const alone = dep.modules.filter(inside)
   const placed = placedTree(
     source,
     root,
     { x: Math.round(position.x), y: Math.round(position.y) },
-    new Map(dep.modules.filter(inside).map((x) => [x.path, x]))
+    new Map(alone.map((x) => [x.path, x])),
+    new Set(alone.map((x) => x.id))
   )
   dep.modules = [...dep.modules.filter((x) => !inside(x)), ...placed]
   return { id: placed[0]!.id, result }

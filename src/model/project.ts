@@ -355,7 +355,30 @@ export function importedParent(dep: Dependency, m: ImportedModule): ImportedModu
   return parent === null ? undefined : dep.modules.find((x) => x.path === parent)
 }
 
-/** Placed modules of dependencies not inside another one: those moved, arranged, framed. */
+/**
+ * Keep the placed module `id` (content of another one) inside its parent's content area, growing
+ * its placed ancestors as needed (see growAncestors).
+ */
+export function growImportedAncestors(d: Project, id: Id): void {
+  const found = findImported(d, id)
+  if (!found) return
+  const { dep } = found
+  let child = found.module
+  for (let parent = importedParent(dep, child); parent; parent = importedParent(dep, child)) {
+    const size = importedSize(child, d.orientation)
+    child.position = {
+      x: Math.max(child.position.x, LAYOUT_PAD / 2),
+      y: Math.max(child.position.y, contentTop(d.orientation))
+    }
+    const own = importedSize(parent, d.orientation)
+    const width = Math.max(own.width, child.position.x + size.width + LAYOUT_PAD)
+    const height = Math.max(own.height, child.position.y + size.height + contentBottom(d.orientation))
+    if (width !== parent.size?.width || height !== parent.size?.height) parent.size = { width, height }
+    child = parent
+  }
+}
+
+/** Placed modules of dependencies not inside another one: those arranged and framed. */
 export const importedRoots = (p: Project): ImportedModule[] =>
   p.dependencies.flatMap((d) => d.modules.filter((m) => !importedParent(d, m)))
 

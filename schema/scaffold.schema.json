@@ -753,7 +753,7 @@
               }
             },
             "dependencies": {
-              "description": "canvas position and size of the placed modules of dependencies, by dependency and module path (the modules inside a placed one: relative to their parent, as in their project)",
+              "description": "canvas position and size of the placed modules of dependencies, by dependency and module path (the modules inside a placed one: relative to their parent)",
               "type": "object",
               "propertyNames": {
                 "type": "string",
