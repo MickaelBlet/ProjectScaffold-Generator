@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Canvas: a module with attributes or methods whose ports are moved to other edges is tall enough for them: its bottom ports stayed below its border.
 - IDL files depended on without components (plain CORBA IDL) give modules to place: one per IDL module, nested like them (`Robot` holding `Control`; the file's name at file scope), providing each of its interfaces on an `in` port; a parent provides the ports of its content too, delegated to them, so that it can be placed alone. `scaffold-gen` generates them too.
 - Browser: the Explorer lists the modules of IDL dependencies, read from the file picked in the session or open as text (_Open_ on the dependency after a reload), with the files they include; they were listed only for files open as documents.
+- Explorer: double-clicking (or _Place on the canvas_) a module of an IDL dependency not placed yet places it: it did nothing, the module being looked up by an id the IDL file gets anew at each read; modules are now found by their path.
 - Code generation panel: a template folder just picked or filled with a copy of the built-in templates is listed at once (it stayed on the built-in templates in the desktop app on Windows), also when the folder already held a template set.
 
 ### Security
