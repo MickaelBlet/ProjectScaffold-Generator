@@ -1,0 +1,53 @@
+{% include '_banner' %}
+#pragma once
+
+#include <stdexcept>
+#include <vector>
+
+namespace {{ project.ident | snake }} {
+
+/// Out port of a module: its calls go to the `in` ports it is connected to, and to those of the
+/// out ports it forwards to (the out ports of enclosing modules it goes out through).
+template <class Interface>
+class OutPort {
+public:
+    /// Sends the calls of this port to `peer`.
+    void connect(Interface& peer) { peers_.push_back(&peer); }
+
+    /// Sends the calls of this port to the peers of `port` as well.
+    void forward(OutPort& port) { forwards_.push_back(&port); }
+
+    /// Every peer, forwarded ones included.
+    std::vector<Interface*> peers() const
+    {
+        std::vector<Interface*> all(peers_);
+        for (const OutPort* f : forwards_) {
+            const std::vector<Interface*> more = f->peers();
+            all.insert(all.end(), more.begin(), more.end());
+        }
+        return all;
+    }
+
+    bool connected() const { return !peers().empty(); }
+
+    /// The only peer: throws std::logic_error unless exactly one is connected.
+    Interface* operator->() const
+    {
+        const std::vector<Interface*> all = peers();
+        if (all.size() != 1) throw std::logic_error("out port with no or several peers");
+        return all.front();
+    }
+
+    /// Calls `f(peer)` for each peer.
+    template <class F>
+    void each(F&& f) const
+    {
+        for (Interface* peer : peers()) f(*peer);
+    }
+
+private:
+    std::vector<Interface*> peers_;
+    std::vector<OutPort*> forwards_;
+};
+
+} // namespace {{ project.ident | snake }}

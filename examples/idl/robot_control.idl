@@ -1,0 +1,57 @@
+// CORBA-style interfaces of a robot arm: modules, constants, typedefs, exceptions,
+// attributes and interface inheritance.
+#ifndef ROBOT_CONTROL_IDL
+#define ROBOT_CONTROL_IDL
+
+module Robot {
+  const unsigned short JOINTS = 6;
+
+  /** Angle of each joint, in radians. */
+  typedef double JointAngles[JOINTS];
+
+  /** Homogeneous transform, row major. */
+  typedef double Transform[4][4];
+
+  enum ArmState { PARKED, MOVING, HOLDING, FAULT };
+
+  /** Target of a move. */
+  struct Waypoint {
+    JointAngles joints;
+    double speed;       // rad/s
+    unsigned long dwellMs;
+  };
+
+  typedef sequence<Waypoint> Trajectory;
+
+  exception Busy { string reason; };
+  exception OutOfReach { unsigned short joint; };
+
+  module Control {
+    /** Anything that can be stopped at once. */
+    interface Stoppable {
+      oneway void emergencyStop();
+      boolean reset();
+    };
+
+    /** Motion commands of the arm. */
+    interface Arm : Stoppable {
+      readonly attribute ArmState state;
+      attribute double maxSpeed;
+
+      /** Follows the waypoints; `done` is false when interrupted. */
+      void follow(in Trajectory path, out boolean done) raises (Busy, OutOfReach);
+      JointAngles joints();
+      Transform toolPose();
+      void jog(in unsigned short joint, in double delta) raises (OutOfReach);
+    };
+
+    /** Gripper mounted on the arm's tool flange. */
+    interface Gripper : Stoppable {
+      readonly attribute boolean holding;
+      boolean grip(in float forceN, inout float widthMm);
+      void release();
+    };
+  };
+};
+
+#endif

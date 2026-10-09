@@ -1,0 +1,17 @@
+{% include '_banner' %}
+#pragma once
+
+{% render '_includes', e: constantsFile %}
+{% user 'includes' %}
+{% enduser %}
+
+namespace {{ project.ident | snake }} {
+{% for c in constants %}
+{% capture scalar %}{% render '_scalar', t: c.type %}{% endcapture -%}
+{% # Numbers, enums and bitmasks are constexpr. %}
+
+{{ c.description | doc_comment }}
+inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {% render '_type', t: c.type %} {% render '_id', name: c.name %} = {% render '_value', v: c.value, t: c.type %};
+{% endfor %}
+
+} // namespace {{ project.ident | snake }}

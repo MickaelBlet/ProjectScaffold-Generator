@@ -1,0 +1,8 @@
+{%- comment -%}
+  Repository id of an interface: `IDL:robot/Telemetry:1.0`. Parameter: i.
+{%- endcomment -%}
+{%- liquid
+  echo 'IDL:'
+  render '_iface_ns', i: i
+  echo '/' | append: i.name | append: ':1.0'
+-%}

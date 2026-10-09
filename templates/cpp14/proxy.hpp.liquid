@@ -1,0 +1,77 @@
+{% include '_banner' %}
+#pragma once
+
+#include <{% render '_header', e: item %}>
+#include <{{ project.ident | snake }}/remote/codec.hpp>
+#include <{{ project.ident | snake }}/remote/transport.hpp>
+{% user 'includes' %}
+{% enduser %}
+
+{% assign remoteNs = project.ident | snake | append: '::remote' %}
+{% render '_namespace_open', ns: remoteNs %}
+
+/// {% render '_name', e: item %} of another binary: each call is encoded and sent over the channel
+/// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
+class {{ item.name }}Proxy final : public {% render '_qualified', e: item %} {
+public:
+    /// Sends the calls over `channel`; `ack`: every call waits for its reply, within `timeout`.
+    void open(std::unique_ptr<Channel> channel, bool ack = false,
+              std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+    {
+        caller_.open(std::move(channel), ack, timeout);
+    }
+{% for msg in item.messages %}
+{% capture call %}{% if msg.raises.size > 0 %}callRaising<{% for r in msg.raises %}{% render '_type', t: r %}{% unless forloop.last %}, {% endunless %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endcapture -%}
+{% # Declared exceptions thrown as such. %}
+
+    {% render '_type', t: msg.returns %} {% render '_id', name: msg.name %}({% render '_params', params: msg.params %}) override
+    {
+        Writer request_;
+{% for p in msg.inputs %}
+{% capture value %}{% render '_id', name: p.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: p.type, v: value, depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+        encode(request_, {{ value }});
+{% endfor %}
+{% if msg.returns or msg.outputs.size > 0 %}
+        const Bytes reply_ = {{ call }}{{ forloop.index0 }}, request_.bytes(), true);
+        Reader reader_(reply_);
+{% if msg.returns %}
+        {% render '_type', t: msg.returns %} result_{};
+        decode(reader_, result_);
+{% capture check %}{% render '_bounds', t: msg.returns, v: 'result_', depth: 0 %}{% endcapture -%}
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+{% endif %}
+{% for p in msg.outputs %}
+{% capture value %}{% render '_id', name: p.name %}{% endcapture -%}
+{% capture check %}{% render '_bounds', t: p.type, v: value, depth: 0 %}{% endcapture -%}
+{% # Decoded, then checked. %}
+        decode(reader_, {{ value }});
+{% if check != '' %}
+        {{ check }}
+{% endif %}
+{% endfor %}
+        reader_.end();
+{% if msg.returns %}
+        return result_;
+{% endif %}
+{% else %}
+        {{ call }}{{ forloop.index0 }}, request_.bytes(), false);
+{% endif %}
+    }
+{% endfor %}
+
+    {% user 'public' %}
+    {% enduser %}
+
+private:
+    Caller caller_;
+    {% user 'private' %}
+    {% enduser %}
+};
+
+{% render '_namespace_close', ns: remoteNs %}

@@ -1,0 +1,29 @@
+{%- comment -%}
+  Parameter list: `in` by value for scalars (`const` when marked so), else `const T&`;
+  `out` / `inout` as `T&`. Parameter: params.
+{%- endcomment -%}
+{%- liquid
+  for p in params
+    capture scalar
+      render '_scalar', t: p.type
+    endcapture
+    if p.direction != 'in'
+      render '_type', t: p.type
+      echo '&'
+    elsif scalar == 'true'
+      if p.const
+        echo 'const '
+      endif
+      render '_type', t: p.type
+    else
+      echo 'const '
+      render '_type', t: p.type
+      echo '&'
+    endif
+    echo ' '
+    render '_id', name: p.name
+    unless forloop.last
+      echo ', '
+    endunless
+  endfor
+-%}

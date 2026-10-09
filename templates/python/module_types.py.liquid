@@ -1,0 +1,63 @@
+{% include '_py_banner' %}
+"""Types of the modules of {{ project.name }} (those of its dependencies included), by flat name
+(`Core_Sensor_Mode` for type Mode of module Core.Sensor); each module's class names its own ones."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field as _field
+from enum import IntEnum, IntFlag
+from typing import Any, Dict, List, Optional, Set  # noqa: F401
+
+from .data import *  # noqa: F401,F403
+{% user 'imports' %}
+{% enduser %}
+{% for t in allModuleTypes %}
+{% case t.kind %}
+{% when 'enum' %}
+
+
+class {% render '_py_id', name: t.flatName %}(IntEnum):
+{{ t.description | doc_comment: '    # ' }}
+{% for v in t.values %}
+    {% render '_py_id', name: v.name %} = {{ v.value }}
+{% else %}
+    pass
+{% endfor %}
+{% when 'bitmask' %}
+
+
+class {% render '_py_id', name: t.flatName %}(IntFlag):
+{{ t.description | doc_comment: '    # ' }}
+{% for f in t.flags %}
+    {% render '_py_id', name: f.name %} = {{ f.value }}
+{% else %}
+    pass
+{% endfor %}
+{% when 'union' %}
+
+
+@dataclass
+class {% render '_py_id', name: t.flatName %}:
+{{ t.description | doc_comment: '    # ' }}
+    # `d`: the discriminator; `value`: the case it selects ({% for c in t.cases %}{{ c.name }}{% unless forloop.last %}, {% endunless %}{% endfor %}), None for none.
+{% assign first = t.cases | first %}
+{% if first and first.label != nil %}
+    d: Any = _field(default_factory=lambda: {% render '_py_value', v: first.label, t: t.discriminator, prefix: '' %})
+    value: Any = _field(default_factory=lambda: {% render '_py_zero', t: first.type, prefix: '' %})
+{% else %}
+    d: Any = _field(default_factory=lambda: {% render '_py_zero', t: t.discriminator, prefix: '' %})
+    value: Any = None
+{% endif %}
+{% when 'struct', 'exception' %}
+
+
+@dataclass
+class {% render '_py_id', name: t.flatName %}{% if t.kind == 'exception' %}(Exception){% endif %}:
+{{ t.description | doc_comment: '    # ' }}
+{% for f in t.fields %}
+{{ f.description | doc_comment: '    # ' }}
+    {% render '_py_id', name: f.name %}: {% render '_py_type', t: f.type, prefix: '' %} = _field(default_factory=lambda: {% if f.hasDefault %}{% render '_py_value', v: f.default, t: f.type, prefix: '' %}{% else %}{% render '_py_zero', t: f.type, prefix: '' %}{% endif %})
+{% else %}
+    pass
+{% endfor %}
+{% endcase %}
+{% endfor %}

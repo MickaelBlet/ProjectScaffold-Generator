@@ -1,0 +1,13 @@
+{%- comment -%}
+  C++ type holding a value: `::CORBA::String_var` for strings, else the type. Parameters: t, owner.
+{%- endcomment -%}
+{%- liquid
+  capture kind
+    render '_cx_kind', t: t
+  endcapture
+  if kind == 'string'
+    echo '::CORBA::String_var'
+  else
+    render '_cx_name', t: t, owner: owner
+  endif
+-%}

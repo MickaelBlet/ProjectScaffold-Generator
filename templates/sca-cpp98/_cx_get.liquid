@@ -1,0 +1,14 @@
+{%- comment -%}
+  Return type of an attribute's getter: `T` for basic types and enums, `const char*` for strings,
+  else `const T&`. Parameters: t, owner.
+{%- endcomment -%}
+{%- liquid
+  capture kind
+    render '_cx_kind', t: t
+  endcapture
+  if kind == 'string'
+    echo 'const char*'
+  else
+    render '_cx_in', t: t, owner: owner
+  endif
+-%}

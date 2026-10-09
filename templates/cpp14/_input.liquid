@@ -1,0 +1,15 @@
+{%- comment -%}
+  Type of a value read only: `T` for scalars, else `const T&`. Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  capture scalar
+    render '_scalar', t: t
+  endcapture
+  if scalar == 'true'
+    render '_type', t: t
+  else
+    echo 'const '
+    render '_type', t: t
+    echo '&'
+  endif
+-%}

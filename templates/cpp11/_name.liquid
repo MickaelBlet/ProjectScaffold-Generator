@@ -1,0 +1,10 @@
+{%- comment -%}
+  Class name of a type, interface (`I` + name), module or the system. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  if e.entity == 'interface'
+    echo 'I' | append: e.name
+  else
+    render '_id', name: e.name
+  endif
+-%}

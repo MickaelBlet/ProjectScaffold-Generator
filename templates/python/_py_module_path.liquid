@@ -1,0 +1,15 @@
+{%- comment -%}
+  Import path of the Python module of a module: `robot.modules.core.sensor` (a module with children
+  is a package: its class is in its `__init__.py`). Parameter: m.
+{%- endcomment -%}
+{%- liquid
+  echo project.ident | snake | append: '.modules'
+  for parent in m.namespace
+    assign part = parent | snake
+    echo '.'
+    render '_py_id', name: part
+  endfor
+  assign leaf = m.name | snake
+  echo '.'
+  render '_py_id', name: leaf
+-%}

@@ -1,0 +1,148 @@
+{% include '_banner' %}
+#pragma once
+
+// Transports of the calls between binaries (POSIX): tcp, udp, http, websocket and shm, as the
+// Python peers (python/*/transport.py). Other transports: implement Channel and Server.
+
+#include <{{ project.ident | snake }}/remote/wire.hpp>
+
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+
+namespace {{ project.ident | snake }}::remote {
+
+/// Client end of a link: sends call frames, receives their replies.
+class Channel {
+public:
+    virtual ~Channel() = default;
+    /// Sends `frame`; when `wait`, returns the reply frame of the same call id, received within
+    /// `timeout` (else returns nothing). Throws Error.
+    virtual Bytes exchange(const Bytes& frame, bool wait, std::chrono::milliseconds timeout) = 0;
+};
+
+/// Server end of a link, receiving the calls on threads of its own until destroyed.
+class Server {
+public:
+    virtual ~Server() = default;
+};
+
+/// Answers a call frame: the reply frame, or nothing when the call wants none.
+using Handler = std::function<std::optional<Bytes>(const Bytes& frame)>;
+
+/// Whether `transport` is implemented here.
+bool supported(const std::string& transport);
+
+/// The value of environment variable `variable`, else `fallback`.
+std::string address(const char* variable, const std::string& fallback);
+
+/// Channel to the server at `address` (`host:port`, or a name for shm); `path`: request path of http
+/// and websocket. Connects on the first call, and again on the next call after a failure.
+std::unique_ptr<Channel> connect(const std::string& transport, const std::string& address,
+                                 const std::string& path = "/");
+
+/// Bytes of each ring of shm, by default.
+constexpr std::uint32_t ringCapacity = 1u << 20;
+
+/// Server at `address`, calling `handler` for each call received; `capacity`: bytes of each ring of shm.
+std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, Handler handler,
+                              std::uint32_t capacity = ringCapacity);
+
+/// Blocks until SIGINT or SIGTERM.
+void waitForStop();
+
+/// Numbered calls over a channel, one at a time: what proxies are made of.
+class Caller {
+public:
+    void open(std::unique_ptr<Channel> channel, bool ack, std::chrono::milliseconds timeout)
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        channel_ = std::move(channel);
+        ack_ = ack;
+        timeout_ = timeout;
+    }
+
+    bool opened() const
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        return channel_ != nullptr;
+    }
+
+    /// Sends message `message` with its encoded inputs; waits for the reply when the message has a
+    /// result, or the link acknowledges calls. Returns the payload of the reply (empty without).
+    Bytes call(std::uint16_t message, const Bytes& inputs, bool result)
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        if (!channel_) throw Error("remote call on a proxy not opened");
+        const bool wait = result || ack_;
+        Header h;
+        h.kind = Header::call;
+        h.flags = wait ? Header::wantReply : 0;
+        h.message = message;
+        h.id = ++next_;
+        const Bytes reply = channel_->exchange(frame(h, inputs), wait, timeout_);
+        if (!wait) return {};
+        const Header r = header(reply);
+        Bytes out = payload(reply);
+        if (r.kind == Header::error) {
+            Reader reader(out);
+            std::string text;
+            decode(reader, text);
+            if (r.flags & Header::typed) {
+                const auto index = reader.number<std::uint16_t>();
+                throw Raised(index, Bytes(out.end() - static_cast<std::ptrdiff_t>(reader.remaining()), out.end()),
+                             "remote call failed: " + text);
+            }
+            throw Error("remote call failed: " + text);
+        }
+        if (r.kind != Header::reply) throw Error("not a reply");
+        return out;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::unique_ptr<Channel> channel_;
+    bool ack_ = false;
+    std::chrono::milliseconds timeout_{5000};
+    std::uint32_t next_ = 0;
+};
+
+/// Declared exception `e` of a called method (`index` in the `raises` of its message), to send back.
+template <class E>
+Raised raised(std::uint16_t index, const E& e)
+{
+    Writer w;
+    encode(w, e);
+    return Raised(index, w.bytes(), e.what());
+}
+
+/// Throws the declared exception of `e`: one of `E...`, the `raises` of the message in order.
+template <class E, class... Rest>
+[[noreturn]] void raise(const Raised& e, std::uint16_t index = 0)
+{
+    if (e.index == index) {
+        Reader r(e.value);
+        E x{};
+        decode(r, x);
+        throw x;
+    }
+    if constexpr (sizeof...(Rest) > 0) raise<Rest...>(e, static_cast<std::uint16_t>(index + 1));
+    else throw Error(e.what());
+}
+
+/// `caller.call(...)`, throwing the declared exceptions `E...` (the `raises` of the message, in order).
+template <class... E>
+Bytes callRaising(Caller& caller, std::uint16_t message, const Bytes& inputs, bool result)
+{
+    try {
+        return caller.call(message, inputs, result);
+    } catch (const Raised& e) {
+        raise<E...>(e);
+    }
+}
+
+} // namespace {{ project.ident | snake }}::remote

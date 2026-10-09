@@ -1,0 +1,23 @@
+// Interfaces using types this file does not define: import it into a project that has
+// them (e.g. examples/robot.scaffold.yaml, which uses Vec3 and Pose of common.scaffold.yaml)
+// and they are matched by name; elsewhere they come in as custom primitives.
+
+module Navigation {
+  typedef sequence<Pose> Route;
+
+  enum GoalStatus { PENDING, ACTIVE, REACHED, ABORTED };
+
+  /** Sends the robot to places. */
+  interface Planner {
+    /** Plans a route; empty when the goal cannot be reached. */
+    Route plan(in Pose from, in Pose to);
+    GoalStatus goTo(in Pose goal);
+    void cancel();
+  };
+
+  /** Where the robot believes it is. */
+  interface Localizer {
+    readonly attribute Pose pose;
+    void setInitialPose(in Pose pose, in Vec3 covariance);
+  };
+};

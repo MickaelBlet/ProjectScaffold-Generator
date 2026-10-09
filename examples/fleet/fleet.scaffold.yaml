@@ -1,0 +1,404 @@
+schemaVersion: 1
+project:
+  name: Fleet
+  description: Types and interfaces shared by the drones and the ground station
+  metadata:
+    version: 0.4.0
+    owner: platform-team
+types:
+  - kind: enum
+    name: FlightMode
+    underlying: uint8
+    values:
+      - name: Disarmed
+        value: 0
+      - name: Armed
+        value: 1
+      - name: Takeoff
+        value: 2
+      - name: Mission
+        value: 3
+      - name: ReturnHome
+        value: 4
+      - name: Land
+        value: 5
+      - name: Emergency
+        value: 255
+  - kind: enum
+    name: Severity
+    underlying: int8
+    values:
+      - name: Debug
+        value: -1
+      - name: Info
+        value: 0
+      - name: Warning
+        value: 1
+      - name: Error
+        value: 2
+      - name: Critical
+        value: 3
+  - kind: struct
+    name: Vec3
+    fields:
+      - name: x
+        type:
+          kind: primitive
+          name: float32
+        default: 0
+      - name: y
+        type:
+          kind: primitive
+          name: float32
+        default: 0
+      - name: z
+        type:
+          kind: primitive
+          name: float32
+        default: 0
+  - kind: struct
+    name: Pose
+    description: Position, velocity and attitude at a time point
+    fields:
+      - name: position
+        type:
+          kind: ref
+          name: GeoPoint
+      - name: velocity
+        type:
+          kind: ref
+          name: Vec3
+      - name: attitude
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float64
+          size: 4
+        description: Quaternion (w, x, y, z)
+        default:
+          - 1
+          - 0
+          - 0
+          - 0
+      - name: stamp
+        type:
+          kind: ref
+          name: Timestamp
+  - kind: struct
+    name: Waypoint
+    fields:
+      - name: point
+        type:
+          kind: ref
+          name: GeoPoint
+      - name: speedMps
+        type:
+          kind: primitive
+          name: float32
+        default: 5
+      - name: holdS
+        type:
+          kind: optional
+          of:
+            kind: primitive
+            name: float32
+  - kind: alias
+    name: Route
+    type:
+      kind: vector
+      of:
+        kind: ref
+        name: Waypoint
+  - kind: struct
+    name: Mission
+    fields:
+      - name: id
+        type:
+          kind: primitive
+          name: uint32
+      - name: name
+        type:
+          kind: primitive
+          name: string
+      - name: route
+        type:
+          kind: ref
+          name: Route
+      - name: tags
+        type:
+          kind: set
+          of:
+            kind: primitive
+            name: string
+        default: []
+      - name: params
+        type:
+          kind: map
+          key:
+            kind: primitive
+            name: string
+          value:
+            kind: primitive
+            name: float64
+        default: {}
+  - kind: struct
+    name: BatteryState
+    fields:
+      - name: voltage
+        type:
+          kind: primitive
+          name: float32
+      - name: cells
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float32
+          size: 4
+      - name: percent
+        type:
+          kind: primitive
+          name: uint8
+      - name: charging
+        type:
+          kind: primitive
+          name: bool
+        default: false
+  - kind: struct
+    name: Event
+    fields:
+      - name: severity
+        type:
+          kind: ref
+          name: Severity
+        default: Info
+      - name: code
+        type:
+          kind: primitive
+          name: uint16
+      - name: text
+        type:
+          kind: primitive
+          name: string
+      - name: stamp
+        type:
+          kind: ref
+          name: Timestamp
+      - name: payload
+        type:
+          kind: optional
+          of:
+            kind: primitive
+            name: bytes
+        default: null
+  - kind: alias
+    name: Frame
+    description: Encoded video frame
+    type:
+      kind: primitive
+      name: bytes
+  - kind: struct
+    name: VideoFrame
+    fields:
+      - name: width
+        type:
+          kind: primitive
+          name: uint16
+      - name: height
+        type:
+          kind: primitive
+          name: uint16
+      - name: codec
+        type:
+          kind: primitive
+          name: string
+        default: h264
+      - name: data
+        type:
+          kind: ref
+          name: Frame
+      - name: stamp
+        type:
+          kind: ref
+          name: Timestamp
+interfaces:
+  - name: Telemetry
+    description: State published by a drone
+    messages:
+      - name: pose
+        params:
+          - name: pose
+            type:
+              kind: ref
+              name: Pose
+        returns: null
+      - name: battery
+        params:
+          - name: state
+            type:
+              kind: ref
+              name: BatteryState
+        returns: null
+      - name: mode
+        params:
+          - name: mode
+            type:
+              kind: ref
+              name: FlightMode
+        returns: null
+  - name: Command
+    description: Orders sent to a drone
+    messages:
+      - name: arm
+        params:
+          - name: force
+            type:
+              kind: primitive
+              name: bool
+        returns:
+          kind: primitive
+          name: bool
+      - name: setMode
+        params:
+          - name: mode
+            type:
+              kind: ref
+              name: FlightMode
+        returns:
+          kind: primitive
+          name: bool
+      - name: upload
+        description: Load a mission, returns its id
+        params:
+          - name: mission
+            type:
+              kind: ref
+              name: Mission
+        returns:
+          kind: primitive
+          name: uint32
+      - name: selfTest
+        params:
+          - name: report
+            type:
+              kind: list
+              of:
+                kind: primitive
+                name: string
+            direction: inout
+          - name: failures
+            type:
+              kind: primitive
+              name: uint16
+            direction: out
+        returns: null
+  - name: Events
+    messages:
+      - name: report
+        params:
+          - name: event
+            type:
+              kind: ref
+              name: Event
+        returns: null
+  - name: Video
+    messages:
+      - name: frame
+        params:
+          - name: frame
+            type:
+              kind: ref
+              name: VideoFrame
+        returns: null
+  - name: Actuation
+    messages:
+      - name: throttle
+        params:
+          - name: motors
+            type:
+              kind: array
+              of:
+                kind: primitive
+                name: float32
+              size: 4
+        returns: null
+  - name: Storage
+    messages:
+      - name: write
+        params:
+          - name: key
+            type:
+              kind: primitive
+              name: string
+          - name: data
+            type:
+              kind: primitive
+              name: bytes
+        returns:
+          kind: primitive
+          name: bool
+      - name: read
+        params:
+          - name: key
+            type:
+              kind: primitive
+              name: string
+          - name: data
+            type:
+              kind: primitive
+              name: bytes
+            direction: out
+        returns:
+          kind: primitive
+          name: bool
+modules: []
+links: []
+dependencies:
+  - name: Units
+    file: units.scaffold.yaml
+    types:
+      - kind: primitive
+        name: Timestamp
+        description: Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+      - kind: alias
+        name: Meters
+        description: Distance in meters
+        type:
+          kind: primitive
+          name: float64
+      - kind: alias
+        name: Degrees
+        description: Angle in decimal degrees
+        type:
+          kind: primitive
+          name: float64
+      - kind: struct
+        name: GeoPoint
+        description: WGS84 position
+        fields:
+          - name: lat
+            type:
+              kind: ref
+              name: Degrees
+          - name: lon
+            type:
+              kind: ref
+              name: Degrees
+          - name: alt
+            type:
+              kind: ref
+              name: Meters
+            description: Altitude above mean sea level
+            default: 0
+    interfaces:
+      - name: Clock
+        description: Time source
+        messages:
+          - name: now
+            params: []
+            returns:
+              kind: ref
+              name: Timestamp
+editor:
+  layout: {}

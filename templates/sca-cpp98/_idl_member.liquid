@@ -1,0 +1,14 @@
+{%- comment -%}
+  IDL name of a member (field, union case, operation) of scope `scope` (its struct, union or
+  interface): `_` appended when it is the scope's name whatever the case (IDL forbids it, and C++
+  takes it for a constructor), else as _idl_id. Parameters: name, scope.
+{%- endcomment -%}
+{%- liquid
+  assign a = name | downcase
+  assign b = scope | downcase
+  if a == b
+    echo name | append: '_'
+  else
+    render '_idl_id', name: name
+  endif
+-%}

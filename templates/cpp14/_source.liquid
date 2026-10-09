@@ -1,0 +1,12 @@
+{%- comment -%}
+  Source file of a module or the system, relative to `src/`: `core/Sensor.cpp`. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  if e.entity == 'module'
+    for parent in e.namespace
+      assign part = parent | snake
+      echo part | append: '/'
+    endfor
+  endif
+  echo e.name | append: '.cpp'
+-%}

@@ -1,0 +1,165 @@
+{% include '_banner' %}
+// The same in every project generated with these templates: included once whichever comes first.
+#ifndef SCAFFOLD_OPTIONAL_HPP
+#define SCAFFOLD_OPTIONAL_HPP
+
+#include <new>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+
+namespace scaffold {
+
+/// No value, for an Optional: std::nullopt before C++17.
+struct NullOpt {
+    explicit constexpr NullOpt(int) {}
+};
+constexpr NullOpt nullopt{0};
+
+/// Thrown by Optional::value() when it holds none.
+class BadOptionalAccess : public std::logic_error {
+public:
+    BadOptionalAccess() : std::logic_error("bad optional access") {}
+};
+
+/// A value or none: std::optional before C++17.
+template <class T>
+class Optional {
+    template <class U>
+    using Value = typename std::enable_if<
+        std::is_constructible<T, U&&>::value && !std::is_same<typename std::decay<U>::type, Optional>::value &&
+            !std::is_same<typename std::decay<U>::type, NullOpt>::value,
+        int>::type;
+
+public:
+    Optional() noexcept {}
+    Optional(NullOpt) noexcept {}
+    template <class U, Value<U> = 0>
+    Optional(U&& value)
+    {
+        construct(std::forward<U>(value));
+    }
+    Optional(const Optional& other)
+    {
+        if (other.has_) construct(other.value_);
+    }
+    Optional(Optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value)
+    {
+        if (other.has_) construct(std::move(other.value_));
+    }
+    ~Optional() { reset(); }
+
+    Optional& operator=(NullOpt) noexcept
+    {
+        reset();
+        return *this;
+    }
+    Optional& operator=(const Optional& other)
+    {
+        if (!other.has_) reset();
+        else if (has_) value_ = other.value_;
+        else construct(other.value_);
+        return *this;
+    }
+    Optional& operator=(Optional&& other)
+    {
+        if (!other.has_) reset();
+        else if (has_) value_ = std::move(other.value_);
+        else construct(std::move(other.value_));
+        return *this;
+    }
+    template <class U, Value<U> = 0>
+    Optional& operator=(U&& value)
+    {
+        if (has_) value_ = std::forward<U>(value);
+        else construct(std::forward<U>(value));
+        return *this;
+    }
+
+    bool has_value() const noexcept { return has_; }
+    explicit operator bool() const noexcept { return has_; }
+
+    T& operator*() { return value_; }
+    const T& operator*() const { return value_; }
+    T* operator->() { return &value_; }
+    const T* operator->() const { return &value_; }
+
+    T& value()
+    {
+        if (!has_) throw BadOptionalAccess();
+        return value_;
+    }
+    const T& value() const
+    {
+        if (!has_) throw BadOptionalAccess();
+        return value_;
+    }
+    template <class U>
+    T value_or(U&& fallback) const
+    {
+        return has_ ? value_ : static_cast<T>(std::forward<U>(fallback));
+    }
+
+    void reset() noexcept
+    {
+        if (has_) {
+            value_.~T();
+            has_ = false;
+        }
+    }
+    template <class... A>
+    T& emplace(A&&... args)
+    {
+        reset();
+        construct(std::forward<A>(args)...);
+        return value_;
+    }
+
+private:
+    template <class... A>
+    void construct(A&&... args)
+    {
+        ::new (static_cast<void*>(&value_)) T(std::forward<A>(args)...);
+        has_ = true;
+    }
+
+    union {
+        T value_;
+    };
+    bool has_ = false;
+};
+
+template <class T>
+bool operator==(const Optional<T>& a, const Optional<T>& b)
+{
+    return a.has_value() == b.has_value() && (!a || *a == *b);
+}
+template <class T>
+bool operator!=(const Optional<T>& a, const Optional<T>& b)
+{
+    return !(a == b);
+}
+template <class T, class U>
+bool operator==(const Optional<T>& a, const U& b)
+{
+    return a && *a == b;
+}
+template <class T, class U>
+bool operator!=(const Optional<T>& a, const U& b)
+{
+    return !(a == b);
+}
+template <class T>
+bool operator==(const Optional<T>& a, NullOpt)
+{
+    return !a;
+}
+template <class T>
+bool operator!=(const Optional<T>& a, NullOpt)
+{
+    return static_cast<bool>(a);
+}
+
+} // namespace scaffold
+
+#endif

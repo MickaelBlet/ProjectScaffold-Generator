@@ -1,0 +1,11 @@
+{% include '_py_banner' %}
+"""{{ project.name }}{% if project.description != '' %}: {{ project.description }}{% endif %}.
+
+`data` holds its types, `constants` its constants, `interfaces` its interfaces, `modules` one
+module per module of the project, `systems` the top level{% if binaries.size > 0 %} of each binary{% endif %} (run: `python -m {{ project.ident | snake }}`).
+{% if remoteLinks.size > 0 %}
+Links between binaries: `remote` holds a proxy, a handler and a stub per interface, `links` their
+transports and addresses; `peers` stand in for a binary, to test the others:
+`python -m {{ project.ident | snake }}.peers.<binary>`.
+{% endif %}
+"""

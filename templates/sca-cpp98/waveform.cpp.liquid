@@ -1,0 +1,95 @@
+{% include '_banner' %}
+{%- liquid
+  assign root = project.ident | snake
+  assign components = ''
+  for m in modules
+    capture isComponent
+      render '_component', m: m
+    endcapture
+    if isComponent == 'true'
+      assign components = components | append: m.path | append: ','
+    endif
+  endfor
+  assign components = components | split: ','
+-%}
+// Waveform {{ project.name }} in one process, without a Core Framework: its components activated,
+// connected as its SAD connects them (dom/waveforms/{{ root }}), initialized and started, until
+// SIGINT or SIGTERM.
+{% for path in components %}
+{% assign m = modules | where: 'path', path | first %}
+#include <{% render '_header', e: m %}>
+{% endfor %}
+{% user 'includes' %}
+{% enduser %}
+
+#include <iostream>
+
+int main(int argc, char** argv)
+{
+    try {
+        ::sca::Runtime runtime(argc, argv);
+{% for path in components %}
+{% assign m = modules | where: 'path', path | first %}
+        {% render '_qualified', e: m %}* {% render '_accessor', name: m.name %} = new {% render '_qualified', e: m %};
+        ::CF::Resource_var {% render '_accessor', name: m.name %}Ref = runtime.activate(*{% render '_accessor', name: m.name %}, "{{ m.name }}_1");
+{% endfor %}
+        std::vector< ::sca::Resource*> components;
+{% for path in components %}
+{% assign m = modules | where: 'path', path | first %}
+        components.push_back({% render '_accessor', name: m.name %});
+{% endfor %}
+
+{%- liquid
+  capture links
+    render '_waveform_links'
+  endcapture
+-%}
+{% assign waveLinks = links | split: ';' %}
+{% for entry in waveLinks %}
+{% assign x = entry | split: '|' %}
+{% assign from = x[1] | split: '.' | first %}
+{% assign to = x[3] | split: '.' | first %}
+{% assign fromModule = modules | where: 'path', from | first %}
+{% assign toModule = modules | where: 'path', to | first %}
+{%- liquid
+  capture fromComponent
+    render '_component', m: fromModule
+  endcapture
+  capture toComponent
+    render '_component', m: toModule
+  endcapture
+%}
+        // {{ x[0] }}: {{ x[1] }}:{{ x[2] }} -> {{ x[3] }}:{{ x[4] }}
+{% if fromComponent == 'true' and toComponent == 'true' %}
+        ::sca::connect(*{% render '_accessor', name: from %}, "{% render '_port_name', module: x[1], port: x[2], component: from %}", *{% render '_accessor', name: to %}, "{% render '_port_name', module: x[3], port: x[4], component: to %}", "{{ x[0] }}");
+{% else %}
+        // Not connected: an end is not in a component.
+{% endif %}
+{% endfor %}
+        {% user 'connected' %}
+        {% enduser %}
+
+        for (std::size_t i = 0; i < components.size(); ++i) components[i]->initialize();
+        for (std::size_t i = 0; i < components.size(); ++i) components[i]->start();
+        {% user 'started' %}
+        std::cerr << "{{ project.name }}: started, SIGINT or SIGTERM to stop" << std::endl;
+        {% enduser %}
+        runtime.wait();
+        for (std::size_t i = components.size(); i-- > 0;) {
+            try {
+                components[i]->stop();
+                components[i]->releaseObject();
+            } catch (const ::CORBA::Exception& e) {
+                ::sca::reportError("{{ project.name }}", e);
+            }
+        }
+        runtime.shutdown();
+        for (std::size_t i = 0; i < components.size(); ++i) delete components[i];
+        return 0;
+    } catch (const ::CORBA::Exception& e) {
+        ::sca::reportError("{{ project.name }}", e);
+    } catch (const std::exception& e) {
+        ::sca::reportError("{{ project.name }}", e.what());
+    }
+    return 1;
+}

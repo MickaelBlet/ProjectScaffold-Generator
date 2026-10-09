@@ -1,0 +1,32 @@
+{%- comment -%}
+  IDL type of a primitive of the model; int8 is an octet too (IDL 3 has no 8-bit signed integer).
+  Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  case name
+  when 'int8', 'uint8'
+    echo 'octet'
+  when 'int16'
+    echo 'short'
+  when 'uint16'
+    echo 'unsigned short'
+  when 'int32'
+    echo 'long'
+  when 'uint32'
+    echo 'unsigned long'
+  when 'int64'
+    echo 'long long'
+  when 'uint64'
+    echo 'unsigned long long'
+  when 'float32'
+    echo 'float'
+  when 'float64'
+    echo 'double'
+  when 'bool'
+    echo 'boolean'
+  when 'bytes'
+    echo '::CF::OctetSequence'
+  else
+    echo name
+  endcase
+-%}

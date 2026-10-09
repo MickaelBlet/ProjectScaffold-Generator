@@ -1,0 +1,55 @@
+// DDS-style (IDL 4) data types, no interfaces: importing this file adds all its types.
+// Shows annotations, bitmasks, unions, bounded sequences and strings, and maps.
+
+module Sensors {
+  const long MAX_POINTS = 1024;
+  const long MAX_ID = 1 << 4;
+
+  enum Health {
+    @value(0) OK,
+    @value(10) DEGRADED,
+    @value(20) FAILED
+  };
+
+  @bit_bound(8)
+  bitmask Capabilities {
+    @position(0) RANGE,
+    @position(1) INTENSITY,
+    @position(4) VELOCITY
+  };
+
+  /** Point of a scan, in the sensor frame (meters). */
+  struct Point {
+    float x;
+    float y;
+    float z;
+    @optional float intensity;
+  };
+
+  /** Header of every sample. */
+  struct Header {
+    @key string<MAX_ID> sensorId;
+    unsigned long long stampNs;   // since the epoch
+    unsigned long counter;
+  };
+
+  @topic
+  struct Scan : Header {
+    sequence<Point, MAX_POINTS> points;
+    Capabilities capabilities;
+  };
+
+  @topic
+  struct Status : Header {
+    Health health;
+    map<string, double> temperatures;   // by probe name
+    sequence<octet> diagnostics;        // vendor blob
+  };
+
+  /** Raw reading: a struct of its discriminator and one optional field per case. */
+  union Reading switch (long) {
+    case 0: float range;
+    case 1: Point point;
+    default: string text;
+  };
+};

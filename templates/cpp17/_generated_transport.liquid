@@ -1,0 +1,10 @@
+{%- comment -%}
+  `true` for a transport written by transport.cpp and transport.py: tcp, udp, http, websocket, shm.
+  Parameter: transport.
+{%- endcomment -%}
+{%- liquid
+  case transport
+  when 'tcp', 'udp', 'http', 'websocket', 'shm'
+    echo 'true'
+  endcase
+-%}

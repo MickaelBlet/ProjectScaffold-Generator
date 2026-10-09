@@ -1,0 +1,54 @@
+schemaVersion: 1
+project:
+  name: Units
+  description: Physical units and geodesic types shared by the whole fleet
+  metadata:
+    version: 1.0.0
+    owner: platform-team
+types:
+  - kind: primitive
+    name: Timestamp
+    description: Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+  - kind: alias
+    name: Meters
+    description: Distance in meters
+    type:
+      kind: primitive
+      name: float64
+  - kind: alias
+    name: Degrees
+    description: Angle in decimal degrees
+    type:
+      kind: primitive
+      name: float64
+  - kind: struct
+    name: GeoPoint
+    description: WGS84 position
+    fields:
+      - name: lat
+        type:
+          kind: ref
+          name: Degrees
+      - name: lon
+        type:
+          kind: ref
+          name: Degrees
+      - name: alt
+        type:
+          kind: ref
+          name: Meters
+        description: Altitude above mean sea level
+        default: 0
+interfaces:
+  - name: Clock
+    description: Time source
+    messages:
+      - name: now
+        params: []
+        returns:
+          kind: ref
+          name: Timestamp
+modules: []
+links: []
+editor:
+  layout: {}

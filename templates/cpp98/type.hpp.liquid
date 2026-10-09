@@ -1,0 +1,198 @@
+{% include '_banner' %}
+#pragma once
+
+{% render '_includes', e: item %}
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: item %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ item.description | doc_comment }}
+{% case item.kind %}
+{% when 'struct' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+struct {{ name }} {
+    /// Every field, defaulted: `{{ name }}()`, `{{ name }}(a, b)`.
+    {% if item.fields.size == 1 %}explicit {% endif %}{{ name }}({% for f in item.fields %}{% render '_input', t: f.type %} {% render '_id', name: f.name %} = {% if f.hasDefault %}{% render '_value', v: f.default, t: f.type %}{% else %}{% render '_type', t: f.type %}(){% endif %}{% unless forloop.last %}, {% endunless %}{% endfor %}){% if item.fields.size > 0 %}
+        : {% for f in item.fields %}{% capture id %}{% render '_id', name: f.name %}{% endcapture %}{{ id }}({{ id }}){% unless forloop.last %}, {% endunless %}{% endfor %}{% endif %}
+    {
+    }
+{% for f in item.fields %}
+
+{{ f.description | doc_comment: '    /// ' }}
+    {% render '_type', t: f.type %} {% render '_id', name: f.name %};
+{% endfor %}
+    {% user 'members' %}
+    {% enduser %}
+};
+{% when 'exception' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+struct {{ name }} : std::exception {
+    {{ name }}(){% if item.fields.size > 0 %}
+        : {% for f in item.fields %}{% render '_id', name: f.name %}({% if f.hasDefault %}{% render '_value', v: f.default, t: f.type %}{% endif %}){% unless forloop.last %}, {% endunless %}{% endfor %}{% endif %}
+    {
+    }
+    ~{{ name }}() throw() {}
+{% for f in item.fields %}
+
+{{ f.description | doc_comment: '    /// ' }}
+    {% render '_type', t: f.type %} {% render '_id', name: f.name %};
+{% endfor %}
+
+    const char* what() const throw() { return "{{ item.name }}"; }
+    {% user 'members' %}
+    {% enduser %}
+};
+{% when 'enum' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+{% capture bits %}{% render '_primitive', name: item.underlying %}{% endcapture -%}
+/// Scoped enumeration (enum class of C++11): `{{ name }}::{% render '_id', name: item.values[0].name %}` names a value, a {{ name }} holds one.
+struct {{ name }} {
+    enum Value {
+{% for v in item.values %}
+        {% render '_id', name: v.name %} = {{ v.value }}{% unless forloop.last %},{% endunless %}
+{% endfor %}
+    };
+
+    {{ name }}() : value_(0) {}
+    {{ name }}(Value v) : value_(static_cast<{{ bits }}>(v)) {}
+    operator Value() const { return static_cast<Value>(value_); }
+
+    /// The underlying value (wire format).
+    {{ bits }} raw() const { return value_; }
+    static {{ name }} fromRaw({{ bits }} raw)
+    {
+        {{ name }} e;
+        e.value_ = raw;
+        return e;
+    }
+
+private:
+    {{ bits }} value_;
+};
+{% when 'bitmask' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+{% capture bits %}{% render '_primitive', name: item.underlying %}{% endcapture -%}
+/// Flags: `{{ name }}::A | {{ name }}::B`; `{{ name }}()` has none.
+struct {{ name }} {
+    enum Value {
+{% for f in item.flags %}
+        {% render '_id', name: f.name %} = {{ bits }}(1) << {{ f.bit }}{% unless forloop.last %},{% endunless %}
+{% endfor %}
+    };
+
+    {{ name }}() : value_(0) {}
+    {{ name }}(Value v) : value_(static_cast<{{ bits }}>(v)) {}
+
+    /// The underlying value (wire format).
+    {{ bits }} raw() const { return value_; }
+    static {{ name }} fromRaw({{ bits }} raw)
+    {
+        {{ name }} e;
+        e.value_ = raw;
+        return e;
+    }
+
+private:
+    {{ bits }} value_;
+};
+
+inline {{ name }} operator|({{ name }} a, {{ name }} b) { return {{ name }}::fromRaw(static_cast<{{ bits }}>(a.raw() | b.raw())); }
+inline {{ name }} operator&({{ name }} a, {{ name }} b) { return {{ name }}::fromRaw(static_cast<{{ bits }}>(a.raw() & b.raw())); }
+inline {{ name }} operator^({{ name }} a, {{ name }} b) { return {{ name }}::fromRaw(static_cast<{{ bits }}>(a.raw() ^ b.raw())); }
+inline {{ name }} operator~({{ name }} a) { return {{ name }}::fromRaw(static_cast<{{ bits }}>(~a.raw())); }
+inline {{ name }} operator|({{ name }}::Value a, {{ name }}::Value b) { return {{ name }}(a) | {{ name }}(b); }
+inline {{ name }} operator&({{ name }}::Value a, {{ name }}::Value b) { return {{ name }}(a) & {{ name }}(b); }
+inline {{ name }} operator^({{ name }}::Value a, {{ name }}::Value b) { return {{ name }}(a) ^ {{ name }}(b); }
+inline {{ name }} operator~({{ name }}::Value a) { return ~{{ name }}(a); }
+inline {{ name }}& operator|=({{ name }}& a, {{ name }} b) { return a = a | b; }
+inline {{ name }}& operator&=({{ name }}& a, {{ name }} b) { return a = a & b; }
+inline {{ name }}& operator^=({{ name }}& a, {{ name }} b) { return a = a ^ b; }
+inline bool operator==({{ name }} a, {{ name }} b) { return a.raw() == b.raw(); }
+inline bool operator!=({{ name }} a, {{ name }} b) { return a.raw() != b.raw(); }
+inline bool operator<({{ name }} a, {{ name }} b) { return a.raw() < b.raw(); }
+/// True when every flag of `flags` is set in `value`.
+inline bool has({{ name }} value, {{ name }} flags) { return (value & flags) == flags; }
+{% when 'union' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+{% capture disc %}{% render '_type', t: item.discriminator %}{% endcapture -%}
+class {{ name }} {
+public:
+{% if item.cases.size > 0 and item.cases[0].label != nil %}
+    {{ name }}() : d_({% render '_value', v: item.cases[0].label, t: item.discriminator %}), case_(1){% for c in item.cases %}, case{{ c.index }}_(){% endfor %} {}
+{% else %}
+    {{ name }}() : d_(), case_(0){% for c in item.cases %}, case{{ c.index }}_(){% endfor %} {}
+{% endif %}
+
+    /// Discriminator: selects the case held.
+    {{ disc }} _d() const { return d_; }
+{% for c in item.cases %}
+{% capture type %}{% render '_type', t: c.type %}{% endcapture -%}
+{% capture input %}{% render '_input', t: c.type %}{% endcapture -%}
+{% capture id %}{% render '_id', name: c.name %}{% endcapture -%}
+{% capture when %}{% for l in c.labels %}{% render '_value', v: l, t: item.discriminator %}, {% endfor %}{% if c.isDefault %}the values no case lists{% endif %}{% endcapture -%}
+{% capture label %}{% if c.label != nil %} = {% render '_value', v: c.label, t: item.discriminator %}{% endif %}{% endcapture -%}
+{% # Held for these labels. %}
+
+{{ c.description | doc_comment: '    /// ' }}
+    /// Held for {{ when | remove_last: ', ' }}; reading another case throws std::logic_error.
+    const {{ type }}& {{ id }}() const
+    {
+        held({{ c.index }});
+        return case{{ c.index }}_;
+    }
+    {{ type }}& {{ id }}()
+    {
+        held({{ c.index }});
+        return case{{ c.index }}_;
+    }
+    void {{ id }}({{ input }} value, {{ disc }} d{{ label }})
+    {
+        d_ = d;
+        case_ = {{ c.index }};
+        case{{ c.index }}_ = value;
+    }
+    /// A {{ name }} holding case {{ c.name }}.
+    static {{ name }} make{{ c.name | ucfirst }}({{ input }} value, {{ disc }} d{{ label }})
+    {
+        {{ name }} u;
+        u.{{ id }}(value, d);
+        return u;
+    }
+{% endfor %}
+{% unless item.hasDefault %}
+
+    /// No case, for the discriminator values no case lists.
+    void _default({{ disc }} d)
+    {
+        d_ = d;
+        case_ = 0;
+    }
+{% endunless %}
+
+    {% user 'members' %}
+    {% enduser %}
+
+private:
+    void held(int c) const
+    {
+        if (case_ != c) throw std::logic_error("{{ item.name }}: another case is held");
+    }
+
+    {{ disc }} d_;
+    int case_;
+    // One member per case (no unions of classes in C++98): only the one of case_ is meaningful.
+{% for c in item.cases %}
+    {% render '_type', t: c.type %} case{{ c.index }}_;
+{% endfor %}
+};
+{% when 'alias' %}
+typedef {% render '_type', t: item.type %} {% render '_name', e: item %};
+{% when 'primitive' %}
+{% user 'definition' %}
+typedef void* {% render '_name', e: item %}; // TODO: native type of {{ item.name }}
+{% enduser %}
+{% endcase %}
+
+{% render '_namespace_close', ns: ns %}

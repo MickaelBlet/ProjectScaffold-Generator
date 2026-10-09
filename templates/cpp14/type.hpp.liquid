@@ -1,0 +1,137 @@
+{% include '_banner' %}
+#pragma once
+
+{% render '_includes', e: item %}
+{% user 'includes' %}
+{% enduser %}
+
+{% capture ns %}{% render '_ns', e: item %}{% endcapture %}
+{% render '_namespace_open', ns: ns %}
+
+{{ item.description | doc_comment }}
+{% case item.kind %}
+{% when 'struct' %}
+struct {% render '_name', e: item %} {
+{% for f in item.fields %}
+{{ f.description | doc_comment: '    /// ' }}
+    {% render '_type', t: f.type %} {% render '_id', name: f.name %}{% if f.hasDefault %} = {% render '_value', v: f.default, t: f.type %}{% else %}{}{% endif %};
+{% endfor %}
+    {% user 'members' %}
+    {% enduser %}
+};
+{% when 'exception' %}
+struct {% render '_name', e: item %} : std::exception {
+{% for f in item.fields %}
+{{ f.description | doc_comment: '    /// ' }}
+    {% render '_type', t: f.type %} {% render '_id', name: f.name %}{% if f.hasDefault %} = {% render '_value', v: f.default, t: f.type %}{% else %}{}{% endif %};
+{% endfor %}
+
+    const char* what() const noexcept override { return "{{ item.name }}"; }
+    {% user 'members' %}
+    {% enduser %}
+};
+{% when 'enum' %}
+enum class {% render '_name', e: item %} : {% render '_primitive', name: item.underlying %} {
+{% for v in item.values %}
+    {% render '_id', name: v.name %} = {{ v.value }},
+{% endfor %}
+};
+{% when 'bitmask' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+{% capture bits %}{% render '_primitive', name: item.underlying %}{% endcapture -%}
+enum class {{ name }} : {{ bits }} {
+{% for f in item.flags %}
+    {% render '_id', name: f.name %} = {{ bits }}{1} << {{ f.bit }},
+{% endfor %}
+};
+
+constexpr {{ name }} operator|({{ name }} a, {{ name }} b)
+{
+    return static_cast<{{ name }}>(static_cast<{{ bits }}>(a) | static_cast<{{ bits }}>(b));
+}
+constexpr {{ name }} operator&({{ name }} a, {{ name }} b)
+{
+    return static_cast<{{ name }}>(static_cast<{{ bits }}>(a) & static_cast<{{ bits }}>(b));
+}
+constexpr {{ name }} operator^({{ name }} a, {{ name }} b)
+{
+    return static_cast<{{ name }}>(static_cast<{{ bits }}>(a) ^ static_cast<{{ bits }}>(b));
+}
+constexpr {{ name }} operator~({{ name }} a) { return static_cast<{{ name }}>(~static_cast<{{ bits }}>(a)); }
+constexpr {{ name }}& operator|=({{ name }}& a, {{ name }} b) { return a = a | b; }
+constexpr {{ name }}& operator&=({{ name }}& a, {{ name }} b) { return a = a & b; }
+constexpr {{ name }}& operator^=({{ name }}& a, {{ name }} b) { return a = a ^ b; }
+/// True when every flag of `flags` is set in `value`.
+constexpr bool has({{ name }} value, {{ name }} flags) { return (value & flags) == flags; }
+{% when 'union' %}
+{% capture name %}{% render '_name', e: item %}{% endcapture -%}
+{% capture disc %}{% render '_type', t: item.discriminator %}{% endcapture -%}
+class {{ name }} {
+public:
+    /// Discriminator: selects the case held.
+    {{ disc }} _d() const { return d_; }
+{% for c in item.cases %}
+{% capture type %}{% render '_type', t: c.type %}{% endcapture -%}
+{% capture id %}{% render '_id', name: c.name %}{% endcapture -%}
+{% capture when %}{% for l in c.labels %}{% render '_value', v: l, t: item.discriminator %}, {% endfor %}{% if c.isDefault %}the values no case lists{% endif %}{% endcapture -%}
+{% # Held for these labels. %}
+
+{{ c.description | doc_comment: '    /// ' }}
+    /// Held for {{ when | remove_last: ', ' }}; reading another case throws std::logic_error.
+    const {{ type }}& {{ id }}() const
+    {
+        held({{ c.index }});
+        return case{{ c.index }}_;
+    }
+    {{ type }}& {{ id }}()
+    {
+        held({{ c.index }});
+        return case{{ c.index }}_;
+    }
+    void {{ id }}({{ type }} value, {{ disc }} d{% if c.label != nil %} = {% render '_value', v: c.label, t: item.discriminator %}{% endif %})
+    {
+        d_ = d;
+        case_ = {{ c.index }};
+        case{{ c.index }}_ = std::move(value);
+    }
+{% endfor %}
+{% unless item.hasDefault %}
+
+    /// No case, for the discriminator values no case lists.
+    void _default({{ disc }} d)
+    {
+        d_ = d;
+        case_ = 0;
+    }
+{% endunless %}
+
+    {% user 'members' %}
+    {% enduser %}
+
+private:
+    void held(int c) const
+    {
+        if (case_ != c) throw std::logic_error("{{ item.name }}: another case is held");
+    }
+
+{% if item.cases.size > 0 and item.cases[0].label != nil %}
+    {{ disc }} d_ = {% render '_value', v: item.cases[0].label, t: item.discriminator %};
+    int case_ = 1;
+{% else %}
+    {{ disc }} d_{};
+    int case_ = 0;
+{% endif %}
+    // One member per case (no std::variant before C++17): only the one of case_ is meaningful.
+{% for c in item.cases %}
+    {% render '_type', t: c.type %} case{{ c.index }}_{};
+{% endfor %}
+};
+{% when 'alias' %}
+using {% render '_name', e: item %} = {% render '_type', t: item.type %};
+{% when 'primitive' %}
+{% user 'definition' %}
+using {% render '_name', e: item %} = void*; // TODO: native type of {{ item.name }}
+{% enduser %}
+{% endcase %}
+
+{% render '_namespace_close', ns: ns %}

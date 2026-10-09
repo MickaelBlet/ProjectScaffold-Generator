@@ -1,0 +1,10 @@
+{%- comment -%}
+  IDL module (and C++ namespace) of an interface: its dependency's, else the project's. Parameter: i.
+{%- endcomment -%}
+{%- liquid
+  if i.dependency
+    echo i.dependency | snake
+  else
+    echo project.ident | snake
+  endif
+-%}

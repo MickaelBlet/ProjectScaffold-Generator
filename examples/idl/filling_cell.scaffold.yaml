@@ -1,0 +1,736 @@
+schemaVersion: 1
+project:
+  name: FillingCell
+  description: Robot cell filling drums from a tank, built on the interfaces and components of IDL files
+types: []
+interfaces:
+  - name: ScanFeed
+    description: Lidar samples, with the DDS types of sensors_dds.idl
+    messages:
+      - name: scan
+        params:
+          - name: scan
+            type:
+              kind: ref
+              name: Scan
+        returns: null
+      - name: status
+        params:
+          - name: status
+            type:
+              kind: ref
+              name: Status
+        returns: null
+modules:
+  - name: Cell
+    description: Fills drums held by the arm under the tank outlet
+    color: "#2e9e8f"
+    ports: []
+    modules:
+      - name: Filler
+        description: Opens the tank inlet and moves the drums until the target level
+        color: "#3b8fd1"
+        attributes:
+          - name: targetLevel
+            type:
+              kind: primitive
+              name: float64
+            default: 0.9
+        ports:
+          - name: levels
+            role: in
+            interface: LevelChangedConsumer
+          - name: inlet
+            role: out
+            interface: Valve
+          - name: arm
+            role: out
+            interface: Arm
+          - name: gripper
+            role: out
+            interface: Gripper
+          - name: progress
+            role: out
+            interface: LevelChangedConsumer
+            description: Level of the drum being filled
+      - name: ArmDriver
+        description: Drives the arm and its gripper
+        color: "#8a4fd1"
+        attributes:
+          - name: home
+            type:
+              kind: ref
+              name: JointAngles
+        ports:
+          - name: arm
+            role: in
+            interface: Arm
+          - name: gripper
+            role: in
+            interface: Gripper
+          - name: stop
+            role: in
+            interface: Stoppable
+      - name: Safety
+        description: Stops the arm when someone enters the cell or the lidar fails
+        color: "#d14f9e"
+        attributes:
+          - name: minHealth
+            type:
+              kind: ref
+              name: Health
+            default: DEGRADED
+        ports:
+          - name: scans
+            role: in
+            interface: ScanFeed
+          - name: stop
+            role: out
+            interface: Stoppable
+  - name: Pump
+    description: Feeds the tank, driven by the supervisor
+    color: "#3bb273"
+    ports:
+      - name: valve
+        role: in
+        interface: Valve
+      - name: maintenance
+        role: out
+        interface: Maintenance
+  - name: Lidar
+    description: Watches the cell
+    color: "#d6c21f"
+    ports:
+      - name: scans
+        role: out
+        interface: ScanFeed
+links:
+  - name: tank_to_filler
+    from:
+      project: tank_ccm
+      module: Tank
+      port: level
+    to:
+      module: Cell.Filler
+      port: levels
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 10
+      remote:
+        enabled: false
+  - name: filler_to_inlet
+    from:
+      module: Cell.Filler
+      port: inlet
+    to:
+      project: tank_ccm
+      module: Tank
+      port: inlet
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+      performance:
+        class: realtime
+        maxLatencyMs: 10
+      remote:
+        enabled: false
+  - name: filler_to_arm
+    from:
+      module: Cell.Filler
+      port: arm
+    to:
+      module: Cell.ArmDriver
+      port: arm
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: filler_to_gripper
+    from:
+      module: Cell.Filler
+      port: gripper
+    to:
+      module: Cell.ArmDriver
+      port: gripper
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: safety_stop
+    from:
+      module: Cell.Safety
+      port: stop
+    to:
+      module: Cell.ArmDriver
+      port: stop
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        maxLatencyMs: 1
+      remote:
+        enabled: false
+  - name: lidar_to_safety
+    from:
+      module: Lidar
+      port: scans
+    to:
+      module: Cell.Safety
+      port: scans
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: realtime
+        rateHz: 20
+      remote:
+        enabled: false
+  - name: filler_to_supervisor
+    from:
+      module: Cell.Filler
+      port: progress
+    to:
+      project: tank_ccm
+      module: Supervisor
+      port: levels
+    constraints:
+      direction: unidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: supervisor_to_pump
+    from:
+      project: tank_ccm
+      module: Supervisor
+      port: pump_valve
+    to:
+      module: Pump
+      port: valve
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: pump_maintenance
+    from:
+      module: Pump
+      port: maintenance
+    to:
+      project: tank_ccm
+      module: Supervisor
+      port: pump_maintenance
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+      performance:
+        class: bulk
+      remote:
+        enabled: false
+dependencies:
+  - name: tank_ccm
+    file: tank_ccm.idl
+    uses:
+      - sensors_dds
+    types:
+      - kind: struct
+        name: LevelChanged
+        description: Level of a tank, as a share of its capacity.
+        fields:
+          - name: level
+            type:
+              kind: primitive
+              name: float64
+          - name: health
+            type:
+              kind: ref
+              name: Health
+      - kind: exception
+        name: Stuck
+        fields:
+          - name: position
+            type:
+              kind: primitive
+              name: float64
+    interfaces:
+      - name: Valve
+        description: Valve opening, from 0 (closed) to 1 (open).
+        messages:
+          - name: open
+            params:
+              - name: ratio
+                type:
+                  kind: primitive
+                  name: float64
+            returns: null
+            raises:
+              - Stuck
+          - name: get_position
+            params: []
+            returns:
+              kind: primitive
+              name: float64
+      - name: Maintenance
+        messages:
+          - name: calibrate
+            params: []
+            returns: null
+      - name: LevelChangedConsumer
+        description: Receives LevelChanged events.
+        messages:
+          - name: push
+            params:
+              - name: event
+                type:
+                  kind: ref
+                  name: LevelChanged
+            returns: null
+    modules:
+      - module: Tank
+        ports:
+          - name: inlet
+            role: in
+            interface: Valve
+          - name: outlets
+            role: out
+            interface: Valve
+            description: Multiple connections.
+          - name: level
+            role: out
+            interface: LevelChangedConsumer
+            description: Publishes to any number of consumers.
+          - name: pump_valve
+            role: in
+            interface: Valve
+          - name: pump_maintenance
+            role: out
+            interface: Maintenance
+      - module: Supervisor
+        ports:
+          - name: levels
+            role: in
+            interface: LevelChangedConsumer
+          - name: pump_valve
+            role: out
+            interface: Valve
+          - name: pump_maintenance
+            role: in
+            interface: Maintenance
+  - name: robot_control
+    file: robot_control.idl
+    types:
+      - kind: alias
+        name: JointAngles
+        description: Angle of each joint, in radians.
+        type:
+          kind: array
+          of:
+            kind: primitive
+            name: float64
+          size: 6
+      - kind: alias
+        name: Transform
+        description: Homogeneous transform, row major.
+        type:
+          kind: array
+          of:
+            kind: array
+            of:
+              kind: primitive
+              name: float64
+            size: 4
+          size: 4
+      - kind: enum
+        name: ArmState
+        underlying: int32
+        values:
+          - name: PARKED
+            value: 0
+          - name: MOVING
+            value: 1
+          - name: HOLDING
+            value: 2
+          - name: FAULT
+            value: 3
+      - kind: struct
+        name: Waypoint
+        description: Target of a move.
+        fields:
+          - name: joints
+            type:
+              kind: ref
+              name: JointAngles
+          - name: speed
+            type:
+              kind: primitive
+              name: float64
+            description: rad/s
+          - name: dwellMs
+            type:
+              kind: primitive
+              name: uint32
+      - kind: alias
+        name: Trajectory
+        type:
+          kind: vector
+          of:
+            kind: ref
+            name: Waypoint
+      - kind: exception
+        name: Busy
+        fields:
+          - name: reason
+            type:
+              kind: primitive
+              name: string
+      - kind: exception
+        name: OutOfReach
+        fields:
+          - name: joint
+            type:
+              kind: primitive
+              name: uint16
+    interfaces:
+      - name: Stoppable
+        description: Anything that can be stopped at once.
+        messages:
+          - name: emergencyStop
+            params: []
+            returns: null
+          - name: reset
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+      - name: Arm
+        description: Motion commands of the arm.
+        messages:
+          - name: emergencyStop
+            params: []
+            returns: null
+          - name: reset
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: get_state
+            params: []
+            returns:
+              kind: ref
+              name: ArmState
+          - name: get_maxSpeed
+            params: []
+            returns:
+              kind: primitive
+              name: float64
+          - name: set_maxSpeed
+            params:
+              - name: maxSpeed
+                type:
+                  kind: primitive
+                  name: float64
+            returns: null
+          - name: follow
+            description: Follows the waypoints; `done` is false when interrupted.
+            params:
+              - name: path
+                type:
+                  kind: ref
+                  name: Trajectory
+              - name: done
+                type:
+                  kind: primitive
+                  name: bool
+                direction: out
+            returns: null
+            raises:
+              - Busy
+              - OutOfReach
+          - name: joints
+            params: []
+            returns:
+              kind: ref
+              name: JointAngles
+          - name: toolPose
+            params: []
+            returns:
+              kind: ref
+              name: Transform
+          - name: jog
+            params:
+              - name: joint
+                type:
+                  kind: primitive
+                  name: uint16
+              - name: delta
+                type:
+                  kind: primitive
+                  name: float64
+            returns: null
+            raises:
+              - OutOfReach
+      - name: Gripper
+        description: Gripper mounted on the arm's tool flange.
+        messages:
+          - name: emergencyStop
+            params: []
+            returns: null
+          - name: reset
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: get_holding
+            params: []
+            returns:
+              kind: primitive
+              name: bool
+          - name: grip
+            params:
+              - name: forceN
+                type:
+                  kind: primitive
+                  name: float32
+              - name: widthMm
+                type:
+                  kind: primitive
+                  name: float32
+                direction: inout
+            returns:
+              kind: primitive
+              name: bool
+          - name: release
+            params: []
+            returns: null
+    constants:
+      - name: JOINTS
+        type:
+          kind: primitive
+          name: uint16
+        value: 6
+  - name: sensors_dds
+    file: sensors_dds.idl
+    indirect: true
+    types:
+      - kind: enum
+        name: Health
+        underlying: int32
+        values:
+          - name: OK
+            value: 0
+          - name: DEGRADED
+            value: 10
+          - name: FAILED
+            value: 20
+      - kind: bitmask
+        name: Capabilities
+        underlying: uint8
+        flags:
+          - name: RANGE
+            bit: 0
+          - name: INTENSITY
+            bit: 1
+          - name: VELOCITY
+            bit: 4
+      - kind: struct
+        name: Point
+        description: Point of a scan, in the sensor frame (meters).
+        fields:
+          - name: x
+            type:
+              kind: primitive
+              name: float32
+          - name: y
+            type:
+              kind: primitive
+              name: float32
+          - name: z
+            type:
+              kind: primitive
+              name: float32
+          - name: intensity
+            type:
+              kind: optional
+              of:
+                kind: primitive
+                name: float32
+      - kind: struct
+        name: Header
+        description: Header of every sample.
+        fields:
+          - name: sensorId
+            type:
+              kind: primitive
+              name: string
+              max: 16
+          - name: stampNs
+            type:
+              kind: primitive
+              name: uint64
+            description: since the epoch
+          - name: counter
+            type:
+              kind: primitive
+              name: uint32
+      - kind: struct
+        name: Scan
+        fields:
+          - name: sensorId
+            type:
+              kind: primitive
+              name: string
+              max: 16
+          - name: stampNs
+            type:
+              kind: primitive
+              name: uint64
+            description: since the epoch
+          - name: counter
+            type:
+              kind: primitive
+              name: uint32
+          - name: points
+            type:
+              kind: vector
+              of:
+                kind: ref
+                name: Point
+              max: 1024
+          - name: capabilities
+            type:
+              kind: ref
+              name: Capabilities
+      - kind: struct
+        name: Status
+        fields:
+          - name: sensorId
+            type:
+              kind: primitive
+              name: string
+              max: 16
+          - name: stampNs
+            type:
+              kind: primitive
+              name: uint64
+            description: since the epoch
+          - name: counter
+            type:
+              kind: primitive
+              name: uint32
+          - name: health
+            type:
+              kind: ref
+              name: Health
+          - name: temperatures
+            type:
+              kind: map
+              key:
+                kind: primitive
+                name: string
+              value:
+                kind: primitive
+                name: float64
+            description: by probe name
+          - name: diagnostics
+            type:
+              kind: primitive
+              name: bytes
+            description: vendor blob
+      - kind: union
+        name: Reading
+        description: "Raw reading: a struct of its discriminator and one optional field per case."
+        discriminator:
+          kind: primitive
+          name: int32
+        cases:
+          - name: range
+            type:
+              kind: primitive
+              name: float32
+            labels:
+              - 0
+          - name: point
+            type:
+              kind: ref
+              name: Point
+            labels:
+              - 1
+          - name: text
+            type:
+              kind: primitive
+              name: string
+            default: true
+    interfaces: []
+    constants:
+      - name: MAX_POINTS
+        type:
+          kind: primitive
+          name: int32
+        value: 1024
+      - name: MAX_ID
+        type:
+          kind: primitive
+          name: int32
+        value: 16
+editor:
+  layout:
+    Cell:
+      x: 319
+      y: 0
+      width: 558
+      height: 404
+    Cell.Filler:
+      x: 22
+      y: 46
+      width: 200
+      height: 170
+    Cell.ArmDriver:
+      x: 338
+      y: 142
+      width: 200
+      height: 146
+    Cell.Safety:
+      x: 22
+      y: 286
+      width: 200
+      height: 98
+    Pump:
+      x: 498
+      y: 474
+      width: 200
+      height: 72
+    Lidar:
+      x: 0
+      y: 237
+      width: 200
+      height: 72
+  dependencies:
+    tank_ccm:
+      Tank:
+        x: 996
+        y: 29
+      Supervisor:
+        x: 996
+        y: 421

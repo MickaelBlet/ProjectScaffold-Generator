@@ -1,0 +1,13 @@
+{%- comment -%}
+  Placement of a component in a SAD, found in the naming service by its usage name. Included.
+  Parameters: m, pad (more indentation in a host collocation).
+{%- endcomment -%}
+{{ pad }}        <componentplacement>
+{{ pad }}            <componentfileref refid="{{ m.path }}_spd"/>
+{{ pad }}            <componentinstantiation id="DCE:{{ project.ident | snake | append: '/instances/' | append: m.path | uuid }}">
+{{ pad }}                <usagename>{{ m.name }}_1</usagename>
+{{ pad }}                <findcomponent>
+{{ pad }}                    <namingservice name="{{ m.name }}_1"/>
+{{ pad }}                </findcomponent>
+{{ pad }}            </componentinstantiation>
+{{ pad }}        </componentplacement>

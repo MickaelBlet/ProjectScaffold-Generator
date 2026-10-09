@@ -1,0 +1,11 @@
+{%- comment -%}
+  Arguments passing the inputs of a message on: `pose, tags`. Parameter: msg.
+{%- endcomment -%}
+{%- liquid
+  for p in msg.inputs
+    render '_py_id', name: p.name
+    unless forloop.last
+      echo ', '
+    endunless
+  endfor
+-%}

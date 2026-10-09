@@ -1,0 +1,18 @@
+{%- comment -%}
+  Typedefs of the containers a type names, not declared yet. Included (shares `idl_declared`).
+  Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  case e.kind
+  when 'struct', 'exception'
+    for f in e.fields
+      include '_idl_containers', t: f.type
+    endfor
+  when 'union'
+    for c in e.cases
+      include '_idl_containers', t: c.type
+    endfor
+  when 'alias'
+    include '_idl_containers', t: e.type
+  endcase
+-%}

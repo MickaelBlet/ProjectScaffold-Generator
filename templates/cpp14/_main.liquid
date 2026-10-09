@@ -1,0 +1,10 @@
+{%- comment -%}
+  Source of the `main` of a system, relative to `src/`: `main.cpp`, or `onboard/main.cpp` for the
+  system of binary Onboard. Parameter: system.
+{%- endcomment -%}
+{%- liquid
+  if system.binary
+    echo system.binary.name | snake | append: '/'
+  endif
+  echo 'main.cpp'
+-%}

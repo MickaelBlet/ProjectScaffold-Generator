@@ -1,0 +1,32 @@
+{% include '_py_banner' %}
+"""Interfaces of {{ project.name }} (those of its dependencies included).
+
+A call takes the inputs of its message (in and inout parameters) and gives back its return value then
+its out / inout parameters, as a tuple when there are several (as the proxies of `remote` do).
+"""
+from __future__ import annotations
+
+import abc
+from typing import Any, Dict, List, Optional, Set, Tuple  # noqa: F401
+
+from . import data  # noqa: F401 - types of the parameters
+{% user 'imports' %}
+{% enduser %}
+{% for i in allInterfaces %}
+
+
+class {% render '_py_class', e: i %}(abc.ABC):
+{{ i.description | doc_comment: '    # ' }}
+{% for msg in i.messages %}
+
+    @abc.abstractmethod
+    def {% render '_py_id', name: msg.name %}(self{% render '_py_params', msg: msg %}) -> {% render '_py_results', msg: msg, what: 'hint', prefix: 'data.' %}:
+{{ msg.description | doc_comment: '        # ' }}
+{% if msg.raises.size > 0 %}
+        # Raises {% for r in msg.raises %}data.{% render '_py_id', name: r.name %}{% unless forloop.last %}, {% endunless %}{% endfor %}.
+{% endif %}
+        ...
+{% else %}
+    pass
+{% endfor %}
+{% endfor %}

@@ -1,0 +1,50 @@
+{% include '_py_banner' %}
+"""Links between the binaries of {{ project.name }}. The address of a link is the value of its environment
+variable, else its default (as in C++): one for the client (the caller connects to it), one for the
+server (the callee listens on it)."""
+from __future__ import annotations
+
+import os
+from typing import Dict, List, NamedTuple
+
+
+class Link(NamedTuple):
+    name: str
+    index: int
+    interface: str
+    transport: str
+    client_variable: str
+    client_default: str
+    server_variable: str
+    server_default: str
+    # Request path (http, websocket).
+    path: str
+    # Bytes of each ring (shm).
+    capacity: int
+    # Settings of the transport set in the project, as text (see `options` for the free ones).
+    settings: str
+    options: Dict[str, str]
+    # Every call waits for its reply.
+    ack: bool
+    # Seconds to wait for a reply.
+    timeout: float
+    # Binary calling through a proxy.
+    caller: str
+    # Binary receiving the calls through a stub.
+    callee: str
+
+    @property
+    def client_address(self) -> str:
+        return os.environ.get(self.client_variable) or self.client_default
+
+    @property
+    def server_address(self) -> str:
+        return os.environ.get(self.server_variable) or self.server_default
+
+{% for r in remoteLinks %}
+
+{{ r.link.description | doc_comment: '# ' }}
+{{ r.link.name | constant }} = Link('{{ r.link.name }}', {{ r.index }}, '{{ r.interface.name }}', '{{ r.link.constraints.remote.transport }}', '{% render '_address_variable', r: r, side: 'client' %}', '{% render '_address', r: r, side: 'client' %}', '{% render '_address_variable', r: r, side: 'server' %}', '{% render '_address', r: r, side: 'server' %}', '{{ r.settings.path | default: '/' }}', {{ r.settings.capacity | default: 1048576 }}, '{% render '_settings', s: r.link.constraints.remote.settings %}', { {%- for o in r.settings.options %}'{{ o.name }}': '{{ o.value }}'{% unless forloop.last %}, {% endunless %}{% endfor -%} }, {% if r.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ r.link.constraints.ack.timeoutMs | default: 5000 | divided_by: 1000.0 }}, '{{ r.from.binary }}', '{{ r.to.binary }}')
+{% endfor %}
+
+LINKS: List[Link] = [{% for r in remoteLinks %}{{ r.link.name | constant }}{% unless forloop.last %}, {% endunless %}{% endfor %}]

@@ -1,0 +1,58 @@
+{%- comment -%}
+  What a message gives back in Python: its return value then its out / inout parameters, as a tuple
+  when there are several. `what`: `hint` (type hint), `names` (`_v0, _v1`), `zero` (default values,
+  inout parameters unchanged). Parameters: msg, what, prefix.
+{%- endcomment -%}
+{%- liquid
+  assign n = msg.outputs.size
+  if msg.returns
+    assign n = n | plus: 1
+  endif
+  case what
+  when 'hint'
+    if n == 0
+      echo 'None'
+    elsif n > 1
+      echo 'Tuple['
+    endif
+    if msg.returns
+      render '_py_type', t: msg.returns, prefix: prefix
+      if msg.outputs.size > 0
+        echo ', '
+      endif
+    endif
+    for p in msg.outputs
+      render '_py_type', t: p.type, prefix: prefix
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+    if n > 1
+      echo ']'
+    endif
+  when 'names'
+    for i in (1..n)
+      echo '_v' | append: forloop.index0
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+  when 'zero'
+    if msg.returns
+      render '_py_zero', t: msg.returns, prefix: prefix
+      if msg.outputs.size > 0
+        echo ', '
+      endif
+    endif
+    for p in msg.outputs
+      if p.direction == 'inout'
+        render '_py_id', name: p.name
+      else
+        render '_py_zero', t: p.type, prefix: prefix
+      endif
+      unless forloop.last
+        echo ', '
+      endunless
+    endfor
+  endcase
+-%}

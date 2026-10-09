@@ -1,0 +1,119 @@
+// Full-text search over the project (names, descriptions and metadata) and over text files.
+import { modulePath, typeNames } from './project'
+import type { ProblemTarget } from './validate'
+import type { Project } from './types'
+
+export interface SearchHit {
+  target: ProblemTarget
+  /** Entity the hit belongs to, e.g. `Core.Sensor` or `Pose.position`. */
+  label: string
+  /** Where the text matched: name, description, metadata key... */
+  field: string
+  text: string
+}
+
+/** Text at a line (from 1) of a file: `length` characters from `column` (from 0). */
+export interface TextSpot {
+  line: number
+  column: number
+  length: number
+}
+
+export interface LineHit extends TextSpot {
+  /** The line, trimmed. */
+  text: string
+}
+
+/** Lines of `text` holding `query` (ignoring case), at its first match on each; at most `max`. */
+export function searchLines(text: string, query: string, max = Infinity): LineHit[] {
+  const q = query.trim().toLowerCase()
+  const hits: LineHit[] = []
+  if (!q) return hits
+  const lines = text.split(/\r?\n/)
+  for (let i = 0; i < lines.length && hits.length < max; i++) {
+    const column = lines[i]!.toLowerCase().indexOf(q)
+    if (column >= 0) hits.push({ line: i + 1, column, length: q.length, text: lines[i]!.trim() })
+  }
+  return hits
+}
+
+export function searchProject(p: Project, query: string): SearchHit[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const hits: SearchHit[] = []
+  const check = (target: ProblemTarget, label: string, field: string, text: string | undefined): void => {
+    if (text && text.toLowerCase().includes(q)) hits.push({ target, label, field, text })
+  }
+  const meta = (target: ProblemTarget, label: string, m: Record<string, string>): void => {
+    for (const [k, v] of Object.entries(m)) {
+      check(target, label, 'metadata key', k)
+      check(target, label, `metadata ${k}`, v)
+    }
+  }
+  check({ kind: 'project' }, 'Project', 'name', p.name)
+  check({ kind: 'project' }, 'Project', 'description', p.description)
+  meta({ kind: 'project' }, 'Project', p.metadata)
+  for (const m of p.modules) {
+    const target = { kind: 'module', id: m.id } as const
+    const path = modulePath(p, m.id)
+    check(target, path, 'module', m.name)
+    check(target, path, 'description', m.description)
+    meta(target, path, m.metadata)
+    for (const a of m.attributes) {
+      check(target, `${path}.${a.name}`, 'attribute', a.name)
+      check(target, `${path}.${a.name}`, 'attribute description', a.description)
+    }
+    for (const x of m.methods) {
+      check(target, `${path}.${x.name}`, 'method', x.name)
+      check(target, `${path}.${x.name}`, 'method description', x.description)
+      for (const prm of x.params) check(target, `${path}.${x.name}(${prm.name})`, 'parameter', prm.name)
+    }
+    for (const pt of m.ports) {
+      check(target, `${path}:${pt.name}`, `${pt.role} port`, pt.name)
+      check(target, `${path}:${pt.name}`, 'port description', pt.description)
+    }
+  }
+  for (const c of p.consts) {
+    if (c.dependency) continue
+    const target = { kind: 'const', id: c.id } as const
+    check(target, c.name, 'constant', c.name)
+    check(target, c.name, 'description', c.description)
+  }
+  for (const l of p.links) {
+    const target = { kind: 'link', id: l.id } as const
+    check(target, l.name, 'link', l.name)
+    check(target, l.name, 'description', l.description)
+    check(target, l.name, 'transport', l.constraints.remote.transport)
+  }
+  const typeName = typeNames(p)
+  for (const t of p.types) {
+    const target = { kind: 'type', id: t.id } as const
+    // Qualified for a type of a module: Core.Sensor.Mode.
+    const name = typeName.get(t.id)!
+    check(target, name, t.kind, t.name)
+    check(target, name, 'description', t.description)
+    if (t.kind === 'struct' || t.kind === 'exception')
+      for (const f of t.fields) {
+        check(target, `${name}.${f.name}`, 'field', f.name)
+        check(target, `${name}.${f.name}`, 'field description', f.description)
+      }
+    if (t.kind === 'enum') for (const v of t.values) check(target, `${name}.${v.name}`, 'value', v.name)
+    if (t.kind === 'union')
+      for (const c of t.cases) {
+        check(target, `${name}.${c.name}`, 'case', c.name)
+        check(target, `${name}.${c.name}`, 'case description', c.description)
+      }
+    if (t.kind === 'bitmask') for (const v of t.flags) check(target, `${name}.${v.name}`, 'flag', v.name)
+  }
+  for (const i of p.interfaces) {
+    const target = { kind: 'interface', id: i.id } as const
+    check(target, i.name, 'interface', i.name)
+    check(target, i.name, 'description', i.description)
+    for (const m of i.messages) {
+      check(target, `${i.name}.${m.name}`, 'message', m.name)
+      check(target, `${i.name}.${m.name}`, 'message description', m.description)
+      for (const prm of m.params) check(target, `${i.name}.${m.name}(${prm.name})`, 'parameter', prm.name)
+    }
+  }
+  return hits
+}

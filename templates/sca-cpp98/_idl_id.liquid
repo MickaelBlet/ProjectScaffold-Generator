@@ -1,0 +1,12 @@
+{%- comment -%}
+  A model name as an IDL identifier: IDL keywords (whatever their case) are escaped with a
+  leading `_`, which the C++ mapping drops. Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  assign keywords = 'abstract any attribute boolean case char component const consumes context custom default double emits enum eventtype exception factory false finder fixed float getraises home import in inout interface local long module multiple native object octet oneway out primarykey private provides public publishes raises readonly sequence setraises short string struct supports switch true truncatable typedef typeid typeprefix union unsigned uses valuebase valuetype void wchar wstring' | split: ' '
+  assign lower = name | downcase
+  if keywords contains lower
+    echo '_'
+  endif
+  echo name
+-%}

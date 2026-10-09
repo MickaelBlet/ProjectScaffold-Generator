@@ -1,0 +1,40 @@
+{%- comment -%}
+  Types (typedefs of their IDL types), attribute accessors and methods of a module with an access level (`public`, `protected`,
+  `private`): attribute members stay private, private attributes have no accessors.
+  Parameters: m, names (taken by the model: no accessor of that name), access, root.
+{%- endcomment -%}
+{% assign types = m.types | where: 'access', access %}
+{% if types.size > 0 %}
+
+{% for t in types %}
+    typedef ::{{ root }}::{% render '_cx_id', name: t.flatName %} {% render '_cx_id', name: t.name %};
+{% endfor %}
+{% endif %}
+{% assign attributes = m.attributes | where: 'access', access %}
+{% if access != 'private' and attributes.size > 0 %}
+
+{% for a in attributes %}
+{% assign setter = a.name | ucfirst | prepend: 'set' %}
+{%- liquid
+  capture kind
+    render '_cx_kind', t: a.type
+  endcapture
+-%}
+{{ a.description | doc_comment: '    /// ' }}
+{% unless names contains a.name %}
+    {% if a.static %}static {% endif %}{% render '_cx_get', t: a.type, owner: root %} {% render '_id', name: a.name %}(){% unless a.static %} const{% endunless %} { return {% render '_member', name: a.name %}{% if a.static %}(){% endif %}{% if kind == 'string' %}.in(){% endif %}; }
+{% endunless %}
+{% unless a.const or names contains setter %}
+    {% if a.static %}static {% endif %}void {{ setter }}({% render '_cx_in', t: a.type, owner: root %} value) { {% render '_member', name: a.name %}{% if a.static %}(){% endif %} = value; }
+{% endunless %}
+{% endfor %}
+{% endif %}
+{% assign methods = m.methods | where: 'access', access %}
+{% for x in methods %}
+
+{{ x.description | doc_comment: '    /// ' }}
+{% for r in x.raises %}
+    /// @throws {% render '_cx_name', t: r, owner: root %}
+{% endfor %}
+    {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{% render '_cx_ret', t: x.returns, owner: root %} {% render '_id', name: x.name %}({% render '_cx_params', params: x.params, owner: root %}){% if x.const %} const{% endif %}{% if x.pure %} = 0{% endif %};
+{% endfor %}

@@ -1,0 +1,31 @@
+{% include '_py_banner' %}
+{%- liquid
+  assign root = project.ident | snake
+-%}
+"""Runs a system of {{ project.name }}: `python -m {{ root }}{% if systems.size > 1 %} <system>{% endif %}`."""
+from __future__ import annotations
+
+import importlib
+import sys
+
+SYSTEMS = {
+{% for system in systems %}
+{% capture module %}{% assign file = system.name | snake %}{% render '_py_id', name: file %}{% endcapture -%}
+    '{% if system.binary %}{{ system.binary.name | snake }}{% else %}app{% endif %}': '{{ root }}.systems.{{ module }}',
+{% endfor %}
+}
+
+
+def main() -> int:
+    names = sys.argv[1:]
+    if len(names) != 1 and len(SYSTEMS) == 1:
+        names = list(SYSTEMS)
+    if len(names) != 1 or names[0] not in SYSTEMS:
+        print('usage: python -m {{ root }} ' + '|'.join(SYSTEMS), file=sys.stderr)
+        return 2
+    importlib.import_module(SYSTEMS[names[0]]).main()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

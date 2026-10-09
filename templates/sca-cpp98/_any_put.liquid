@@ -1,0 +1,28 @@
+{%- comment -%}
+  Right side of `any <<= ...` putting the member of attribute `name`, of type t, into an any.
+  Parameters: name, t.
+{%- endcomment -%}
+{%- liquid
+  capture value
+    render '_member', name: name
+  endcapture
+  capture kind
+    render '_cx_kind', t: t
+  endcapture
+  capture prim
+    render '_cx_prim', t: t
+  endcapture
+  if kind == 'string'
+    echo value | append: '.in()'
+  elsif kind == 'basic' and prim == 'bool'
+    echo '::CORBA::Any::from_boolean(' | append: value | append: ')'
+  elsif kind == 'basic' and prim == 'char'
+    echo '::CORBA::Any::from_char(' | append: value | append: ')'
+  elsif kind == 'basic' and prim == 'int8'
+    echo '::CORBA::Any::from_octet(' | append: value | append: ')'
+  elsif kind == 'basic' and prim == 'uint8'
+    echo '::CORBA::Any::from_octet(' | append: value | append: ')'
+  else
+    echo value
+  endif
+-%}

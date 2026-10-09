@@ -1,0 +1,6 @@
+{%- comment -%}
+  Environment variable overriding the address of a link between binaries: `ROVER_SUPERVISE_CAMERA` on
+  the client side, `ROVER_SUPERVISE_CAMERA_LISTEN` on the server side. Parameters: r, side.
+{%- endcomment -%}
+{{- project.ident | constant | append: '_' | append: r.link.name | constant -}}
+{%- if side == 'server' %}_LISTEN{% endif -%}

@@ -1,0 +1,58 @@
+{%- comment -%}
+  Typedefs of the containers of a type reference not declared yet, inner ones first: a sequence
+  (`vector`, `list`, `set`; `array` and `optional` bounded to their size and 1), a map as a sequence
+  of key / value structs. Included (not rendered): records them in `idl_declared`, which the
+  including template starts. Parameter: t.
+{%- endcomment -%}
+{%- liquid
+  case t.kind
+  when 'primitive', 'ref'
+  else
+    if t.kind == 'map'
+      include '_idl_containers', t: t.key
+      include '_idl_containers', t: t.value
+    else
+      include '_idl_containers', t: t.of
+    endif
+    capture idlc_name
+      render '_idl_name', t: t
+    endcapture
+    assign idlc_key = '|' | append: idlc_name | append: '|'
+    unless idl_declared contains idlc_key
+      assign idl_declared = idl_declared | append: idlc_key
+      if t.kind == 'map'
+        capture idlc_entry
+          echo '    struct ' | append: idlc_name | append: 'Entry {' | append: '\n'
+          echo '        '
+          render '_idl_type', t: t.key
+          echo ' key;' | append: '\n' | append: '        '
+          render '_idl_type', t: t.value
+          echo ' value;' | append: '\n' | append: '    };' | append: '\n'
+          echo '    typedef sequence<::'
+          echo project.ident | snake
+          echo '::' | append: idlc_name | append: 'Entry'
+          if t.max
+            echo ', ' | append: t.max
+          endif
+          echo '> ' | append: idlc_name | append: ';' | append: '\n'
+        endcapture
+        echo idlc_entry
+      else
+        echo '    typedef sequence<'
+        render '_idl_type', t: t.of
+        case t.kind
+        when 'optional'
+          echo ', 1> ' | append: idlc_name | append: '; // optional: empty or one'
+        when 'array'
+          echo ', ' | append: t.size | append: '> ' | append: idlc_name | append: '; // array of ' | append: t.size
+        else
+          if t.max
+            echo ', ' | append: t.max
+          endif
+          echo '> ' | append: idlc_name | append: ';'
+        endcase
+        echo '\n'
+      endif
+    endunless
+  endcase
+-%}

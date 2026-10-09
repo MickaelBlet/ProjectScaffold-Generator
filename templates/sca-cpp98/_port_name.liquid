@@ -1,0 +1,11 @@
+{%- comment -%}
+  Name of a port in the waveform (getPort, SCD, SAD): its own name on the component, else its path
+  inside the component (`Store.query`). Parameters: module (path), port, component (path).
+{%- endcomment -%}
+{%- liquid
+  if module != component
+    assign prefix = component | append: '.'
+    echo module | remove_first: prefix | append: '.'
+  endif
+  echo port
+-%}

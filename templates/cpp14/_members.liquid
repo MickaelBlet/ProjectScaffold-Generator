@@ -1,0 +1,35 @@
+{%- comment -%}
+  Types (aliases), attribute accessors and methods of a module with an access level (`public`, `protected`,
+  `private`): attribute members stay private, private attributes have no accessors.
+  Parameters: m, names (taken by the model: no accessor of that name), access.
+{%- endcomment -%}
+{% assign types = m.types | where: 'access', access %}
+{% if types.size > 0 %}
+
+{% for t in types %}
+    using {% render '_name', e: t %} = {% render '_qualified', e: t %};
+{% endfor %}
+{% endif %}
+{% assign attributes = m.attributes | where: 'access', access %}
+{% if access != 'private' and attributes.size > 0 %}
+
+{% for a in attributes %}
+{% assign setter = a.name | ucfirst | prepend: 'set' %}
+{{ a.description | doc_comment: '    /// ' }}
+{% unless names contains a.name %}
+    {% if a.static %}static {% endif %}{% render '_input', t: a.type %} {% render '_id', name: a.name %}(){% unless a.static %} const{% endunless %} { return {% render '_member', name: a.name %}{% if a.static %}(){% endif %}; }
+{% endunless %}
+{% unless a.const or names contains setter %}
+    {% if a.static %}static {% endif %}void {{ setter }}({% render '_input', t: a.type %} value) { {% render '_member', name: a.name %}{% if a.static %}(){% endif %} = value; }
+{% endunless %}
+{% endfor %}
+{% endif %}
+{% assign methods = m.methods | where: 'access', access %}
+{% for x in methods %}
+
+{{ x.description | doc_comment: '    /// ' }}
+{% for r in x.raises %}
+    /// @throws {% render '_type', t: r %}
+{% endfor %}
+    {% if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{% render '_type', t: x.returns %} {% render '_id', name: x.name %}({% render '_params', params: x.params %}){% if x.const %} const{% endif %}{% if x.override %} override{% endif %}{% if x.pure %} = 0{% endif %};
+{% endfor %}

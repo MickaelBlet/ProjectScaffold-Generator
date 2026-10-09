@@ -1,0 +1,14 @@
+{%- comment -%}
+  Python test of discriminator `d` against the labels of a union case: `d in (1, 2)`.
+  Parameters: c (the case), t (the discriminator type), d (expression), prefix.
+{%- endcomment -%}
+{%- liquid
+  echo d | append: ' in ('
+  for l in c.labels
+    render '_py_value', v: l, t: t, prefix: prefix
+    if forloop.length == 1 or forloop.last == false
+      echo ', '
+    endif
+  endfor
+  echo ')'
+-%}

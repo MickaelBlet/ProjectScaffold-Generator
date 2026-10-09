@@ -1,0 +1,1001 @@
+// Generation context: the exported project file, resolved for templates. Language neutral: names
+// only, every optional value present (templates run with strict variables), modules flattened
+// with their links sorted into wiring at the right level.
+import { dependencyName } from '../model/dependencies'
+import { mapTypeRef, walkTypeRef } from '../model/typeExpr'
+import { DEFAULT_BASE_PORT, DEFAULT_HOST, DEFAULT_SHM_CAPACITY, transportFields } from '../model/transports'
+import { snake } from './filters'
+import type {
+  FileConstant,
+  FileInterface,
+  FileLink,
+  FileMethod,
+  FileModule,
+  FileModuleTypeDef,
+  FileProject,
+  FileTypeDef
+} from '../model/schema'
+import type {
+  Access,
+  HostPort,
+  ModuleKind,
+  ParamDirection,
+  PerformanceClass,
+  PortRole,
+  TransportSettings,
+  TypeRefOf,
+  Value
+} from '../model/types'
+
+export type TypeKind = FileTypeDef['kind']
+
+/** Type reference with the kind and owner of the user types it names; `max`: null when unbounded. */
+export type GenTypeRef = TypeRefOf<GenRefTarget, number | null>
+type GenRefTarget = {
+  name: string
+  typeKind: TypeKind
+  dependency: string | null
+  /** As the file writes it: `Core.Sensor.Mode` for a type of a module (see `GenType.key`). */
+  key: string
+  /** Path of the module owning the type, outermost first; empty for the others. */
+  scope: string[]
+  /** Name without scope: `Core_Sensor_Mode` for a type of a module (see `GenType.flatName`). */
+  flatName: string
+}
+/** Reference to a user type. */
+export type GenNamedRef = Extract<GenTypeRef, { kind: 'ref' }>
+
+/** Every bound present, for the templates: null when none. */
+function withBounds(t: TypeRefOf<GenRefTarget>): GenTypeRef {
+  switch (t.kind) {
+    case 'primitive':
+      return { ...t, max: t.max ?? null }
+    case 'ref':
+      return t
+    case 'array':
+    case 'optional':
+      return { ...t, of: withBounds(t.of) }
+    case 'map':
+      return { ...t, key: withBounds(t.key), value: withBounds(t.value), max: t.max ?? null }
+    default:
+      return { ...t, of: withBounds(t.of), max: t.max ?? null }
+  }
+}
+
+interface Owned {
+  /** Name of the dependency defining it; null for the project's own ones. */
+  dependency: string | null
+}
+
+/** What the type references of an entity use, e.g. to know what to include or import. */
+export interface GenUses {
+  /** User types named, without the types those use in turn; by name. */
+  types: GenType[]
+  /** Primitive type names and container kinds (`int32`, `string`, `vector`, `map`...), sorted. */
+  builtins: string[]
+}
+
+export interface GenField {
+  name: string
+  type: GenTypeRef
+  description: string
+  hasDefault: boolean
+  default: Value
+}
+
+export type GenType = Owned & {
+  entity: 'type'
+  name: string
+  description: string
+  uses: GenUses
+  /**
+   * Name as the file writes it, unique: `Name`, `Core.Sensor.Mode` for a type of module
+   * `Core.Sensor`, `Dep/Core.Sensor.Mode` for one of a module of dependency `Dep` (see `typeByKey`).
+   */
+  key: string
+  /** Path of the module owning it, outermost first (`['Core', 'Sensor']`); empty for the others. */
+  scope: string[]
+  /** Path of the module owning it (`Core.Sensor`, in its dependency for a dependency's); null for the others. */
+  module: string | null
+  /** Who may use it (types of modules; public for the others). */
+  access: Access
+  /** Its name with its module's path, for flat namespaces: `Core_Sensor_Mode` for a type of a module. */
+  flatName: string
+} & (
+    | { kind: 'struct'; fields: GenField[] }
+    | { kind: 'exception'; fields: GenField[] }
+    | { kind: 'enum'; underlying: string; values: { name: string; value: number }[] }
+    /** `value`: `1 << bit`, as decimal text (64-bit values do not fit in numbers). */
+    | { kind: 'bitmask'; underlying: string; flags: { name: string; bit: number; value: string }[] }
+    | { kind: 'union'; discriminator: GenTypeRef; cases: GenUnionCase[]; hasDefault: boolean }
+    | { kind: 'alias'; type: GenTypeRef }
+    | { kind: 'primitive' }
+  )
+
+export interface GenUnionCase {
+  name: string
+  type: GenTypeRef
+  description: string
+  /** Discriminator values selecting it (integers, characters, booleans, enum value names). */
+  labels: Value[]
+  isDefault: boolean
+  /**
+   * Discriminator value set along with the case by default: its first label, or for the default
+   * case a value no case lists; null when there is none.
+   */
+  label: Value | null
+  /** Position among the cases, from 1. */
+  index: number
+}
+
+export interface GenParam {
+  name: string
+  type: GenTypeRef
+  description: string
+  direction: ParamDirection
+  const: boolean
+}
+
+export interface GenMessage {
+  name: string
+  description: string
+  params: GenParam[]
+  /** Parameters passed in: `in` and `inout`. */
+  inputs: GenParam[]
+  /** Parameters passed back: `out` and `inout`. */
+  outputs: GenParam[]
+  returns: GenTypeRef | null
+  /** Exceptions it may raise (references to exception types), in order: indexes on the wire. */
+  raises: GenNamedRef[]
+}
+
+export interface GenInterface extends Owned {
+  entity: 'interface'
+  name: string
+  description: string
+  messages: GenMessage[]
+  uses: GenUses
+}
+
+export interface GenMethod extends GenMessage {
+  access: Access
+  static: boolean
+  const: boolean
+  virtual: boolean
+  pure: boolean
+  override: boolean
+}
+
+export interface GenAttribute extends GenField {
+  /** Of its accessors: its member is always private. */
+  access: Access
+  static: boolean
+  const: boolean
+}
+
+export interface GenConstraints {
+  direction: 'unidirectional' | 'bidirectional'
+  ack: { required: boolean; timeoutMs: number | null }
+  performance: { class: PerformanceClass; maxLatencyMs: number | null; rateHz: number | null }
+  remote: { enabled: boolean; transport: string | null; settings: GenSettings }
+}
+
+export interface GenHostPort {
+  host: string | null
+  port: number | null
+}
+
+/** Settings of a transport (see `model/transports.ts`): null when unset. */
+export interface GenSettings {
+  client: GenHostPort
+  server: GenHostPort
+  path: string | null
+  name: string | null
+  capacity: number | null
+  socket: string | null
+  broker: GenHostPort
+  topic: string | null
+  interface: string | null
+  id: number | null
+  device: string | null
+  baud: number | null
+  options: { name: string; value: string }[]
+}
+
+export interface GenLink {
+  name: string
+  description: string
+  from: { project: string | null; module: string; port: string }
+  to: { project: string | null; module: string; port: string }
+  constraints: GenConstraints
+}
+
+/** A port reached from a scope (module or system): through the children named in `via`, in order. */
+export interface GenEndpoint {
+  via: string[]
+  module: string
+  port: string
+}
+
+export interface GenPort {
+  name: string
+  role: PortRole
+  description: string
+  interface: GenInterface | null
+  /**
+   * Ports of the content the port stands for: the inner `in` ports an `in` port hands its calls to,
+   * or the inner `out` ports whose calls go out through an `out` port.
+   */
+  delegates: GenEndpoint[]
+}
+
+/** Link between two modules inside a scope (neither end is the scope itself). */
+export interface GenConnection {
+  link: GenLink
+  from: GenEndpoint
+  to: GenEndpoint
+}
+
+/** Link to a module of another project: wired by hand. */
+export interface GenExternal {
+  link: GenLink
+  /** End in this project, from the system. */
+  local: GenEndpoint
+  /** Which end of the link is local. */
+  side: 'from' | 'to'
+  remote: { project: string; module: string; port: string }
+}
+
+export interface GenModule {
+  entity: 'module'
+  name: string
+  /** Qualified path, e.g. `Core.Sensor`. */
+  path: string
+  /** Names of the enclosing modules, outermost first. */
+  namespace: string[]
+  /** Path of the enclosing module; null at the top level. */
+  parent: string | null
+  depth: number
+  /** Binary its top-level module runs in; null when none. */
+  binary: string | null
+  description: string
+  kind: ModuleKind
+  /** Not concrete: cannot be held by value. */
+  abstract: boolean
+  bases: GenModule[]
+  /** Some module derives from it. */
+  isBase: boolean
+  metadata: Record<string, string>
+  color: string | null
+  /** Its own types (`moduleTypes`), like types nested in a class. */
+  types: GenType[]
+  attributes: GenAttribute[]
+  methods: GenMethod[]
+  /** By its types, attributes and methods (the interfaces of its ports use their own). */
+  uses: GenUses
+  ports: GenPort[]
+  children: GenModule[]
+  /**
+   * Children it holds an instance of: the concrete ones, and the abstract ones with ports (to be
+   * created by hand). Abstract children without ports are only classes to derive from.
+   */
+  instances: GenModule[]
+  /** Links between its content, wired by it. */
+  connections: GenConnection[]
+}
+
+/** An executable of the project, holding some of its top-level modules. */
+export interface GenBinary {
+  name: string
+  description: string
+  color: string | null
+  /** Its top-level modules. */
+  modules: GenModule[]
+}
+
+/** End in this binary of a link to another binary of the project: wired through a transport. */
+export interface GenRemote {
+  /** Position of the link in `remoteLinks`. */
+  index: number
+  link: GenLink
+  /** End in this binary, from its system. */
+  local: GenEndpoint
+  /** Interface of the ports: a proxy of it sends the calls, a stub receives them. */
+  interface: GenInterface
+  /** End in the other binary. */
+  peer: { binary: string; module: string; port: string }
+  /** Settings of the link's transport, defaults applied (see `GenRemoteLink.settings`). */
+  settings: GenSettings
+}
+
+/** Link between two binaries: `from` calls through a proxy, `to` receives through a stub. */
+export interface GenRemoteLink {
+  index: number
+  link: GenLink
+  interface: GenInterface
+  from: { binary: string; module: string; port: string }
+  to: { binary: string; module: string; port: string }
+  /**
+   * Settings of the link's transport, with the defaults of the fields that apply to it: client and
+   * server host from `remoteDefaults` (else 127.0.0.1), port `basePort + index` (47000), path
+   * `/<link>`, shared memory `<project>_<link>`, capacity 1 MiB.
+   */
+  settings: GenSettings
+}
+
+/**
+ * The top level of the project, or of one of its binaries: holds the top-level modules and wires
+ * the links between them.
+ */
+export interface GenSystem {
+  entity: 'system'
+  /** `System`, or `<Binary>System`. */
+  name: string
+  /** Binary it is the top level of; null when the project has no binaries. */
+  binary: GenBinary | null
+  children: GenModule[]
+  /** See GenModule.instances. */
+  instances: GenModule[]
+  connections: GenConnection[]
+  external: GenExternal[]
+  /** Links calling another binary: through a proxy of their interface. */
+  proxies: GenRemote[]
+  /** Links called from another binary: through a stub of their interface. */
+  stubs: GenRemote[]
+  /** Nothing: there for templates treating modules and the system alike. */
+  uses: GenUses
+}
+
+export interface GenDependency {
+  name: string
+  file: string
+  indirect: boolean
+  types: GenType[]
+  /** Types of its modules. */
+  moduleTypes: GenType[]
+  interfaces: GenInterface[]
+  constants: GenConst[]
+}
+
+export type GenConst = Owned & {
+  entity: 'constant'
+  name: string
+  description: string
+  type: GenTypeRef
+  /** As in the file: checked against the type. */
+  value: Value
+}
+
+/** The constants of the project as one entity (one header): `_header` / `_includes` take it. */
+export interface GenConstantsFile {
+  entity: 'constants'
+  name: 'constants'
+  dependency: null
+  uses: GenUses
+}
+
+export interface GenContext {
+  project: {
+    name: string
+    /** Identifier made from the name, as dependencies name the project. */
+    ident: string
+    description: string
+    metadata: Record<string, string>
+  }
+  transports: string[]
+  /** Defaults of the addresses of the remote links, resolved. */
+  remoteDefaults: { client: { host: string }; server: { host: string }; basePort: number }
+  /** The project's own types and interfaces. */
+  types: GenType[]
+  /** Types of the project's modules (each module's `types`), depth first. */
+  moduleTypes: GenType[]
+  interfaces: GenInterface[]
+  /** Every module, depth first. */
+  modules: GenModule[]
+  binaries: GenBinary[]
+  /** One per binary, or the only one when the project has no binaries. */
+  systems: GenSystem[]
+  /** The only system when the project has no binaries, else null. */
+  system: GenSystem | null
+  /** Interfaces of the links between binaries. */
+  remoteInterfaces: GenInterface[]
+  /** Links between binaries, in the order of `links`. */
+  remoteLinks: GenRemoteLink[]
+  /** Types the remote interfaces use, directly or through other types (dependencies' included), by name. */
+  remoteTypes: GenType[]
+  /** The project's own constants. */
+  constants: GenConst[]
+  constantsFile: GenConstantsFile
+  /** Constants naming only types of `remoteTypes` (the Python peers have those). */
+  remoteConstants: GenConst[]
+  links: GenLink[]
+  dependencies: GenDependency[]
+  /** Own types and those of the dependencies (not those of modules). */
+  allTypes: GenType[]
+  /** Types of the modules of the project and of the dependencies. */
+  allModuleTypes: GenType[]
+  /** Every type by its `key`: `typeByKey[t.key]` for a type reference `t`. */
+  typeByKey: Record<string, GenType>
+  allInterfaces: GenInterface[]
+  /** Problems found while building the context (the project itself is valid). */
+  warnings: string[]
+}
+
+export function buildContext(file: FileProject): GenContext {
+  const warnings: string[] = []
+  /** Where a type is, by key: its dependency and the path of its module. */
+  interface TypePlace {
+    dependency: string | null
+    module: string | null
+  }
+  const typeOwner = new Map<string, { kind: TypeKind } & TypePlace>()
+  const fileTypes = new Map<string, FileTypeDef>()
+  const place = (key: string, t: FileTypeDef, at: TypePlace): void => {
+    if (typeOwner.has(key)) return
+    typeOwner.set(key, { kind: t.kind, ...at })
+    fileTypes.set(key, t)
+  }
+  for (const t of file.types) place(t.name, t, { dependency: null, module: null })
+  const placeModules = (list: FileModule[], parent: string): void => {
+    for (const m of list) {
+      const path = parent ? `${parent}.${m.name}` : m.name
+      for (const t of m.types ?? []) place(`${path}.${t.name}`, t, { dependency: null, module: path })
+      placeModules(m.modules ?? [], path)
+    }
+  }
+  placeModules(file.modules, '')
+  for (const d of file.dependencies ?? []) {
+    for (const t of d.types) place(t.name, t, { dependency: d.name, module: null })
+    for (const g of d.moduleTypes ?? [])
+      for (const t of g.types)
+        place(`${d.name}/${g.module}.${t.name}`, t, { dependency: d.name, module: g.module })
+  }
+  /** Scope and flat name of a type in `module` (a path; in its dependency for a dependency's). */
+  const scoped = (name: string, module: string | null) => {
+    const scope = module ? module.split('.') : []
+    return { scope, flatName: [...scope, name].join('_') }
+  }
+
+  /** A discriminator value none of `used` (labels as text) is: for the default case of a union. */
+  const unusedLabel = (t: TypeRefOf<{ name: string }>, used: Set<string>, depth = 0): Value | null => {
+    if (t.kind === 'ref') {
+      const def = fileTypes.get(t.name)
+      if (def?.kind === 'alias' && depth < 32) return unusedLabel(def.type, used, depth + 1)
+      return def?.kind === 'enum' ? (def.values.find((v) => !used.has(v.name))?.name ?? null) : null
+    }
+    if (t.kind !== 'primitive') return null
+    if (t.name === 'bool') return [true, false].find((b) => !used.has(String(b))) ?? null
+    if (t.name === 'char') {
+      for (let c = 32; c < 127; c++) if (!used.has(String.fromCharCode(c))) return String.fromCharCode(c)
+      return null
+    }
+    for (let n = 0; ; n++) if (!used.has(String(n))) return n
+  }
+
+  const ref = (t: TypeRefOf<{ name: string }>): GenTypeRef =>
+    withBounds(
+      mapTypeRef(t, (r) => {
+        const owner = typeOwner.get(r.name)
+        const name = r.name.slice(r.name.lastIndexOf('.') + 1)
+        return {
+          kind: 'ref',
+          name,
+          typeKind: owner?.kind ?? 'primitive',
+          dependency: owner?.dependency ?? null,
+          key: r.name,
+          ...scoped(name, owner?.module ?? null)
+        }
+      })
+    )
+
+  const field = (f: {
+    name: string
+    type: TypeRefOf<{ name: string }>
+    description?: string
+    default?: unknown
+  }): GenField => ({
+    name: f.name,
+    type: ref(f.type),
+    description: f.description ?? '',
+    hasDefault: f.default !== undefined,
+    default: (f.default ?? null) as Value
+  })
+
+  const typeDef = (
+    t: FileTypeDef | FileModuleTypeDef,
+    dependency: string | null,
+    module: string | null = null
+  ): GenType => {
+    const base = {
+      entity: 'type' as const,
+      name: t.name,
+      description: t.description ?? '',
+      dependency,
+      uses: noUses(),
+      key: module ? `${dependency ? `${dependency}/` : ''}${module}.${t.name}` : t.name,
+      module,
+      access: ('access' in t && t.access) || 'public',
+      ...scoped(t.name, module)
+    }
+    switch (t.kind) {
+      case 'struct':
+        return { ...base, kind: 'struct', fields: t.fields.map(field) }
+      case 'exception':
+        return { ...base, kind: 'exception', fields: t.fields.map(field) }
+      case 'enum':
+        return { ...base, kind: 'enum', underlying: t.underlying, values: t.values.map((v) => ({ ...v })) }
+      case 'bitmask':
+        return {
+          ...base,
+          kind: 'bitmask',
+          underlying: t.underlying,
+          flags: t.flags.map((f) => ({ ...f, value: (1n << BigInt(f.bit)).toString() }))
+        }
+      case 'union': {
+        const used = new Set(t.cases.flatMap((c) => (c.labels ?? []).map(String)))
+        return {
+          ...base,
+          kind: 'union',
+          discriminator: ref(t.discriminator),
+          hasDefault: t.cases.some((c) => c.default),
+          cases: t.cases.map((c, i) => ({
+            name: c.name,
+            type: ref(c.type),
+            description: c.description ?? '',
+            labels: [...(c.labels ?? [])],
+            isDefault: c.default ?? false,
+            label: c.labels?.[0] ?? (c.default ? unusedLabel(t.discriminator, used) : null),
+            index: i + 1
+          }))
+        }
+      }
+      case 'alias':
+        return { ...base, kind: 'alias', type: ref(t.type) }
+      case 'primitive':
+        return { ...base, kind: 'primitive' }
+    }
+  }
+
+  const message = (m: FileInterface['messages'][number] | FileMethod): GenMessage => {
+    const params = m.params.map((p) => ({
+      name: p.name,
+      type: ref(p.type),
+      description: p.description ?? '',
+      direction: p.direction ?? 'in',
+      const: 'const' in p ? !!p.const : false
+    }))
+    return {
+      name: m.name,
+      description: m.description ?? '',
+      params,
+      inputs: params.filter((p) => p.direction !== 'out'),
+      outputs: params.filter((p) => p.direction !== 'in'),
+      returns: m.returns ? ref(m.returns) : null,
+      raises: (m.raises ?? []).map((name) => ref({ kind: 'ref', name })).filter((r) => r.kind === 'ref')
+    }
+  }
+
+  const iface = (i: FileInterface, dependency: string | null): GenInterface => ({
+    entity: 'interface',
+    name: i.name,
+    description: i.description ?? '',
+    dependency,
+    messages: i.messages.map(message),
+    uses: noUses()
+  })
+
+  const constant = (c: FileConstant, dependency: string | null): GenConst => ({
+    entity: 'constant',
+    name: c.name,
+    description: c.description ?? '',
+    dependency,
+    type: ref(c.type),
+    value: c.value
+  })
+
+  const types = file.types.map((t) => typeDef(t, null))
+  const interfaces = file.interfaces.map((i) => iface(i, null))
+  const constants = (file.constants ?? []).map((c) => constant(c, null))
+  const dependencies: GenDependency[] = (file.dependencies ?? []).map((d) => ({
+    name: d.name,
+    file: d.file,
+    indirect: !!d.indirect,
+    types: d.types.map((t) => typeDef(t, d.name)),
+    moduleTypes: (d.moduleTypes ?? []).flatMap((g) => g.types.map((t) => typeDef(t, d.name, g.module))),
+    interfaces: d.interfaces.map((i) => iface(i, d.name)),
+    constants: (d.constants ?? []).map((c) => constant(c, d.name))
+  }))
+  const allTypes = [...types, ...dependencies.flatMap((d) => d.types)]
+  const moduleTypes: GenType[] = []
+  const allInterfaces = [...interfaces, ...dependencies.flatMap((d) => d.interfaces)]
+  const interfaceByName = new Map<string, GenInterface>()
+  for (const i of allInterfaces) if (!interfaceByName.has(i.name)) interfaceByName.set(i.name, i)
+
+  // Modules, depth first.
+  const modules: GenModule[] = []
+  const byPath = new Map<string, GenModule>()
+  const basesOf = new Map<GenModule, string[]>()
+  const binaryNames = new Set((file.binaries ?? []).map((b) => b.name))
+  const walk = (m: FileModule, namespace: string[], binary: string | null): GenModule => {
+    const path = [...namespace, m.name].join('.')
+    const g: GenModule = {
+      entity: 'module',
+      name: m.name,
+      path,
+      namespace,
+      parent: namespace.length ? namespace.join('.') : null,
+      depth: namespace.length,
+      binary,
+      description: m.description ?? '',
+      kind: m.kind ?? 'class',
+      abstract: !!m.kind && m.kind !== 'class',
+      bases: [],
+      isBase: false,
+      metadata: { ...(m.metadata ?? {}) },
+      color: m.color ?? null,
+      types: (m.types ?? []).map((t) => typeDef(t, null, path)),
+      attributes: (m.attributes ?? []).map((a) => ({
+        ...field(a),
+        access: a.access ?? 'public',
+        static: !!a.static,
+        const: !!a.const
+      })),
+      uses: noUses(),
+      methods: (m.methods ?? []).map((x) => ({
+        ...message(x),
+        access: x.access ?? 'public',
+        static: !!x.static,
+        const: !!x.const,
+        virtual: !!x.virtual,
+        pure: !!x.pure,
+        override: !!x.override
+      })),
+      ports: m.ports.map((p) => ({
+        name: p.name,
+        role: p.role,
+        description: p.description ?? '',
+        interface: p.interface ? (interfaceByName.get(p.interface) ?? null) : null,
+        delegates: []
+      })),
+      children: [],
+      instances: [],
+      connections: []
+    }
+    modules.push(g)
+    moduleTypes.push(...g.types)
+    byPath.set(path, g)
+    basesOf.set(g, m.bases ?? [])
+    g.children = (m.modules ?? []).map((c) => walk(c, [...namespace, m.name], binary))
+    g.instances = g.children.filter(instantiated)
+    return g
+  }
+  const top = file.modules.map((m) => walk(m, [], m.binary && binaryNames.has(m.binary) ? m.binary : null))
+  for (const [g, bases] of basesOf)
+    g.bases = bases.flatMap((b) => {
+      const base = byPath.get(b)
+      if (base) base.isBase = true
+      return base ? [base] : []
+    })
+
+  // What each entity uses, now that every type exists.
+  const allModuleTypes = [...moduleTypes, ...dependencies.flatMap((d) => d.moduleTypes)]
+  const typeByKey = new Map<string, GenType>()
+  for (const t of [...allTypes, ...allModuleTypes]) if (!typeByKey.has(t.key)) typeByKey.set(t.key, t)
+  const usesOf = (refs: GenTypeRef[], builtins: string[] = []): GenUses => {
+    const types = new Map<string, GenType>()
+    const names = new Set(builtins)
+    for (const r of refs)
+      walkTypeRef(r, (n) => {
+        if (n.kind === 'ref') {
+          const t = typeByKey.get(n.key)
+          if (t) types.set(t.key, t)
+        } else names.add(n.kind === 'primitive' ? n.name : n.kind)
+      })
+    return {
+      types: [...types.values()].sort((a, b) =>
+        a.name !== b.name ? (a.name < b.name ? -1 : 1) : a.key < b.key ? -1 : 1
+      ),
+      builtins: [...names].sort()
+    }
+  }
+  const messageRefs = (m: GenMessage): GenTypeRef[] => [
+    ...m.params.map((p) => p.type),
+    ...(m.returns ? [m.returns] : []),
+    ...m.raises
+  ]
+  for (const t of [...allTypes, ...allModuleTypes])
+    t.uses =
+      t.kind === 'struct' || t.kind === 'exception'
+        ? usesOf(
+            t.fields.map((f) => f.type),
+            t.kind === 'exception' ? ['exception'] : []
+          )
+        : t.kind === 'alias'
+          ? usesOf([t.type])
+          : t.kind === 'union'
+            ? usesOf([t.discriminator, ...t.cases.map((c) => c.type)], t.cases.length ? ['variant'] : [])
+            : usesOf([], t.kind === 'enum' || t.kind === 'bitmask' ? [t.underlying] : [])
+  for (const i of allInterfaces) i.uses = usesOf(i.messages.flatMap(messageRefs))
+  const constantsFile: GenConstantsFile = {
+    entity: 'constants',
+    name: 'constants',
+    dependency: null,
+    uses: usesOf(constants.map((c) => c.type))
+  }
+  // A module's types are declared in its class (`using`): it uses them.
+  const refTo = (t: GenType): GenTypeRef => ({
+    kind: 'ref',
+    name: t.name,
+    typeKind: t.kind,
+    dependency: t.dependency,
+    key: t.key,
+    scope: t.scope,
+    flatName: t.flatName
+  })
+  for (const m of modules)
+    m.uses = usesOf([
+      ...m.types.map(refTo),
+      ...m.attributes.map((a) => a.type),
+      ...m.methods.flatMap(messageRefs)
+    ])
+
+  // One system per binary, or one for the whole project.
+  const binaries: GenBinary[] = (file.binaries ?? []).map((b) => ({
+    name: b.name,
+    description: b.description ?? '',
+    color: b.color ?? null,
+    modules: []
+  }))
+  const systemOf = (binary: GenBinary | null, children: GenModule[]): GenSystem => ({
+    entity: 'system',
+    name: binary ? `${binary.name}System` : 'System',
+    binary,
+    children,
+    instances: children.filter(instantiated),
+    connections: [],
+    external: [],
+    proxies: [],
+    stubs: [],
+    uses: noUses()
+  })
+  const binaryOfTop = new Map<string, GenBinary>()
+  for (const [i, m] of file.modules.entries()) {
+    const b = binaries.find((x) => x.name === m.binary)
+    if (b) {
+      b.modules.push(top[i]!)
+      binaryOfTop.set(m.name, b)
+    } else if (binaries.length) warnings.push(`Module '${m.name}' runs in no binary: left out`)
+  }
+  const systems = binaries.length ? binaries.map((b) => systemOf(b, b.modules)) : [systemOf(null, top)]
+  /** System of a module path; null for a module of no binary. */
+  const systemAt = (path: string): GenSystem | null => {
+    if (!binaries.length) return systems[0]!
+    const b = binaryOfTop.get(path.split('.')[0]!)
+    return b ? systems[binaries.indexOf(b)]! : null
+  }
+  const ident = dependencyName(file.project.name)
+  const remoteDefaults = {
+    client: { host: file.remoteDefaults?.client?.host ?? DEFAULT_HOST },
+    server: { host: file.remoteDefaults?.server?.host ?? DEFAULT_HOST },
+    basePort: file.remoteDefaults?.basePort ?? DEFAULT_BASE_PORT
+  }
+  /** Settings of link `l`, the `index`th between binaries, with the defaults of its transport. */
+  const resolveSettings = (l: FileLink, index: number): GenSettings => {
+    const s = l.constraints.remote.settings ?? {}
+    const fields = transportFields(l.constraints.remote.transport)
+    const port = remoteDefaults.basePort + index
+    return genSettings({
+      ...s,
+      ...(fields.includes('client')
+        ? { client: { host: remoteDefaults.client.host, port, ...s.client } }
+        : {}),
+      ...(fields.includes('server')
+        ? { server: { host: remoteDefaults.server.host, port, ...s.server } }
+        : {}),
+      ...(fields.includes('path') ? { path: s.path ?? `/${l.name}` } : {}),
+      ...(fields.includes('name') ? { name: s.name ?? snake(`${ident}_${l.name}`) } : {}),
+      ...(fields.includes('capacity') ? { capacity: s.capacity ?? DEFAULT_SHM_CAPACITY } : {})
+    })
+  }
+  const remoteInterfaces = new Map<string, GenInterface>()
+  const remoteLinks: GenRemoteLink[] = []
+  const links = file.links.map(genLink)
+  const segments = (path: string): string[] => path.split('.')
+  /** Children to go through from the module at `scope` (null: the system) to the module at `path`. */
+  const via = (scope: string | null, path: string): string[] =>
+    segments(path).slice(scope ? segments(scope).length : 0)
+  const isAncestor = (a: string, b: string): boolean => b.startsWith(a + '.')
+  const port = (path: string, name: string): GenPort | undefined =>
+    byPath.get(path)?.ports.find((p) => p.name === name)
+
+  for (const [i, l] of links.entries()) {
+    const { from, to } = l
+    if (from.project || to.project) {
+      const local = from.project ? to : from
+      const remote = from.project ? from : to
+      if (local.project) continue
+      systemAt(local.module)?.external.push({
+        link: l,
+        local: { via: via(null, local.module), module: local.module, port: local.port },
+        side: from.project ? 'to' : 'from',
+        remote: { project: remote.project!, module: remote.module, port: remote.port }
+      })
+      continue
+    }
+    if (!byPath.has(from.module) || !byPath.has(to.module)) {
+      warnings.push(`Link '${l.name}' has a missing endpoint`)
+      continue
+    }
+    if (isAncestor(from.module, to.module)) {
+      // A container's `in` port handing its calls to an inner `in` port.
+      port(from.module, from.port)?.delegates.push({
+        via: via(from.module, to.module),
+        module: to.module,
+        port: to.port
+      })
+      continue
+    }
+    if (isAncestor(to.module, from.module)) {
+      // An inner `out` port going out through the container's `out` port.
+      port(to.module, to.port)?.delegates.push({
+        via: via(to.module, from.module),
+        module: from.module,
+        port: from.port
+      })
+      continue
+    }
+    // Wired by the innermost module holding both ends.
+    const a = segments(from.module)
+    const b = segments(to.module)
+    let n = 0
+    while (n < a.length - 1 && n < b.length - 1 && a[n] === b[n]) n++
+    const scope = n ? a.slice(0, n).join('.') : null
+    const connection: GenConnection = {
+      link: l,
+      from: { via: via(scope, from.module), module: from.module, port: from.port },
+      to: { via: via(scope, to.module), module: to.module, port: to.port }
+    }
+    if (scope) {
+      byPath.get(scope)!.connections.push(connection)
+      continue
+    }
+    const at = systemAt(from.module)
+    const peer = systemAt(to.module)
+    if (!at || !peer) continue
+    if (at === peer) {
+      at.connections.push(connection)
+      continue
+    }
+    // Between binaries: a proxy sends the calls of the `from` end, a stub hands them to the `to` end.
+    const face = port(from.module, from.port)?.interface
+    if (!face) {
+      warnings.push(`Link '${l.name}' between binaries has no interface: left out`)
+      continue
+    }
+    remoteInterfaces.set(face.name, face)
+    const index = remoteLinks.length
+    const settings = resolveSettings(file.links[i]!, index)
+    remoteLinks.push({
+      index,
+      link: l,
+      interface: face,
+      from: { binary: at.binary!.name, module: from.module, port: from.port },
+      to: { binary: peer.binary!.name, module: to.module, port: to.port },
+      settings
+    })
+    at.proxies.push({
+      index,
+      link: l,
+      local: connection.from,
+      interface: face,
+      peer: { binary: peer.binary!.name, module: to.module, port: to.port },
+      settings
+    })
+    peer.stubs.push({
+      index,
+      link: l,
+      local: connection.to,
+      interface: face,
+      peer: { binary: at.binary!.name, module: from.module, port: from.port },
+      settings
+    })
+  }
+  const remoteTypes = new Map<string, GenType>()
+  const reach = (t: GenType): void => {
+    if (remoteTypes.has(t.name)) return
+    remoteTypes.set(t.name, t)
+    t.uses.types.forEach(reach)
+  }
+  for (const i of remoteInterfaces.values()) i.uses.types.forEach(reach)
+  const remoteConstants = constants.filter((c) =>
+    usesOf([c.type]).types.every((t) => remoteTypes.has(t.name))
+  )
+  for (const m of modules)
+    for (const p of m.ports)
+      if (p.role === 'in' && p.delegates.length > 1)
+        warnings.push(
+          `${m.path}:${p.name} hands its calls to ${p.delegates.length} inner ports: only ${p.delegates[0]!.module}:${p.delegates[0]!.port} is wired`
+        )
+
+  return {
+    project: {
+      name: file.project.name,
+      ident,
+      description: file.project.description ?? '',
+      metadata: { ...(file.project.metadata ?? {}) }
+    },
+    transports: file.transports ?? [],
+    remoteDefaults,
+    types,
+    moduleTypes,
+    interfaces,
+    modules,
+    binaries,
+    systems,
+    system: binaries.length ? null : systems[0]!,
+    remoteInterfaces: [...remoteInterfaces.values()],
+    remoteLinks,
+    remoteTypes: [...remoteTypes.values()].sort((a, b) => (a.name < b.name ? -1 : 1)),
+    constants,
+    constantsFile,
+    remoteConstants,
+    links,
+    dependencies,
+    allTypes,
+    allModuleTypes,
+    typeByKey: Object.fromEntries(typeByKey),
+    allInterfaces,
+    warnings
+  }
+}
+
+const noUses = (): GenUses => ({ types: [], builtins: [] })
+
+const instantiated = (m: GenModule): boolean => !m.abstract || m.ports.length > 0
+
+function genLink(l: FileLink): GenLink {
+  const c = l.constraints
+  return {
+    name: l.name,
+    description: l.description ?? '',
+    from: { project: l.from.project ?? null, module: l.from.module, port: l.from.port },
+    to: { project: l.to.project ?? null, module: l.to.module, port: l.to.port },
+    constraints: {
+      direction: c.direction,
+      ack: { required: c.ack.required, timeoutMs: c.ack.timeoutMs ?? null },
+      performance: {
+        class: c.performance.class,
+        maxLatencyMs: c.performance.maxLatencyMs ?? null,
+        rateHz: c.performance.rateHz ?? null
+      },
+      remote: {
+        enabled: c.remote.enabled,
+        transport: c.remote.transport ?? null,
+        settings: genSettings(c.remote.settings ?? {})
+      }
+    }
+  }
+}
+
+const genHostPort = (h: HostPort | undefined): GenHostPort => ({
+  host: h?.host ?? null,
+  port: h?.port ?? null
+})
+
+function genSettings(s: TransportSettings): GenSettings {
+  return {
+    client: genHostPort(s.client),
+    server: genHostPort(s.server),
+    path: s.path ?? null,
+    name: s.name ?? null,
+    capacity: s.capacity ?? null,
+    socket: s.socket ?? null,
+    broker: genHostPort(s.broker),
+    topic: s.topic ?? null,
+    interface: s.interface ?? null,
+    id: s.id ?? null,
+    device: s.device ?? null,
+    baud: s.baud ?? null,
+    options: Object.entries(s.options ?? {}).map(([name, value]) => ({ name, value }))
+  }
+}

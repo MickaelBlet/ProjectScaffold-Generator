@@ -1,0 +1,34 @@
+{%- comment -%}
+  Expression extracting a value of type t from the any `any` into the member of attribute `name`
+  (true when the any holds one). Parameters: any, name, t.
+{%- endcomment -%}
+{%- liquid
+  capture target
+    render '_member', name: name
+  endcapture
+  capture kind
+    render '_cx_kind', t: t
+  endcapture
+  case kind
+  when 'basic'
+    capture prim
+      render '_cx_prim', t: t
+    endcapture
+    case prim
+    when 'bool'
+      echo '(' | append: any | append: ' >>= ::CORBA::Any::to_boolean(' | append: target | append: '))'
+    when 'char'
+      echo '(' | append: any | append: ' >>= ::CORBA::Any::to_char(' | append: target | append: '))'
+    when 'int8', 'uint8'
+      echo '(' | append: any | append: ' >>= ::CORBA::Any::to_octet(' | append: target | append: '))'
+    else
+      echo '(' | append: any | append: ' >>= ' | append: target | append: ')'
+    endcase
+  when 'enum'
+    echo '(' | append: any | append: ' >>= ' | append: target | append: ')'
+  when 'string'
+    echo '::sca::fromAny(' | append: any | append: ', ' | append: target | append: ')'
+  else
+    echo '::sca::fromAnyValue(' | append: any | append: ', ' | append: target | append: ')'
+  endcase
+-%}

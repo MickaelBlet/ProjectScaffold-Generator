@@ -1,0 +1,73 @@
+{%- comment -%}
+  `#include` lines of an entity: the standard headers of what it uses, then the headers of the
+  types, interfaces, bases and modules it uses. Parameter: e.
+{%- endcomment -%}
+{%- liquid
+  assign root = project.ident | snake
+  assign std = ''
+  assign own = ''
+  for b in e.uses.builtins
+    case b
+    when 'int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'
+      assign std = std | append: '<cstdint>,'
+    when 'bytes'
+      assign std = std | append: '<cstdint>,<vector>,'
+    when 'string', 'array', 'vector', 'list', 'set', 'optional', 'map'
+      assign std = std | append: '<' | append: b | append: '>,'
+    when 'variant'
+      assign std = std | append: '<utility>,<variant>,'
+    when 'exception'
+      assign std = std | append: '<exception>,'
+    endcase
+  endfor
+  for t in e.uses.types
+    capture header
+      render '_header', e: t
+    endcapture
+    assign own = own | append: '<' | append: header | append: '>,'
+  endfor
+  if e.entity == 'module'
+    for base in e.bases
+      capture header
+        render '_header', e: base
+      endcapture
+      assign own = own | append: '<' | append: header | append: '>,'
+    endfor
+    for p in e.ports
+      if p.interface
+        capture header
+          render '_header', e: p.interface
+        endcapture
+        assign own = own | append: '<' | append: header | append: '>,'
+        if p.role == 'out'
+          assign own = own | append: '<' | append: root | append: '/ports.hpp>,'
+        endif
+      endif
+    endfor
+  endif
+  if e.entity == 'module' or e.entity == 'system'
+    for c in e.instances
+      capture header
+        render '_header', e: c
+      endcapture
+      assign own = own | append: '<' | append: header | append: '>,'
+      if c.abstract
+        assign std = std | append: '<memory>,'
+      endif
+    endfor
+  endif
+  capture self
+    render '_header', e: e
+  endcapture
+  assign self = '<' | append: self | append: '>'
+  assign std = std | split: ',' | uniq | sort
+  assign own = own | split: ',' | uniq | sort
+-%}
+{% for header in std %}
+#include {{ header }}
+{% endfor %}
+{% for header in own %}
+{% if header != self %}
+#include {{ header }}
+{% endif %}
+{% endfor %}

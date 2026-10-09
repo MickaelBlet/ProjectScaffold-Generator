@@ -1,0 +1,14 @@
+{%- comment -%}
+  Links between the components of the waveform (between top-level modules, binaries or not), as
+  `link|from module|from port|to module|to port` entries separated by `;`.
+{%- endcomment -%}
+{%- liquid
+  for s in systems
+    for c in s.connections
+      echo c.link.name | append: '|' | append: c.from.module | append: '|' | append: c.from.port | append: '|' | append: c.to.module | append: '|' | append: c.to.port | append: ';'
+    endfor
+  endfor
+  for r in remoteLinks
+    echo r.link.name | append: '|' | append: r.from.module | append: '|' | append: r.from.port | append: '|' | append: r.to.module | append: '|' | append: r.to.port | append: ';'
+  endfor
+-%}

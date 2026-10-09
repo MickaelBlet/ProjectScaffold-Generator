@@ -1,0 +1,30 @@
+{%- comment -%}
+  Ports of the modules inside component m that links of the waveform reach (from other components,
+  or other projects): `Plant.Store:query,...`. The component offers them as ports of its own, named
+  by their path inside it (`Store.query`). Parameter: m.
+{%- endcomment -%}
+{%- liquid
+  assign prefix = m.path | append: '.'
+  assign found = ''
+  assign ends = ''
+  for s in systems
+    for c in s.connections
+      assign ends = ends | append: c.from.module | append: ':' | append: c.from.port | append: ','
+      assign ends = ends | append: c.to.module | append: ':' | append: c.to.port | append: ','
+    endfor
+    for e in s.external
+      assign ends = ends | append: e.local.module | append: ':' | append: e.local.port | append: ','
+    endfor
+  endfor
+  for r in remoteLinks
+    assign ends = ends | append: r.from.module | append: ':' | append: r.from.port | append: ','
+    assign ends = ends | append: r.to.module | append: ':' | append: r.to.port | append: ','
+  endfor
+  assign ends = ends | split: ',' | uniq
+  for x in ends
+    assign start = x | slice: 0, prefix.size
+    if start == prefix
+      echo x | append: ','
+    endif
+  endfor
+-%}

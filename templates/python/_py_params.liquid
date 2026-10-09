@@ -1,0 +1,12 @@
+{%- comment -%}
+  Parameters of a message or method in Python: its inputs (in, inout) with their type hints; out
+  and inout values are given back (see _py_results). Parameter: msg.
+{%- endcomment -%}
+{%- liquid
+  for p in msg.inputs
+    echo ', '
+    render '_py_id', name: p.name
+    echo ': '
+    render '_py_type', t: p.type, prefix: 'data.'
+  endfor
+-%}

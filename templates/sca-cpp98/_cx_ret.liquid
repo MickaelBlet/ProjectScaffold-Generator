@@ -1,0 +1,17 @@
+{%- comment -%}
+  C++ return type of an operation: `void`, `T`, `char*` for strings, `T*` for variable-length
+  types (the caller owns them). Parameters: t (nil: none), owner.
+{%- endcomment -%}
+{%- liquid
+  if t == nil
+    echo 'void'
+  else
+    capture kind
+      render '_cx_kind', t: t
+    endcapture
+    render '_cx_name', t: t, owner: owner
+    if kind == 'variable'
+      echo '*'
+    endif
+  endif
+-%}

@@ -1,0 +1,10 @@
+{% include '_py_banner' %}
+"""Constants of {{ project.name }}."""
+from __future__ import annotations
+
+from . import data  # noqa: F401 - types of the values
+{% for c in constants %}
+
+{{ c.description | doc_comment: '# ' }}
+{% render '_py_id', name: c.name %} = {% render '_py_value', v: c.value, t: c.type, prefix: 'data.' %}
+{% endfor %}

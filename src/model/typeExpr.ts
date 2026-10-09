@@ -1,0 +1,192 @@
+// Textual type expressions, e.g. `map<string, vector<uint16>>`, `array<Vec3, 4>`; bounds:
+// `string<16>`, `bytes<16>`, `vector<T, 8>` (also list and set), `map<K, V, 8>`. Types of modules:
+// `Core.Sensor.Mode`, of a module of a dependency: `Dep/Core.Sensor.Mode`.
+import {
+  BOUNDED_PRIMITIVES,
+  CONTAINERS,
+  PRIMITIVES,
+  type Primitive,
+  type TypeRef,
+  type TypeRefOf
+} from './types'
+import type { FileTypeRef } from './schema'
+
+export class TypeExprError extends Error {}
+
+const PRIMITIVE_SET = new Set<string>(PRIMITIVES)
+const BOUNDED_SET = new Set<string>(BOUNDED_PRIMITIVES)
+const RESERVED = new Set<string>([...PRIMITIVES, ...CONTAINERS])
+
+export function isReservedTypeName(name: string): boolean {
+  return RESERVED.has(name)
+}
+
+type Token = { kind: 'ident' | 'int' | 'punct'; text: string; pos: number }
+
+function tokenize(src: string): Token[] {
+  const tokens: Token[] = []
+  const re = /\s+|((?:[A-Za-z_]\w*\/)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|(\d+)|([<>,])/y
+  while (re.lastIndex < src.length) {
+    const pos = re.lastIndex
+    const m = re.exec(src)
+    if (!m) throw new TypeExprError(`Unexpected character '${src[pos]}' at ${pos}`)
+    if (m[1]) tokens.push({ kind: 'ident', text: m[1], pos })
+    else if (m[2]) tokens.push({ kind: 'int', text: m[2], pos })
+    else if (m[3]) tokens.push({ kind: 'punct', text: m[3], pos })
+  }
+  return tokens
+}
+
+/** Parse a type expression into a name-based type reference. */
+export function parseTypeExpr(src: string): FileTypeRef {
+  const tokens = tokenize(src)
+  let i = 0
+  const peek = (): Token | undefined => tokens[i]
+  const expect = (text: string): void => {
+    const t = tokens[i]
+    if (!t || t.text !== text)
+      throw new TypeExprError(`Expected '${text}'${t ? ` but found '${t.text}'` : ' at end'}`)
+    i++
+  }
+
+  const size = (what: string): number => {
+    const n = tokens[i++]
+    if (!n || n.kind !== 'int') throw new TypeExprError(`Expected ${what}`)
+    const size = Number(n.text)
+    if (size <= 0) throw new TypeExprError(`${what.charAt(0).toUpperCase()}${what.slice(1)} must be > 0`)
+    return size
+  }
+  /** `, N>` or `>`: the bound, if any. */
+  const bound = (): { max?: number } => {
+    const max = peek()?.text === ',' ? (i++, size('bound')) : undefined
+    expect('>')
+    return max === undefined ? {} : { max }
+  }
+
+  const parseType = (): FileTypeRef => {
+    const t = tokens[i++]
+    if (!t) throw new TypeExprError('Expected a type')
+    if (t.kind !== 'ident') throw new TypeExprError(`Expected a type but found '${t.text}'`)
+    const name = t.text
+    if (PRIMITIVE_SET.has(name)) {
+      if (!(BOUNDED_SET.has(name) && peek()?.text === '<'))
+        return { kind: 'primitive', name: name as Primitive }
+      i++
+      const max = size('bound')
+      expect('>')
+      return { kind: 'primitive', name: name as Primitive, max }
+    }
+    switch (name) {
+      case 'vector':
+      case 'list':
+      case 'set': {
+        expect('<')
+        const of = parseType()
+        return { kind: name, of, ...bound() }
+      }
+      case 'optional': {
+        expect('<')
+        const of = parseType()
+        expect('>')
+        return { kind: name, of }
+      }
+      case 'array': {
+        expect('<')
+        const of = parseType()
+        expect(',')
+        const n = size('array size')
+        expect('>')
+        return { kind: 'array', of, size: n }
+      }
+      case 'map': {
+        expect('<')
+        const key = parseType()
+        expect(',')
+        const value = parseType()
+        return { kind: 'map', key, value, ...bound() }
+      }
+      default:
+        return { kind: 'ref', name }
+    }
+  }
+
+  const result = parseType()
+  const rest = peek()
+  if (rest) throw new TypeExprError(`Unexpected '${rest.text}'`)
+  return result
+}
+
+/** Print a name-based type reference. */
+export function printTypeExpr(t: FileTypeRef): string {
+  switch (t.kind) {
+    case 'primitive':
+      return t.max === undefined ? t.name : `${t.name}<${t.max}>`
+    case 'ref':
+      return t.name
+    case 'array':
+      return `array<${printTypeExpr(t.of)}, ${t.size}>`
+    case 'map':
+      return `map<${printTypeExpr(t.key)}, ${printTypeExpr(t.value)}${printBound(t.max)}>`
+    case 'optional':
+      return `optional<${printTypeExpr(t.of)}>`
+    default:
+      return `${t.kind}<${printTypeExpr(t.of)}${printBound(t.max)}>`
+  }
+}
+
+function printBound(max: number | undefined): string {
+  return max === undefined ? '' : `, ${max}`
+}
+
+/** Rewrite the user-type references of a type tree. */
+export function mapTypeRef<A, B>(
+  t: TypeRefOf<A>,
+  f: (ref: { kind: 'ref' } & A) => { kind: 'ref' } & B
+): TypeRefOf<B> {
+  switch (t.kind) {
+    case 'primitive':
+      return t
+    case 'ref':
+      return f(t)
+    case 'array':
+      return { kind: 'array', of: mapTypeRef(t.of, f), size: t.size }
+    case 'map':
+      return { ...t, key: mapTypeRef(t.key, f), value: mapTypeRef(t.value, f) }
+    case 'optional':
+      return { kind: 'optional', of: mapTypeRef(t.of, f) }
+    default:
+      return { ...t, of: mapTypeRef(t.of, f) }
+  }
+}
+
+/** Visit every node of a type tree. */
+export function walkTypeRef<R, M>(t: TypeRefOf<R, M>, visit: (node: TypeRefOf<R, M>) => void): void {
+  visit(t)
+  switch (t.kind) {
+    case 'array':
+    case 'vector':
+    case 'list':
+    case 'set':
+    case 'optional':
+      walkTypeRef(t.of, visit)
+      break
+    case 'map':
+      walkTypeRef(t.key, visit)
+      walkTypeRef(t.value, visit)
+      break
+  }
+}
+
+/** Print an id-based type reference, resolving ids with `nameOf`. */
+export function printTypeRef(t: TypeRef, nameOf: (id: string) => string | undefined): string {
+  return printTypeExpr(mapTypeRef(t, (r) => ({ kind: 'ref', name: nameOf(r.id) ?? '<deleted>' })))
+}
+
+/** Parse a type expression into an id-based reference, resolving names with `idOf`. */
+export function parseTypeRef(src: string, idOf: (name: string) => string | undefined): TypeRef {
+  return mapTypeRef(parseTypeExpr(src), (r) => {
+    const id = idOf(r.name)
+    if (!id) throw new TypeExprError(`Unknown type '${r.name}'`)
+    return { kind: 'ref', id }
+  })
+}

@@ -1,0 +1,10 @@
+{%- comment -%}
+  Data member holding an attribute or an out port: `rateHz` -> `rateHz_`. Parameter: name.
+{%- endcomment -%}
+{%- liquid
+  echo name
+  if generator.reserved contains name
+    echo 'Member'
+  endif
+  echo '_'
+-%}

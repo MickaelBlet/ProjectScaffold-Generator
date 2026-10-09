@@ -1,0 +1,24 @@
+{%- comment -%}
+  Wiring of a link inside a module or the system, with its constraints as a comment. Included
+  (not rendered): its user section belongs to the including file. Parameter: connection.
+{%- endcomment -%}
+{%- liquid
+  assign l = connection.link
+  assign k = l.constraints
+  capture wiring
+    render '_endpoint', x: connection.from
+    echo '.connect('
+    render '_endpoint', x: connection.to
+    echo ');'
+  endcapture
+-%}
+    // {{ l.name }}: {{ l.from.module }}:{{ l.from.port }} -> {{ l.to.module }}:{{ l.to.port }}, {{ k.direction }}, {{ k.performance.class }}{% if k.performance.maxLatencyMs %}, max {{ k.performance.maxLatencyMs }} ms{% endif %}{% if k.performance.rateHz %}, {{ k.performance.rateHz }} Hz{% endif %}{% if k.ack.required %}, ack{% if k.ack.timeoutMs %} within {{ k.ack.timeoutMs }} ms{% endif %}{% endif %}
+{{ l.description | doc_comment: '    // ' }}
+{% if k.remote.enabled %}
+    {% user 'link.' | append: l.name %}
+    // Remote over {{ k.remote.transport | default: 'an unset transport' }}: replace with a proxy of that transport.
+    {{ wiring }}
+    {% enduser %}
+{% else %}
+    {{ wiring }}
+{% endif %}
