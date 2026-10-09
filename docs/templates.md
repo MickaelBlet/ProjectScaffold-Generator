@@ -38,7 +38,7 @@ Template and partial paths are relative to the manifest and stay inside its dire
 
 ## Variables
 
-Every value is present in every template and partial: templates run with strict variables. Source: [`codegen/context.ts`](../src/renderer/src/codegen/context.ts).
+Every value is present in every template and partial: templates run with strict variables. Source: [`codegen/context.ts`](../src/codegen/context.ts).
 
 | Variable                    | Content                                                                                                                                                                                                                                                                                                            |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

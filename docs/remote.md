@@ -1,6 +1,6 @@
 # Links between binaries
 
-When a project has [binaries](file-format.md#binaries-and-transports) with links between them, the C++ sets also write their transports and, in `python/<ns>/`, Python peers of the binaries speaking the same protocol, to test a binary without the others. The [`python`](mapping.md#python) set writes the same Python side, so its binaries call C++ ones and back.
+When a project has [binaries](https://github.com/MickaelBlet/ProjectScaffold-Viewer/blob/master/docs/file-format.md#binaries-and-transports) with links between them, the C++ sets also write their transports and, in `python/<ns>/`, Python peers of the binaries speaking the same protocol, to test a binary without the others. The [`python`](mapping.md#python) set writes the same Python side, so its binaries call C++ ones and back.
 
 - [Transports](#transports)
 - [Addresses](#addresses)

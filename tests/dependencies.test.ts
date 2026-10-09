@@ -3,7 +3,7 @@ import { Ajv2020 } from 'ajv/dist/2020.js'
 import YAML from 'yaml'
 import { produce } from 'immer'
 import { describe, expect, it } from 'vitest'
-import { fromFile, toFile } from '@/model/serialize'
+import { fromFile, toFile } from '../src/model/serialize'
 import {
   addDependencies,
   addDependency,
@@ -16,8 +16,8 @@ import {
   removeDependency,
   removePlaced,
   type DependencyResult
-} from '@/model/dependencies'
-import { diffRenames, resolveRelative } from '@/model/sync'
+} from '../src/model/dependencies'
+import { diffRenames, resolveRelative } from '../src/model/sync'
 import {
   absoluteRect,
   contentTop,
@@ -26,9 +26,9 @@ import {
   importedSize,
   LAYOUT_PAD,
   modulePath
-} from '@/model/project'
-import { validate } from '@/model/validate'
-import type { ImportedModule, Module, Project } from '@/model/types'
+} from '../src/model/project'
+import { validate } from '../src/model/validate'
+import type { ImportedModule, Module, Project } from '../src/model/types'
 
 const jsonSchema = JSON.parse(readFileSync('schema/scaffold.schema.json', 'utf8'))
 const load = (yaml: string): Project => fromFile(YAML.parse(yaml))

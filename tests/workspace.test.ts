@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { loadText, parseText } from '@/model/serialize'
-import { resolveRelative } from '@/model/sync'
-import { FileWorkspaceSchema, isWorkspaceData, workspaceFromFile, workspaceText } from '@/model/workspace'
+import { loadText, parseText } from '../src/model/serialize'
+import { resolveRelative } from '../src/model/sync'
+import { FileWorkspaceSchema, isWorkspaceData, workspaceFromFile, workspaceText } from '../src/model/workspace'
 
 const EXAMPLE = 'examples/fleet/fleet.scaffold-workspace.yaml'
 const example = parseText(readFileSync(EXAMPLE, 'utf8'), 'yaml')

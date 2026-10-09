@@ -6,8 +6,8 @@ import {
   valueErrors,
   valueExample,
   valueFlags
-} from '@/model/defaults'
-import type { TypeDef, TypeRef } from '@/model/types'
+} from '../src/model/defaults'
+import type { TypeDef, TypeRef } from '../src/model/types'
 
 const prim = (name: 'bool' | 'char' | 'uint8' | 'int8' | 'uint64' | 'float32' | 'string'): TypeRef => ({
   kind: 'primitive',

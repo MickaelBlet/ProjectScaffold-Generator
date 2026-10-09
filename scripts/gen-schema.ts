@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { z } from 'zod'
-import { FileProjectSchema } from '../src/renderer/src/model/schema'
-import { FileWorkspaceSchema } from '../src/renderer/src/model/workspace'
+import { FileProjectSchema } from '../src/model/schema'
+import { FileWorkspaceSchema } from '../src/model/workspace'
 
 for (const [file, schema] of [
   ['schema/scaffold.schema.json', FileProjectSchema],

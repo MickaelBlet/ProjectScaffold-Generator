@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
-import { buildContext } from '@/codegen/context'
-import { createEngine, generate, outputPath, trimTagLines } from '@/codegen/generate'
+import { buildContext } from '../src/codegen/context'
+import { createEngine, generate, outputPath, trimTagLines } from '../src/codegen/generate'
 import {
   generatedFiles,
   generateInto,
@@ -11,12 +11,12 @@ import {
   RECORD,
   reportEntries,
   type OutputDir
-} from '@/codegen/run'
-import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '@/codegen/sections'
-import { parseManifest, TemplateSetError, type TemplateSet } from '@/codegen/templateSet'
-import { fromFile } from '@/model/serialize'
-import { TEMPLATE_SETS } from '@/model/templateSets'
-import type { FileProject } from '@/model/schema'
+} from '../src/codegen/run'
+import { extractSections, mergeSections, placeMarkers, SectionError, skeleton } from '../src/codegen/sections'
+import { parseManifest, TemplateSetError, type TemplateSet } from '../src/codegen/templateSet'
+import { fromFile } from '../src/model/serialize'
+import { TEMPLATE_SETS } from '../src/model/templateSets'
+import type { FileProject } from '../src/model/schema'
 
 const builtin = (set: string): TemplateSet => {
   const dir = `templates/${set}`

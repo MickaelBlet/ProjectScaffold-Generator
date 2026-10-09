@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTypeExpr, parseTypeRef, printTypeExpr, printTypeRef, TypeExprError } from '@/model/typeExpr'
+import { parseTypeExpr, parseTypeRef, printTypeExpr, printTypeRef, TypeExprError } from '../src/model/typeExpr'
 
 describe('type expressions', () => {
   const cases = [

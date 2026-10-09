@@ -5,10 +5,8 @@ The code of a project is generated from [LiquidJS](https://liquidjs.com) templat
 - [Built-in template sets](#built-in-template-sets)
 - [User sections](#user-sections)
 - [Command line](#command-line)
-- [In the editor](#in-the-editor)
 - [Generating again](#generating-again)
 - [Choosing templates](#choosing-templates)
-- [Code generation panel](#code-generation-panel)
 - [Checking the templates](#checking-the-templates)
 - [Example](#example)
 
@@ -16,7 +14,7 @@ Details: [C++ and Python mapping](mapping.md), [Links between binaries](remote.m
 
 ## Built-in template sets
 
-One folder each in [`templates/`](../templates). A project picks its set with `generation.templates` (_Inspector › Project › Code generation_, or _File › Code templates…_).
+One folder each in [`templates/`](../templates). A project picks its set with `generation.templates` (in the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): _Inspector › Project › Code generation_); `-t` overrides it.
 
 | Set                                     | Writes                                                              |
 | --------------------------------------- | ------------------------------------------------------------------- |
@@ -70,15 +68,6 @@ The exit code is not 0 on errors or conflicts.
 
 An argument names another Node binary of the same version to embed, such as its Windows `node.exe` (→ `scaffold-gen.exe`).
 
-## In the editor
-
-| Host                  | Generate                                                                                                                     | Elsewhere                                                                    |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Browser, desktop apps | _File › Generate code_ (Ctrl+Alt+G): into the directory last used for the document                                           | _Generate code into…_ (Chrome, Edge, the desktop apps; not Firefox / Safari) |
-| VS Code               | _ProjectScaffold: Generate Code_: into `generated/<project>` next to the file (setting `projectScaffold.generate.outputDir`) | _Generate Code Into…_, remembered for the file                               |
-
-The project must have no errors, as for export. The Output panel logs each file written.
-
 ## Generating again
 
 Generating again rewrites only what changed:
@@ -93,34 +82,11 @@ Generating again rewrites only what changed:
 
 Templates are looked up in this order:
 
-1. the template folder picked for the document (editor) or given with `-t <dir>` (command line);
+1. the template folder given with `-t <dir>`;
 2. a template set in `<output directory>/.scaffold/templates/`;
 3. the project's built-in set (`generation.templates`, or `-t <name>`).
 
-- _File › Code templates…_ lists the built-in sets (picking one records it in the project) and picks a template folder for the document. The folder is remembered for the document and read again at each generation: edits to the templates apply at once. It is used until a built-in set is picked again.
-- _Copy the built-in templates into a folder…_ starts a set of one's own from the project's built-in one.
-- VS Code: _ProjectScaffold: Code Templates…_, or the setting `projectScaffold.generate.templates` (folder relative to the project file).
-
 Writing a set: [Writing templates](templates.md).
-
-## Code generation panel
-
-_Window › Code generation_ shows:
-
-- the templates generating the document: its template folder, the output directory's `.scaffold/templates`, else the built-in ones;
-- the files generated into its output directory (from `.scaffold-gen.json`, with their `.orphans` files).
-
-Usage:
-
-- _Change templates…_, _Generate_ and _Refresh_ (icon buttons) sit above the file filter, always in view.
-- Each section folds (click its header) and moves (drag its header, Alt+↑ / Alt+↓, or right click); the order is kept.
-- _Tree_ switches the files between a list and a folder tree; beside it, fold / unfold all the folders.
-- Click opens a file in an editor tab (Alt+click: to the side), in the code editor of the project text:
-  - Liquid templates are checked as you type (syntax, unknown filters, unclosed `user` sections);
-  - in generated files the user sections are shaded, edits elsewhere being conflicts at the next generation.
-- Ctrl+S (or _Save_) writes the file of the active tab. A file changed on disk is read again when its tab is shown, or marked when it holds edits.
-- The built-in templates are read-only: _Copy them into a folder…_ to edit them.
-- In VS Code, files open in VS Code's own editors.
 
 ## Checking the templates
 

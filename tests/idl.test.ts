@@ -8,13 +8,13 @@ import {
   parseIdlFiles,
   readIdlIncludes,
   type IdlFile
-} from '@/model/idl'
-import { addDependency, dependencyOf } from '@/model/dependencies'
-import { pasteClip } from '@/model/clipboard'
-import { emptyProject, modulePath } from '@/model/project'
-import { printTypeExpr, printTypeRef } from '@/model/typeExpr'
-import { validate } from '@/model/validate'
-import type { Id } from '@/model/types'
+} from '../src/model/idl'
+import { addDependency, dependencyOf } from '../src/model/dependencies'
+import { pasteClip } from '../src/model/clipboard'
+import { emptyProject, modulePath } from '../src/model/project'
+import { printTypeExpr, printTypeRef } from '../src/model/typeExpr'
+import { validate } from '../src/model/validate'
+import type { Id } from '../src/model/types'
 
 const SRC = `
 #include "base.idl"

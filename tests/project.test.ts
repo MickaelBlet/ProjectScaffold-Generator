@@ -15,8 +15,8 @@ import {
   modulePaths,
   parentIds,
   viewExists
-} from '@/model/project'
-import { GLOBAL_VIEW, type Interface, type Message, type Module, type Project } from '@/model/types'
+} from '../src/model/project'
+import { GLOBAL_VIEW, type Interface, type Message, type Module, type Project } from '../src/model/types'
 
 const mod = (id: string, parentId: string | null, y: number, height: number): Module => ({
   id,

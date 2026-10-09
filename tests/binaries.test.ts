@@ -1,10 +1,10 @@
 import YAML from 'yaml'
 import { produce } from 'immer'
 import { describe, expect, it } from 'vitest'
-import { fromFile, LoadError, toFile } from '@/model/serialize'
-import { assignBinary, binaryOf, removeBinary, settleBinaries, binarySnapshot } from '@/model/binaries'
-import { validate } from '@/model/validate'
-import type { Project } from '@/model/types'
+import { fromFile, LoadError, toFile } from '../src/model/serialize'
+import { assignBinary, binaryOf, removeBinary, settleBinaries, binarySnapshot } from '../src/model/binaries'
+import { validate } from '../src/model/validate'
+import type { Project } from '../src/model/types'
 
 const text = `
 schemaVersion: 1

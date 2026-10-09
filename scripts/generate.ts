@@ -9,15 +9,15 @@ import {
   generationInput,
   templateSetFor,
   type OutputDir
-} from '../src/renderer/src/codegen/run'
-import { loadTemplateSet, MANIFEST, type TemplateSet } from '../src/renderer/src/codegen/templateSet'
-import { snake } from '../src/renderer/src/codegen/filters'
+} from '../src/codegen/run'
+import { loadTemplateSet, MANIFEST, type TemplateSet } from '../src/codegen/templateSet'
+import { snake } from '../src/codegen/filters'
 import { readBuiltin } from './builtinTemplates'
-import { dependencyName } from '../src/renderer/src/model/dependencies'
-import { idlProject, readIdlIncludes } from '../src/renderer/src/model/idl'
-import { formatFromPath, loadText } from '../src/renderer/src/model/serialize'
-import { DEFAULT_TEMPLATE_SET, isTemplateSet, TEMPLATE_SETS } from '../src/renderer/src/model/templateSets'
-import type { Project } from '../src/renderer/src/model/types'
+import { dependencyName } from '../src/model/dependencies'
+import { idlProject, readIdlIncludes } from '../src/model/idl'
+import { formatFromPath, loadText } from '../src/model/serialize'
+import { DEFAULT_TEMPLATE_SET, isTemplateSet, TEMPLATE_SETS } from '../src/model/templateSets'
+import type { Project } from '../src/model/types'
 
 declare const VERSION: string | undefined // set when bundled
 

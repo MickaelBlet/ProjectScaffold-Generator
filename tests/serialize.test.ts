@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import YAML from 'yaml'
 import { describe, expect, it } from 'vitest'
-import { fromFile, LoadError, loadText, reloadText, sameContent, saveText, toFile } from '@/model/serialize'
-import { validate } from '@/model/validate'
-import type { StructDef } from '@/model/types'
-import type { FileProject } from '@/model/schema'
+import { fromFile, LoadError, loadText, reloadText, sameContent, saveText, toFile } from '../src/model/serialize'
+import { validate } from '../src/model/validate'
+import type { StructDef } from '../src/model/types'
+import type { FileProject } from '../src/model/schema'
 
 const exampleText = readFileSync('examples/robot.scaffold.yaml', 'utf8')
 const example = YAML.parse(exampleText)
@@ -204,7 +204,7 @@ describe('parameter direction', () => {
 describe('JSON Schema', () => {
   it('schema/scaffold.schema.json is up to date (run `npm run schema`)', async () => {
     const { z } = await import('zod')
-    const { FileProjectSchema } = await import('@/model/schema')
+    const { FileProjectSchema } = await import('../src/model/schema')
     expect(z.toJSONSchema(FileProjectSchema, { target: 'draft-2020-12', io: 'input' })).toEqual(jsonSchema)
   })
 })

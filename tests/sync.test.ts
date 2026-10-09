@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs'
 import YAML from 'yaml'
 import { produce } from 'immer'
 import { describe, expect, it } from 'vitest'
-import { fromFile } from '@/model/serialize'
-import { applyDependencyRenames, followInterfaceRenames, placeModule } from '@/model/dependencies'
-import { emptyProject, modulePath } from '@/model/project'
-import { diffRenames, relativeFile } from '@/model/sync'
-import type { Project } from '@/model/types'
+import { fromFile } from '../src/model/serialize'
+import { applyDependencyRenames, followInterfaceRenames, placeModule } from '../src/model/dependencies'
+import { emptyProject, modulePath } from '../src/model/project'
+import { diffRenames, relativeFile } from '../src/model/sync'
+import type { Project } from '../src/model/types'
 
 const robot = fromFile(YAML.parse(readFileSync('examples/robot.scaffold.yaml', 'utf8')))
 const byPath = (p: Project, path: string) => p.modules.find((m) => modulePath(p, m.id) === path)!

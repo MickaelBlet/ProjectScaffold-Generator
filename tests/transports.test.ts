@@ -5,8 +5,8 @@ import {
   pruneSettings,
   TRANSPORT_FIELDS,
   transportFields
-} from '@/model/transports'
-import { TRANSPORTS } from '@/model/types'
+} from '../src/model/transports'
+import { TRANSPORTS } from '../src/model/types'
 
 describe('transports', () => {
   it('lists the fields of every built-in transport', () => {
