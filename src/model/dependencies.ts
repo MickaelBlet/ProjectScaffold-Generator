@@ -3,7 +3,16 @@
 // file stays self-contained for generators. The dependencies they use are listed too (flattened,
 // `indirect`), each with its file relative to this project. Some of their modules may be placed on
 // the canvas, with a copy of their ports as last read, so that links reach them.
-import { IDENTIFIER_RE, IMPORTED_PREFIX, modulePath, newId, typeUsageTargets, uniqueName } from './project'
+import {
+  childModules,
+  IDENTIFIER_RE,
+  IMPORTED_PREFIX,
+  importedParent,
+  modulePath,
+  newId,
+  typeUsageTargets,
+  uniqueName
+} from './project'
 import { pair } from './reuse'
 import { normalizeFile, resolveRelative, sameFile, type Renames } from './sync'
 import { mapTypeRef } from './typeExpr'
@@ -67,6 +76,49 @@ function portsOf(source: Project, m: Module, previous: ImportedPort[] = []): Imp
       ...(was?.label && { label: was.label })
     }
   })
+}
+
+/** Top-level module of `source` holding `m` (`m` itself at the top level). */
+function rootOf(source: Project, m: Module): Module {
+  let root = m
+  for (let up = m; up.parentId;) {
+    const parent = source.modules.find((x) => x.id === up.parentId)
+    if (!parent) break
+    root = up = parent
+  }
+  return root
+}
+
+/**
+ * Top-level module `root` of `source` placed at `position`, with its content (parents first, each
+ * at its place in its parent, as in `source`). Modules `previous` has at the same path keep their
+ * id, ports (by name) and, for the top-level one, its size.
+ */
+function placedTree(
+  source: Project,
+  root: Module,
+  position: { x: number; y: number },
+  previous: ReadonlyMap<string, ImportedModule>
+): ImportedModule[] {
+  const out: ImportedModule[] = []
+  const visit = (m: Module, top: boolean): void => {
+    const path = modulePath(source, m.id)
+    const was = previous.get(path)
+    const { x, y, width, height } = m.layout
+    const children = childModules(source, m.id)
+    // A module with content is as large as in its project (unless resized here), its content too.
+    const size = top ? (was?.size ?? (children.length ? { width, height } : undefined)) : { width, height }
+    out.push({
+      id: was?.id ?? `${IMPORTED_PREFIX}${newId()}`,
+      path,
+      ports: portsOf(source, m, was?.ports),
+      position: top ? position : { x, y },
+      ...(size && { size })
+    })
+    for (const c of children) visit(c, false)
+  }
+  visit(root, true)
+  return out
 }
 
 /** Content of an entity without ids, references by name: equal for the same definition in two projects. */
@@ -281,14 +333,25 @@ class Sync {
   }
 
   /**
-   * Read the ports of the modules of `dep` placed here again from its project. Ports are matched by
-   * name: links to removed ports are dropped. A module not found by path (renamed or moved while
-   * this project was closed) is the only one not yet placed with the same name, else with the
-   * same ports.
+   * Read the modules of `dep` placed here again from its project: their content (added, removed,
+   * at its place) and ports. Ports are matched by name: links to removed ports and modules are
+   * dropped. A module not found by path (renamed or moved while this project was closed) is the only
+   * one not yet placed with the same name, else with the same ports.
    */
   modules(dep: Dependency, source: Project): void {
     if (!dep.modules.length) return
     const byPath = modulesByPath(source)
+    // Canvas positions, before paths change.
+    const absolute = new Map(
+      dep.modules.map((m) => {
+        let { x, y } = m.position
+        for (let up = importedParent(dep, m); up; up = importedParent(dep, up)) {
+          x += up.position.x
+          y += up.position.y
+        }
+        return [m.id, { x, y }]
+      })
+    )
     const taken = new Set(dep.modules.map((m) => m.path))
     const find = (path: string, ports: ImportedPort[]): string | null => {
       const free = [...byPath].filter(([p]) => !taken.has(p))
@@ -308,12 +371,29 @@ class Sync {
       taken.add(found)
       im.path = found
     }
+    // Placed modules come with their content: a module placed alone (before modules were placed
+    // whole) is placed with its top-level module, at its place.
+    const previous = new Map(dep.modules.map((m) => [m.path, m]))
+    const roots = new Map<string, { root: Module; at: { x: number; y: number } }>()
     for (const im of dep.modules) {
       const m = byPath.get(im.path)
       if (!m) continue
-      const ports = portsOf(source, m, im.ports)
-      if (!same(im.ports, ports)) im.ports = ports
+      const root = rootOf(source, m)
+      const path = modulePath(source, root.id)
+      if (!roots.has(path)) roots.set(path, { root, at: absolute.get((previous.get(path) ?? im).id)! })
     }
+    const placed = [
+      ...[...roots.values()].flatMap(({ root, at }) => placedTree(source, root, at, previous)),
+      // Modules no longer found stay as they were, but in the content of a module placed here.
+      ...dep.modules.filter(
+        (m) => !byPath.has(m.path) && ![...roots.keys()].some((r) => m.path.startsWith(`${r}.`))
+      )
+    ]
+    const placedIds = new Set(placed.map((m) => m.id))
+    const dropped = new Set(dep.modules.flatMap((m) => (placedIds.has(m.id) ? [] : [m.id])))
+    if (!same(dep.modules, placed)) dep.modules = placed
+    if (dropped.size)
+      this.d.links = this.d.links.filter((l) => !dropped.has(l.from.moduleId) && !dropped.has(l.to.moduleId))
     const ports = new Set(dep.modules.flatMap((m) => m.ports.map((pt) => pt.id)))
     const ids = new Set(dep.modules.map((m) => m.id))
     const kept = this.d.links.filter(
@@ -467,18 +547,20 @@ export function placeModule(
   const result = addDependency(d, source, file, self)
   const dep = dependencyAt(d, file)
   if (!dep) return { id: null, result }
-  const path = modulePath(source, moduleId)
+  // Top-level modules only, with their content.
+  const root = rootOf(source, m)
+  const path = modulePath(source, root.id)
   const existing = dep.modules.find((x) => x.path === path)
   if (existing) return { id: existing.id, result }
-  const id = `${IMPORTED_PREFIX}${newId()}`
-  const placed: ImportedModule = {
-    id,
-    path,
-    ports: portsOf(source, m),
-    position: { x: Math.round(position.x), y: Math.round(position.y) }
-  }
-  dep.modules.push(placed)
-  return { id, result }
+  const inside = (x: ImportedModule): boolean => x.path.startsWith(`${path}.`)
+  const placed = placedTree(
+    source,
+    root,
+    { x: Math.round(position.x), y: Math.round(position.y) },
+    new Map(dep.modules.filter(inside).map((x) => [x.path, x]))
+  )
+  dep.modules = [...dep.modules.filter((x) => !inside(x)), ...placed]
+  return { id: placed[0]!.id, result }
 }
 
 /** Read dependencies again from their projects (by dependency id). */
@@ -496,16 +578,23 @@ export function refreshDependencies(
 
 /** Remove placed modules and their links; their dependencies stay. */
 export function removePlaced(d: Project, ids: Set<Id>): void {
-  for (const x of d.dependencies)
-    if (x.modules.some((m) => ids.has(m.id))) x.modules = x.modules.filter((m) => !ids.has(m.id))
-  d.links = d.links.filter((l) => !ids.has(l.from.moduleId) && !ids.has(l.to.moduleId))
+  // Top-level ones with their content: content alone stays.
+  const gone = new Set<Id>()
+  for (const x of d.dependencies) {
+    const roots = x.modules.filter((m) => ids.has(m.id) && !importedParent(x, m)).map((m) => m.path)
+    if (!roots.length) continue
+    const under = (path: string): boolean => roots.some((r) => path === r || path.startsWith(`${r}.`))
+    for (const m of x.modules) if (under(m.path)) gone.add(m.id)
+    x.modules = x.modules.filter((m) => !gone.has(m.id))
+  }
+  if (gone.size) d.links = d.links.filter((l) => !gone.has(l.from.moduleId) && !gone.has(l.to.moduleId))
 }
 
 /** What keeps a dependency: the dependencies using it and its modules placed here. */
 function holders(d: Project, dep: Dependency): string[] {
   return [
     ...d.dependencies.filter((x) => x.uses.includes(dep.name)).map((x) => `dependency ${x.name}`),
-    ...dep.modules.map((m) => `module ${m.path}, placed on the canvas`)
+    ...dep.modules.filter((m) => !importedParent(dep, m)).map((m) => `module ${m.path}, placed on the canvas`)
   ]
 }
 

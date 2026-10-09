@@ -234,7 +234,14 @@ export function endpointLabel(
 /** Absolute canvas position of a module (layouts are parent-relative). */
 export function absolutePosition(p: Project, id: Id): { x: number; y: number } {
   const imported = findImported(p, id)
-  if (imported) return { ...imported.module.position }
+  if (imported) {
+    let { x, y } = imported.module.position
+    for (let up = importedParent(imported.dep, imported.module); up; up = importedParent(imported.dep, up)) {
+      x += up.position.x
+      y += up.position.y
+    }
+    return { x, y }
+  }
   let x = 0
   let y = 0
   let cur = p.modules.find((m) => m.id === id)
@@ -333,6 +340,25 @@ export function findImported(
 
 export const allImported = (p: Project): ImportedModule[] => p.dependencies.flatMap((d) => d.modules)
 
+/** Path of the module holding the module at `path` (`A` for `A.B`); null for a top-level one. */
+export function parentPath(path: string): string | null {
+  const i = path.lastIndexOf('.')
+  return i < 0 ? null : path.slice(0, i)
+}
+
+/**
+ * Placed module of `dep` holding `m`: a placed module comes with its content, each drawn inside its
+ * parent (position relative to it). Undefined for a placed top-level module.
+ */
+export function importedParent(dep: Dependency, m: ImportedModule): ImportedModule | undefined {
+  const parent = parentPath(m.path)
+  return parent === null ? undefined : dep.modules.find((x) => x.path === parent)
+}
+
+/** Placed modules of dependencies not inside another one: those moved, arranged, framed. */
+export const importedRoots = (p: Project): ImportedModule[] =>
+  p.dependencies.flatMap((d) => d.modules.filter((m) => !importedParent(d, m)))
+
 /** Top-level modules, notes and imported modules lying fully inside a frame, at their saved size. */
 export function frameContents(
   p: Project,
@@ -349,7 +375,7 @@ export function frameContents(
     ...p.notes
       .filter((n) => n.id !== frameId && within(n.layout))
       .map((n) => ({ id: n.id, kind: 'note' as const, name: n.text.split('\n')[0] || `(${n.kind})` })),
-    ...allImported(p)
+    ...importedRoots(p)
       .filter((m) => within({ ...m.position, ...importedSize(m, p.orientation) }))
       .map((m) => ({ id: m.id, kind: 'imported' as const, name: m.path }))
   ]
@@ -694,7 +720,7 @@ export function boundsOf(rects: Rect[]): Rect {
 /** Absolute rect of a module. */
 export function absoluteRect(p: Project, id: Id): Rect {
   const imported = findImported(p, id)
-  if (imported) return { ...imported.module.position, ...importedSize(imported.module, p.orientation) }
+  if (imported) return { ...absolutePosition(p, id), ...importedSize(imported.module, p.orientation) }
   const m = p.modules.find((m) => m.id === id)
   const { x, y } = absolutePosition(p, id)
   return { x, y, width: m?.layout.width ?? 0, height: m?.layout.height ?? 0 }

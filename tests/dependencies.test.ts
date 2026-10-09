@@ -18,9 +18,9 @@ import {
   type DependencyResult
 } from '@/model/dependencies'
 import { diffRenames, resolveRelative } from '@/model/sync'
-import { defaultConstraints, importedSize, modulePath } from '@/model/project'
+import { absoluteRect, defaultConstraints, importedSize, modulePath } from '@/model/project'
 import { validate } from '@/model/validate'
-import type { Project } from '@/model/types'
+import type { ImportedModule, Module, Project } from '@/model/types'
 
 const jsonSchema = JSON.parse(readFileSync('schema/scaffold.schema.json', 'utf8'))
 const load = (yaml: string): Project => fromFile(YAML.parse(yaml))
@@ -94,7 +94,25 @@ function withCommon(p: Project = station()): { p: Project; r: DependencyResult }
 
 const robot = read('robot.scaffold.yaml')
 
-/** Station linking its Monitor to Robot's Core.Sensor, placed from robot.scaffold.yaml. */
+/** Robot's Core.Sensor placed in `p` (with Core). */
+const sensorOf = (p: Project): ImportedModule =>
+  p.dependencies[0]!.modules.find((m) => m.path === 'Core.Sensor')!
+
+/** Paths of a module of `p` and of its content, parents first. */
+function treePaths(p: Project, path: string): string[] {
+  const out: string[] = []
+  const visit = (id: string): void => {
+    out.push(modulePath(p, id))
+    for (const c of p.modules.filter((m) => m.parentId === id)) visit(c.id)
+  }
+  visit(byPath(p, path).id)
+  return out
+}
+
+/**
+ * Station linking its Monitor to Robot's Core.Sensor, placed from robot.scaffold.yaml: placing it
+ * places Core (`placedId`) with its content.
+ */
 function monitor(): { p: Project; placedId: string; r: DependencyResult } {
   let placedId = ''
   let r!: DependencyResult
@@ -117,7 +135,7 @@ function monitor(): { p: Project; placedId: string; r: DependencyResult } {
       interfaceId: telemetry.id,
       description: ''
     })
-    const sensor = d.dependencies.find((x) => x.name === 'Robot')!.modules[0]!
+    const sensor = sensorOf(d)
     d.links.push({
       id: 'l',
       name: 'sensor_to_monitor',
@@ -407,15 +425,25 @@ describe('placed modules', () => {
       ['Robot', 'robot.scaffold.yaml', ['Common'], false],
       ['Common', 'common.scaffold.yaml', [], true]
     ])
+    // Its top-level module, with its content where its project puts it.
+    const core = byPath(robot, 'Core')
+    expect(p.dependencies[0]!.modules.map((m) => m.path)).toEqual(treePaths(robot, 'Core'))
     expect(p.dependencies[0]!.modules[0]).toMatchObject({
       id: placedId,
-      path: 'Core.Sensor',
+      path: 'Core',
       position: { x: 500, y: 40 },
+      size: { width: core.layout.width, height: core.layout.height }
+    })
+    const sensor = byPath(robot, 'Core.Sensor').layout
+    expect(sensorOf(p)).toMatchObject({
+      position: { x: sensor.x, y: sensor.y },
+      size: { width: sensor.width, height: sensor.height },
       ports: [{ name: 'out', role: 'out', interface: 'Telemetry' }]
     })
+    expect(absoluteRect(p, sensorOf(p).id)).toMatchObject({ x: 500 + sensor.x, y: 40 + sensor.y })
     expect(p.interfaces.every((i) => dependencyOf(p, i.id)?.name === 'Common')).toBe(true)
     expect(p.types.find((t) => t.name === 'Primitive')!.dependency).toBe(p.dependencies[0]!.id)
-    expect(modulePath(p, placedId)).toBe('Robot/Core.Sensor')
+    expect(modulePath(p, sensorOf(p).id)).toBe('Robot/Core.Sensor')
     expect(errors(p)).toEqual([])
   })
 
@@ -426,13 +454,16 @@ describe('placed modules', () => {
     const q = produce(p, (d) => {
       const place = (path: string) =>
         placeModule(d, robot, 'robot.scaffold.yaml', byPath(robot, path).id, { x: 0, y: 0 }, null).id
-      again = place('Core.Sensor')
+      again = place('Core.Controller')
       other = place('Operator')
     })
     expect(again).toBe(placedId)
     expect(other).not.toBe(placedId)
     expect(q.dependencies.map((x) => x.name)).toEqual(['Robot', 'Common'])
-    expect(q.dependencies[0]!.modules.map((m) => m.path)).toEqual(['Core.Sensor', 'Operator'])
+    expect(q.dependencies[0]!.modules.map((m) => m.path)).toEqual([
+      ...treePaths(robot, 'Core'),
+      ...treePaths(robot, 'Operator')
+    ])
   })
 
   it('round-trips links to placed modules, matching the JSON Schema', () => {
@@ -441,11 +472,19 @@ describe('placed modules', () => {
     expect(file.dependencies?.[0]).toMatchObject({
       name: 'Robot',
       file: 'robot.scaffold.yaml',
-      uses: ['Common'],
-      modules: [{ module: 'Core.Sensor', ports: [{ name: 'out', role: 'out', interface: 'Telemetry' }] }]
+      uses: ['Common']
+    })
+    expect(file.dependencies?.[0]?.modules?.map((m) => m.module)).toEqual(treePaths(robot, 'Core'))
+    expect(file.dependencies?.[0]?.modules?.find((m) => m.module === 'Core.Sensor')).toMatchObject({
+      ports: [{ name: 'out', role: 'out', interface: 'Telemetry' }]
     })
     expect(file.links[0]!.from).toEqual({ project: 'Robot', module: 'Core.Sensor', port: 'out' })
-    expect(file.editor?.dependencies).toEqual({ Robot: { 'Core.Sensor': { x: 500, y: 40 } } })
+    // Content where it is in its parent.
+    const sensor = byPath(robot, 'Core.Sensor').layout
+    expect(file.editor?.dependencies?.Robot).toMatchObject({
+      Core: { x: 500, y: 40 },
+      'Core.Sensor': { x: sensor.x, y: sensor.y, width: sensor.width, height: sensor.height }
+    })
     expect(toFile(fromFile(file), { editor: true })).toEqual(file)
     const check = new Ajv2020({ allErrors: true }).compile(jsonSchema)
     expect(check(file), JSON.stringify(check.errors)).toBe(true)
@@ -457,13 +496,11 @@ describe('placed modules', () => {
 
   it('round-trips moved names of placed ports', () => {
     const p = produce(monitor().p, (d) => {
-      d.dependencies[0]!.modules[0]!.ports[0]!.label = 'bottom'
+      sensorOf(d).ports[0]!.label = 'bottom'
     })
     const file = toFile(p, { editor: true })
-    expect(file.editor?.dependencies).toEqual({
-      Robot: { 'Core.Sensor': { x: 500, y: 40, labels: { out: 'bottom' } } }
-    })
-    expect(fromFile(file).dependencies[0]!.modules[0]!.ports[0]!.label).toBe('bottom')
+    expect(file.editor?.dependencies?.Robot?.['Core.Sensor']).toMatchObject({ labels: { out: 'bottom' } })
+    expect(sensorOf(fromFile(file)).ports[0]!.label).toBe('bottom')
   })
 
   it('round-trips the size of resized placed modules, kept at least their minimum', () => {
@@ -471,9 +508,7 @@ describe('placed modules', () => {
       d.dependencies[0]!.modules[0]!.size = { width: 300, height: 10 }
     })
     const file = toFile(p, { editor: true })
-    expect(file.editor?.dependencies).toEqual({
-      Robot: { 'Core.Sensor': { x: 500, y: 40, width: 300, height: 10 } }
-    })
+    expect(file.editor?.dependencies?.Robot?.Core).toEqual({ x: 500, y: 40, width: 300, height: 10 })
     const q = fromFile(file)
     expect(q.dependencies[0]!.modules[0]!.size).toEqual({ width: 300, height: 10 })
     const size = importedSize(q.dependencies[0]!.modules[0]!, q.orientation)
@@ -492,13 +527,14 @@ describe('placed modules', () => {
   it('flags interfaces not defined here and links between two placed modules', () => {
     const { p, placedId } = monitor()
     const q = produce(p, (d) => {
-      d.dependencies[0]!.modules[0]!.ports[0]!.interface = 'Stream'
+      sensorOf(d).ports[0]!.interface = 'Stream'
     })
     expect(errors(q)).toEqual([
       "Link 'sensor_to_monitor': Robot/Core.Sensor:out uses interface 'Stream', not defined in this project"
     ])
     const r = produce(p, (d) => {
-      d.links[0]!.to = { moduleId: placedId, portId: d.dependencies[0]!.modules[0]!.ports[0]!.id }
+      const core = d.dependencies[0]!.modules.find((m) => m.id === placedId)!
+      d.links[0]!.to = { moduleId: placedId, portId: core.ports[0]!.id }
     })
     expect(errors(r)).toContain(
       "Link 'sensor_to_monitor' joins two imported modules: one end must be in this project"
@@ -508,7 +544,7 @@ describe('placed modules', () => {
   it('refreshes ports by name, dropping links to removed ports', () => {
     const { p } = monitor()
     const robotId = p.dependencies[0]!.id
-    const portId = p.dependencies[0]!.modules[0]!.ports[0]!.id
+    const portId = sensorOf(p).ports[0]!.id
     const refresh = (source: Project): { q: Project; r: DependencyResult } => {
       let r!: DependencyResult
       const q = produce(p, (d) => void (r = refreshDependencies(d, new Map([[robotId, source]]), null)))
@@ -525,17 +561,30 @@ describe('placed modules', () => {
     })
     const { q, r } = refresh(added)
     expect(r).toEqual({ conflicts: [], detached: [], renamed: [], missing: [] })
-    expect(q.dependencies[0]!.modules[0]!.ports.map((pt) => pt.name)).toEqual(['out', 'status'])
-    expect(q.dependencies[0]!.modules[0]!.ports[0]!.id).toBe(portId)
+    expect(sensorOf(q).ports.map((pt) => pt.name)).toEqual(['out', 'status'])
+    expect(sensorOf(q).ports[0]!.id).toBe(portId)
     expect(q.links).toHaveLength(1)
 
     const gone = produce(robot, (d) => void (byPath(d, 'Core.Sensor').ports[0]!.name = 'data'))
     expect(refresh(gone).q.links).toEqual([])
 
+    // Content gone from its parent goes, with its links.
     const deleted = produce(robot, (d) => void (d.modules = d.modules.filter((m) => m.name !== 'Sensor')))
     const s = refresh(deleted)
     expect(s.r.missing).toEqual(["Robot: module 'Core.Sensor' no longer exists in robot.scaffold.yaml"])
-    expect(s.q.links).toHaveLength(1)
+    expect(s.q.dependencies[0]!.modules.map((m) => m.path)).toEqual(treePaths(deleted, 'Core'))
+    expect(s.q.links).toEqual([])
+
+    // Content added comes in.
+    const more = produce(robot, (d) => {
+      d.modules.push({
+        ...(JSON.parse(JSON.stringify(byPath(robot, 'Core.Sensor'))) as Module),
+        id: 'lidar',
+        name: 'Lidar',
+        ports: []
+      })
+    })
+    expect(refresh(more).q.dependencies[0]!.modules.map((m) => m.path)).toEqual(treePaths(more, 'Core'))
   })
 
   it('detects modules renamed or moved while this project was closed', () => {
@@ -545,13 +594,17 @@ describe('placed modules', () => {
     const renamed = produce(robot, (d) => void (byPath(d, 'Core.Sensor').name = 'Lidar'))
     const q = produce(p, (d) => void (r = refreshDependencies(d, new Map([[robotId, renamed]]), null)))
     expect(r.renamed).toEqual(['module Core.Sensor → Core.Lidar'])
-    expect(q.dependencies[0]!.modules[0]!.path).toBe('Core.Lidar')
+    expect(q.dependencies[0]!.modules.map((m) => m.path)).toContain('Core.Lidar')
     expect(q.links).toHaveLength(1)
 
+    // Moved out of its parent: placed on its own, where it was drawn, its links kept.
     const moved = produce(robot, (d) => void (byPath(d, 'Core.Sensor').parentId = null))
+    const before = absoluteRect(p, sensorOf(p).id)
     const s = produce(p, (d) => void (r = refreshDependencies(d, new Map([[robotId, moved]]), null)))
     expect(r.renamed).toEqual(['module Core.Sensor → Sensor'])
-    expect(s.dependencies[0]!.modules[0]!.path).toBe('Sensor')
+    const sensor = s.dependencies[0]!.modules.find((m) => m.path === 'Sensor')!
+    expect(sensor.position).toEqual({ x: before.x, y: before.y })
+    expect(s.links[0]!.from.moduleId).toBe(sensor.id)
   })
 
   it('follows an interface renamed in the project it comes from', () => {
@@ -565,7 +618,7 @@ describe('placed modules', () => {
       applyDependencyRenames(d, 'common.scaffold.yaml', diffRenames(commonFile, renamed)!)
     )
     expect(q.interfaces.map((i) => i.name)).toContain('Stream')
-    expect(q.dependencies[0]!.modules[0]!.ports[0]!.interface).toBe('Stream')
+    expect(sensorOf(q).ports[0]!.interface).toBe('Stream')
     expect(errors(q)).toEqual([])
   })
 
@@ -573,7 +626,9 @@ describe('placed modules', () => {
     const { p, placedId } = monitor()
     let blockers: string[] = []
     produce(p, (d) => void (blockers = removeDependency(d, d.dependencies[0]!.id)))
-    expect(blockers).toEqual(['module Core.Sensor, placed on the canvas'])
+    expect(blockers).toEqual(['module Core, placed on the canvas'])
+    // Content goes with its top-level module only.
+    expect(produce(p, (d) => removePlaced(d, new Set([sensorOf(d).id])))).toBe(p)
     const q = produce(p, (d) => removePlaced(d, new Set([placedId])))
     expect(q.dependencies.map((x) => [x.name, x.modules.length])).toEqual([
       ['Robot', 0],

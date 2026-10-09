@@ -275,7 +275,9 @@ const Dependency = z
     modules: z
       .array(z.object({ module: QualifiedName, ports: z.array(Port) }))
       .optional()
-      .describe('its modules placed on this canvas so that links reach them, with their ports as last read')
+      .describe(
+        'its modules placed on this canvas so that links reach them, with their ports as last read: top-level modules, each with all the modules inside it'
+      )
   })
   .describe(
     "Another project this one uses: its types and interfaces share the namespace of the project's own ones, which reference them by name, and links may reach its modules"
@@ -443,7 +445,7 @@ const Editor = z
       )
       .optional()
       .describe(
-        'canvas position and size of the placed modules of dependencies, by dependency and module path'
+        'canvas position and size of the placed modules of dependencies, by dependency and module path (the modules inside a placed one: relative to their parent, as in their project)'
       ),
     orientation: z
       .enum(['horizontal', 'vertical'])

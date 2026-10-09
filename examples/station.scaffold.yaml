@@ -164,8 +164,57 @@ dependencies:
         name: Primitive
     interfaces: []
     modules:
+      - module: Core
+        ports:
+          - name: control
+            role: in
+            interface: Control
       - module: Core.Sensor
         ports:
           - name: out
             role: out
             interface: Telemetry
+      - module: Core.Controller
+        ports:
+          - name: telemetry
+            role: in
+            interface: Telemetry
+      - module: Core.Logger
+        ports:
+          - name: in
+            role: in
+            interface: Telemetry
+editor:
+  layout:
+    Monitor:
+      x: 20
+      y: 20
+      width: 200
+      height: 72
+    Operator:
+      x: 300
+      y: 20
+      width: 200
+      height: 72
+  dependencies:
+    Robot:
+      Core:
+        x: 660
+        y: 20
+        width: 700
+        height: 420
+      Core.Sensor:
+        x: 100
+        y: 120
+        width: 260
+        height: 280
+      Core.Controller:
+        x: 460
+        y: 40
+        width: 220
+        height: 240
+      Core.Logger:
+        x: 460
+        y: 320
+        width: 200
+        height: 80

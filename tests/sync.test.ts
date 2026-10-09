@@ -17,7 +17,8 @@ const own = produce(robot, (d) => {
   d.dependencies = []
 })
 
-/** A project depending on Robot, with its Core.Sensor placed. */
+/** A project depending on Robot, with its Core.Sensor placed (with Core). */
+const sensorAt = (p: Project, path: string) => p.dependencies[0]!.modules.find((m) => m.path === path)!
 const station = produce(emptyProject(), (d) => {
   placeModule(d, robot, 'robot.scaffold.yaml', byPath(robot, 'Core.Sensor').id, { x: 0, y: 0 }, null)
 })
@@ -61,13 +62,13 @@ describe('sync', () => {
     const q = produce(station, (d) =>
       applyDependencyRenames(d, 'robot.scaffold.yaml', diffRenames(robot, next)!)
     )
-    const m = q.dependencies[0]!.modules[0]!
-    expect(m.path).toBe('Base.Sensor')
+    expect(q.dependencies[0]!.modules.map((m) => m.path)).toContain('Base')
+    const m = sensorAt(q, 'Base.Sensor')
     expect(m.ports[0]).toMatchObject({ name: 'data', interface: 'Telemetry' })
     expect(q.types.find((t) => t.dependency === q.dependencies[0]!.id)!.name).toBe('Opaque')
     // Another file: untouched.
     const other = produce(station, (d) => applyDependencyRenames(d, 'other.yaml', diffRenames(robot, next)!))
-    expect(other.dependencies[0]!.modules[0]!.path).toBe('Core.Sensor')
+    expect(sensorAt(other, 'Core.Sensor')).toBeDefined()
   })
 
   it('keeps placed ports on a renamed interface', () => {
@@ -75,7 +76,7 @@ describe('sync', () => {
       d.interfaces.find((i) => i.name === 'Telemetry')!.name = 'Stream'
       followInterfaceRenames(station, d)
     })
-    expect(q.dependencies[0]!.modules[0]!.ports[0]!.interface).toBe('Stream')
+    expect(sensorAt(q, 'Core.Sensor').ports[0]!.interface).toBe('Stream')
   })
 })
 

@@ -331,7 +331,7 @@
                 }
               },
               "modules": {
-                "description": "its modules placed on this canvas so that links reach them, with their ports as last read",
+                "description": "its modules placed on this canvas so that links reach them, with their ports as last read: top-level modules, each with all the modules inside it",
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -753,7 +753,7 @@
               }
             },
             "dependencies": {
-              "description": "canvas position and size of the placed modules of dependencies, by dependency and module path",
+              "description": "canvas position and size of the placed modules of dependencies, by dependency and module path (the modules inside a placed one: relative to their parent, as in their project)",
               "type": "object",
               "propertyNames": {
                 "type": "string",
