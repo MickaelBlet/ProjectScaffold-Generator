@@ -5,7 +5,6 @@ use std::sync::LazyLock;
 
 use minijinja::{AutoEscape, Environment, UndefinedBehavior, Value};
 use regex::Regex;
-use serde_json::Value as Json;
 
 use super::filters;
 use super::sections::{DROP, place_markers, user_filter};
@@ -58,10 +57,7 @@ pub fn describe(e: &minijinja::Error) -> String {
 
 /// Jinja environment of a template set: the context as globals (imported macros see them), and
 /// only language-neutral additions: the `user` filter and the case / comment filters.
-pub fn create_env(
-    set: &TemplateSet,
-    globals: &serde_json::Map<String, Json>,
-) -> Result<Environment<'static>, String> {
+pub fn create_env(set: &TemplateSet, globals: &[(String, Value)]) -> Result<Environment<'static>, String> {
     let mut env = Environment::new();
     let trim = set.manifest.trim_tag_lines;
     env.set_syntax(
@@ -86,7 +82,7 @@ pub fn create_env(
     filters::register(&mut env);
     env.add_filter("user", user_filter);
     for (k, v) in globals {
-        env.add_global(k.clone(), Value::from(minijinja::value::Serde(v)));
+        env.add_global(k.clone(), v.clone());
     }
     for (name, text) in &set.files {
         env.add_template_owned(name.clone(), text.clone()).map_err(|e| describe(&e))?;
@@ -112,78 +108,93 @@ fn unknown_method(
     minijinja_contrib::pycompat::unknown_method_callback(state, value, method, args)
 }
 
+/// Items of the list at `k` of a context value.
+fn items(v: &Value, k: &str) -> Vec<Value> {
+    v.get_attr(k).ok().and_then(|l| l.try_iter().ok().map(|i| i.collect())).unwrap_or_default()
+}
+
+/// Text at `k` of a context value ("" when absent).
+fn text_at(v: &Value, k: &str) -> String {
+    v.get_attr(k).ok().and_then(|x| x.as_str().map(String::from)).unwrap_or_default()
+}
+
 /// Names of the project that are reserved words of the target language.
-pub fn reserved_names(ctx: &Json, reserved: &[String]) -> Vec<String> {
+pub fn reserved_names(ctx: &Value, reserved: &[String]) -> Vec<String> {
     let words: HashSet<&str> = reserved.iter().map(String::as_str).collect();
     let mut warnings = Vec::new();
-    let mut check = |n: &Json, where_: String| {
-        if let Some(n) = n.as_str()
-            && words.contains(n)
-        {
+    let mut check = |n: &str, where_: String| {
+        if words.contains(n) {
             warnings.push(format!("{where_}: '{n}' is a reserved word, renamed in the generated code"));
         }
     };
-    let list = |v: &Json, k: &str| v.get(k).and_then(Json::as_array).cloned().unwrap_or_default();
-    let s = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).unwrap_or("").to_string();
-    for t in list(ctx, "types") {
-        let tn = s(&t, "name");
-        check(&t["name"], tn.clone());
-        let kind = s(&t, "kind");
-        let members = match kind.as_str() {
+    for t in items(ctx, "types") {
+        let tn = text_at(&t, "name");
+        check(&tn, tn.clone());
+        let members = match text_at(&t, "kind").as_str() {
             "struct" | "exception" => "fields",
             "enum" => "values",
             "bitmask" => "flags",
             _ => "",
         };
         if !members.is_empty() {
-            for f in list(&t, members) {
-                check(&f["name"], format!("{tn}.{}", s(&f, "name")));
+            for f in items(&t, members) {
+                let n = text_at(&f, "name");
+                check(&n, format!("{tn}.{n}"));
             }
         }
     }
-    for c in list(ctx, "constants") {
-        check(&c["name"], s(&c, "name"));
+    for c in items(ctx, "constants") {
+        let n = text_at(&c, "name");
+        check(&n, n.clone());
     }
-    for i in list(ctx, "interfaces") {
-        let iname = s(&i, "name");
-        check(&i["name"], iname.clone());
-        for m in list(&i, "messages") {
-            let mn = s(&m, "name");
-            check(&m["name"], format!("{iname}.{mn}"));
-            for p in list(&m, "params") {
-                check(&p["name"], format!("{iname}.{mn}({})", s(&p, "name")));
+    for i in items(ctx, "interfaces") {
+        let iname = text_at(&i, "name");
+        check(&iname, iname.clone());
+        for m in items(&i, "messages") {
+            let mn = text_at(&m, "name");
+            check(&mn, format!("{iname}.{mn}"));
+            for p in items(&m, "params") {
+                let n = text_at(&p, "name");
+                check(&n, format!("{iname}.{mn}({n})"));
             }
         }
     }
-    for m in list(ctx, "modules") {
-        let path = s(&m, "path");
-        check(&m["name"], path.clone());
-        for a in list(&m, "attributes") {
-            check(&a["name"], format!("{path}.{}", s(&a, "name")));
+    for m in items(ctx, "modules") {
+        let path = text_at(&m, "path");
+        check(&text_at(&m, "name"), path.clone());
+        for a in items(&m, "attributes") {
+            let n = text_at(&a, "name");
+            check(&n, format!("{path}.{n}"));
         }
-        for x in list(&m, "methods") {
-            let xn = s(&x, "name");
-            check(&x["name"], format!("{path}.{xn}"));
-            for p in list(&x, "params") {
-                check(&p["name"], format!("{path}.{xn}({})", s(&p, "name")));
+        for x in items(&m, "methods") {
+            let xn = text_at(&x, "name");
+            check(&xn, format!("{path}.{xn}"));
+            for p in items(&x, "params") {
+                let n = text_at(&p, "name");
+                check(&n, format!("{path}.{xn}({n})"));
             }
         }
-        for p in list(&m, "ports") {
-            check(&p["name"], format!("{path}:{}", s(&p, "name")));
+        for p in items(&m, "ports") {
+            let n = text_at(&p, "name");
+            check(&n, format!("{path}:{n}"));
         }
     }
     warnings
 }
 
 /// Renders a template set over a generation context (`warnings` holds the context's own).
-pub fn generate(ctx: &Json, set: &TemplateSet) -> Result<Generation, String> {
+pub fn generate(ctx: &Value, set: &TemplateSet) -> Result<Generation, String> {
     let manifest = &set.manifest;
-    let mut globals = ctx.as_object().cloned().ok_or("the generation context is not an object")?;
-    globals.insert("files".into(), Json::Array(vec![]));
-    globals.insert(
+    let keys: Vec<Value> = ctx.try_iter().map_err(|e| describe(&e))?.collect();
+    let mut globals: Vec<(String, Value)> =
+        keys.iter().filter_map(|k| Some((k.as_str()?.to_string(), ctx.get_item(k).ok()?))).collect();
+    globals.push(("files".into(), Value::from(Vec::<Value>::new())));
+    globals.push((
         "generator".into(),
-        serde_json::json!({ "name": manifest.name, "reserved": manifest.reserved }),
-    );
+        Value::from(minijinja::value::Serde(
+            serde_json::json!({ "name": manifest.name, "reserved": manifest.reserved }),
+        )),
+    ));
     let mut env = create_env(set, &globals)?;
     let mut files: Vec<GeneratedFile> = Vec::new();
     let mut paths: HashSet<String> = HashSet::new();
@@ -258,11 +269,8 @@ pub fn generate(ctx: &Json, set: &TemplateSet) -> Result<Generation, String> {
             }
         }
     }
-    let mut warnings: Vec<String> = ctx
-        .get("warnings")
-        .and_then(Json::as_array)
-        .map(|w| w.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-        .unwrap_or_default();
+    let mut warnings: Vec<String> =
+        items(ctx, "warnings").iter().filter_map(|x| x.as_str().map(String::from)).collect();
     warnings.extend(reserved_names(ctx, &manifest.reserved));
     Ok(Generation { files, warnings })
 }

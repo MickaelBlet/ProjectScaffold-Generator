@@ -122,6 +122,15 @@ pub fn register(env: &mut minijinja::Environment<'_>) {
             None => s.replace(&from, &to),
         }
     });
+    // Liquid's escape: & < > " ' only (minijinja's escapes / too).
+    env.add_filter("escape", |v: Value| {
+        text(&v)
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&#34;")
+            .replace('\'', "&#39;")
+    });
     // JSON.stringify's output: no escaping of `<`, `>`, `&`, `'` (unlike tojson).
     env.add_filter("json", |v: Value| serde_json::to_string(&v).unwrap_or_default());
 }

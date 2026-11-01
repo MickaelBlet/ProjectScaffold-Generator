@@ -75,6 +75,7 @@ fn slashes() -> String {
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub name: String,
+    #[allow(dead_code)] // read by the editor
     pub description: Option<String>,
     /// Reserved words of the target language: names of the project among them are warned about.
     #[serde(default, deserialize_with = "words")]

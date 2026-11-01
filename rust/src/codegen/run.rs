@@ -8,7 +8,6 @@ use std::sync::LazyLock;
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::Value as Json;
 
 use super::generate::generate;
 use super::sections::{
@@ -23,8 +22,6 @@ pub const ORPHANS: &str = ".orphans";
 
 /// Directory generated files are written to; paths are relative and `/`-separated.
 pub trait OutputDir {
-    /// Shown in reports.
-    fn label(&self) -> String;
     /// Content of a file; None when it does not exist.
     fn read(&self, path: &str) -> Result<Option<String>, String>;
     /// Writes a file, creating its directories.
@@ -48,9 +45,6 @@ pub fn read_or_none(path: &std::path::Path) -> Result<Option<String>, String> {
 }
 
 impl OutputDir for FsDir {
-    fn label(&self) -> String {
-        self.label.clone()
-    }
     fn read(&self, path: &str) -> Result<Option<String>, String> {
         read_or_none(&self.root.join(path))
     }
@@ -140,7 +134,7 @@ fn edited(sections: Vec<Section>, entry: Option<&RecordEntry>) -> Vec<Section> {
 }
 
 pub fn generate_into(
-    ctx: &Json,
+    ctx: &minijinja::Value,
     set: &TemplateSet,
     dir: &dyn OutputDir,
     options: &RunOptions,
