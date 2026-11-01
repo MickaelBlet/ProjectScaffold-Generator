@@ -1,0 +1,140 @@
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_args.j2' import args as _args %}
+{% from '_endpoint.j2' import endpoint as _endpoint %}
+{% from '_id.j2' import id as _id %}
+{% from '_includes.j2' import includes as _includes %}
+{% from '_init.j2' import init as _init %}
+{% from '_member.j2' import member as _member %}
+{% from '_members.j2' import members as _members %}
+{% from '_name.j2' import name as _name %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_ns.j2' import ns as _ns %}
+{% from '_params.j2' import params as _params %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_type.j2' import type as _type %}
+{% from '_value.j2' import value as _value %}
+{% include '_banner.j2' %}
+#pragma once
+{% set m = item -%}
+{%- set root = project.ident|snake -%}
+{%- set class -%}
+  {{- _name(e=m) -}}
+{%- endset -%}
+{%- set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length -%}
+{#- Names given by the model: attribute accessors do not take them. -#}
+{%- set methodNames = m.methods|map(attribute='name') -%}
+{%- set portNames = m.ports|map(attribute='name') -%}
+{%- set names = (methodNames + portNames) -%}
+{%- set polymorphic = false -%}
+{%- if m.abstract or (m.isBase or (virtuals > 0 or m.bases|length > 0)) -%}
+  {%- set polymorphic = true -%}
+{%- endif %}
+
+
+{{ _includes(e=m) }}
+{%- filter user('includes') +%}
+{% endfilter +%}
+
+{% set ns_ %}{{ _ns(e=m) }}{% endset +%}
+{{ _namespace_open(ns_=ns_) }}{##}
+
+{{ m.description|doc_comment }}
+class {{ class }}{% if m.bases|length > 0 %} : {% for b in m.bases %}public {{ _qualified(e=b) }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %} {
+public:
+{% if m.kind == 'interface' %}
+    {{ class }}(){{ _init(m=m) }} {}
+    virtual ~{{ class }}() {}
+{% else %}
+    {{ class }}();
+    {%+ if polymorphic %}virtual {% endif %}~{{ class }}();
+{% endif %}
+{% for p in m.ports %}
+{% if p.interface %}
+
+    /// {{ p.role }} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates|length > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif +%}
+{{ p.description|doc_comment('    /// ') }}
+{% if p.role == 'out' %}
+    ::{{ root }}::OutPort< {{ _qualified(e=p.interface) }}>& {{ _id(name=p.name) }}() { return {{ _member(name=p.name) }}; }
+{% elif p.delegates|length > 0 %}
+    {{ _qualified(e=p.interface) }}& {{ _id(name=p.name) }}() { return {{ _endpoint(x=p.delegates[0]) }}; }
+{% else %}
+    {{ _qualified(e=p.interface) }}& {{ _id(name=p.name) }}() { return {{ p.name }}In_; }
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if m.instances|length > 0 %}
+
+{% for c in m.instances %}
+    {{ _qualified(e=c) }}& {{ _accessor(name=c.name) }}() { return {% if c.abstract %}*{% endif %}{{ _accessor(name=c.name) }}_; }
+{% endfor %}
+{% endif %}
+{{ _members(m=m, names=names, access='public') }}{##}
+
+    {%+ filter user('public') +%}
+    {%+ endfilter +%}
+
+protected:
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
+    // Calls received by in port {{ p.name }}.
+{% for msg in p.interface.messages %}
+    {{ _type(t=msg.returns) }} on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _params(params=msg.params) }});
+{% endfor %}
+{% endif %}
+{% endfor %}
+{{ _members(m=m, names=names, access='protected') }}{##}
+    {%+ filter user('protected') +%}
+    {%+ endfilter +%}
+
+private:
+    // Not copyable.
+    {{ class }}(const {{ class }}&);
+    {{ class }}& operator=(const {{ class }}&);
+
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
+{% set adapter = p.name|ucfirst ~ 'In' %}
+    class {{ adapter }} : public {{ _qualified(e=p.interface) }} {
+    public:
+        explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
+{% for msg in p.interface.messages %}
+        {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }})
+        {
+            return owner_.on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _args(params=msg.params) }});
+        }
+{% endfor %}
+
+    private:
+        {{ class }}& owner_;
+    };
+    {{ adapter }} {{ p.name }}In_;
+{% elif p.role == 'out' and p.interface %}
+    ::{{ root }}::OutPort< {{ _qualified(e=p.interface) }}> {{ _member(name=p.name) }};
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    {{ _qualified(e=c) }}* {{ _accessor(name=c.name) }}_; // abstract: created in the constructor, deleted by the destructor
+{% else %}
+    {{ _qualified(e=c) }} {{ _accessor(name=c.name) }}_;
+{% endif %}
+{% endfor %}
+{% for a in m.attributes %}
+{% if a.static %}
+    /// Static attribute: a function-local static (no inline variables before C++17).
+    static {% if a.const %}const {% endif %}{{ _type(t=a.type) }}& {{ _member(name=a.name) }}()
+    {
+        static {% if a.const %}const {% endif %}{{ _type(t=a.type) }} value = {% if a.hasDefault %}{{ _value(v=a.default, t=a.type) }}{% else %}{{ _type(t=a.type) }}(){% endif %};
+        return value;
+    }
+{% else %}
+    {%+ if a.const %}const {% endif %}{{ _type(t=a.type) }} {{ _member(name=a.name) }}; // initialized by the constructor
+{% endif %}
+{% endfor %}
+{{ _members(m=m, names=names, access='private') }}{##}
+    {%+ filter user('private') +%}
+    {%+ endfilter +%}
+};
+
+{{ _namespace_close(ns_=ns_) -}}

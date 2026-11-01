@@ -1,0 +1,13 @@
+{% macro endpoint(x=none) %}
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_id.j2' import id as _id %}
+{#
+  Expression reaching a port from the scope wiring it: `core().sensor().out()`. Parameter: x.
+#}
+{% for child in x.via -%}
+  {{- _accessor(name=child) -}}
+  {{- '().' -}}
+{%- endfor -%}
+{{- _id(name=x.port) -}}
+{{- '()' -}}
+{%+ endmacro %}

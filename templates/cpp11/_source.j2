@@ -1,0 +1,12 @@
+{% macro source(e=none) %}
+{#
+  Source file of a module or the system, relative to `src/`: `core/Sensor.cpp`. Parameter: e.
+#}
+{% if e.entity == 'module' -%}
+  {%- for parent in e.namespace -%}
+    {%- set part = parent|snake -%}
+    {{- part ~ '/' -}}
+  {%- endfor -%}
+{%- endif -%}
+{{- e.name ~ '.cpp' -}}
+{%+ endmacro %}

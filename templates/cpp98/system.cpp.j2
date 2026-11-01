@@ -1,0 +1,108 @@
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_address.j2' import address as _address %}
+{% from '_address_variable.j2' import address_variable as _address_variable %}
+{% from '_endpoint.j2' import endpoint as _endpoint %}
+{% from '_generated_transport.j2' import generated_transport as _generated_transport %}
+{% from '_header.j2' import header as _header %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_ns.j2' import ns as _ns %}
+{% from '_settings.j2' import settings as _settings %}
+{% set ns = namespace() %}
+{% include '_banner.j2' %}
+#include <{{ _header(e=system) }}>
+{% filter user('includes') +%}
+{% endfilter +%}
+
+{% set ns_ %}{{ _ns(e=system) }}{% endset +%}
+{{ _namespace_open(ns_=ns_) }}{##}
+
+{% set ns.inits = '' -%}
+{%- for c in system.instances -%}
+  {%- if c.abstract -%}
+    {%- set accessor -%}
+      {{- _accessor(name=c.name) -}}
+    {%- endset -%}
+    {%- set ns.inits = ns.inits ~ '|' ~ accessor ~ '_(NULL)' -%}
+  {%- endif -%}
+{%- endfor %}
+{{ system.name }}::{{ system.name }}(){% if ns.inits != '' %} : {{ ns.inits|replace('|', '', 1)|replace('|', ', ') }}{% endif +%}
+{
+{% for c in system.instances %}
+{% if c.abstract %}
+    {%+ filter user('create.' ~ c.name) +%}
+    // {{ _accessor(name=c.name) }}_ = new ConcreteClass;
+    {%+ endfilter +%}
+{% endif %}
+{% endfor %}
+{% for c in system.connections %}
+    {% with connection = c %}{% include '_connection.j2' %}{% endwith %}
+{% endfor %}
+{% for r in system.proxies %}
+{% set ns.transport = r.link.constraints.remote.transport|default('an unset transport', true) %}
+    // {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ ns.transport }}
+{{ r.link.description|doc_comment('    // ') }}
+    {{ _endpoint(x=r.local) }}.connect({{ r.link.name|camel }}Proxy_);
+{% set __capture %}
+{{ _generated_transport(transport=r.link.constraints.remote.transport) }}
+{%- endset %}{% set ns.generated = __capture %}
+{% if ns.generated == 'true' %}
+    {{ r.link.name|camel }}Proxy_.open(remote::connect("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='client') }}", "{{ _address(r=r, side='client') }}"){% if r.settings.path is not none %}, "{{ r.settings.path }}"{% endif %}),
+        {{ r.link.constraints.ack.required|lower }}, {{ r.link.constraints.ack.timeoutMs|default(5000, true) }});
+{% endif %}
+    {%+ filter user('link.' ~ r.link.name) +%}
+{% if not (ns.generated == 'true') %}
+    // Open {{ r.link.name|camel }}Proxy_ with a remote::Channel to binary {{ r.peer.binary }} over {{ ns.transport }}.
+{% set __capture %}{{ _settings(s=r.link.constraints.remote.settings) }}{% endset %}{% set ns.settings = __capture +%}
+{% if ns.settings != '' %}
+    // Settings: {{ ns.settings }}.
+{% endif %}
+{% endif %}
+    {%+ endfilter +%}
+{% endfor %}
+{% for r in system.stubs %}
+{% set ns.transport = r.link.constraints.remote.transport|default('an unset transport', true) %}
+    // {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ ns.transport }}
+{{ r.link.description|doc_comment('    // ') }}
+    {{ r.link.name|camel }}Stub_.bind({{ _endpoint(x=r.local) }});
+{% set __capture %}
+{{ _generated_transport(transport=r.link.constraints.remote.transport) }}
+{%- endset %}{% set ns.generated = __capture %}
+{% if ns.generated == 'true' %}
+    {{ r.link.name|camel }}Stub_.serve("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='server') }}", "{{ _address(r=r, side='server') }}"){% if r.settings.capacity is not none %}, {{ r.settings.capacity }}{% endif %});
+{% endif %}
+    {%+ filter user('link.' ~ r.link.name) +%}
+{% if not (ns.generated == 'true') %}
+    // Receive the calls of binary {{ r.peer.binary }} over {{ ns.transport }} into {{ r.link.name|camel }}Stub_.dispatch().
+{% set __capture %}{{ _settings(s=r.link.constraints.remote.settings) }}{% endset %}{% set ns.settings = __capture +%}
+{% if ns.settings != '' %}
+    // Settings: {{ ns.settings }}.
+{% endif %}
+{% endif %}
+    {%+ endfilter +%}
+{% endfor %}
+{% for e in system.external %}
+    // {{ e.link.name }}: {{ e.link.from.project|default(project.ident, true) }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project|default(project.ident, true) }}.{{ e.link.to.module }}:{{ e.link.to.port }}
+    {%+ filter user('external.' ~ e.link.name) +%}
+    // Other project: connect {{ _endpoint(x=e.local) }} through a transport{% if e.link.constraints.remote.transport is not none %} ({{ e.link.constraints.remote.transport }}){% endif %}.
+    {%+ endfilter +%}
+{% endfor %}
+    {%+ filter user('constructor') +%}
+    {%+ endfilter +%}
+}
+
+{{ system.name }}::~{{ system.name }}()
+{
+    {%+ filter user('destructor') +%}
+    {%+ endfilter +%}
+{% for c in system.instances %}
+{% if c.abstract %}
+    delete {{ _accessor(name=c.name) }}_;
+{% endif %}
+{% endfor %}
+}
+
+{% filter user('end') +%}
+{% endfilter +%}
+
+{{ _namespace_close(ns_=ns_) -}}

@@ -1,0 +1,22 @@
+{% from '_id.j2' import id as _id %}
+{% from '_includes.j2' import includes as _includes %}
+{% from '_scalar.j2' import scalar as _scalar %}
+{% from '_type.j2' import type as _type %}
+{% from '_value.j2' import value as _value %}
+{% include '_banner.j2' %}
+#pragma once
+
+{{ _includes(e=constantsFile) }}
+{%- filter user('includes') +%}
+{% endfilter +%}
+
+namespace {{ project.ident|snake }} {
+{% for c in constants %}
+{% set scalar %}{{ _scalar(t=c.type) }}{% endset %}
+{# Numbers, enums and bitmasks are constexpr. #}
+
+{{ c.description|doc_comment }}
+inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(t=c.type) }} {{ _id(name=c.name) }} = {{ _value(v=c.value, t=c.type) }};
+{% endfor %}
+
+} // namespace {{ project.ident|snake }}

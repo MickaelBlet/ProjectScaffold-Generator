@@ -1,0 +1,10 @@
+{% macro cx_id(name=none) %}
+{#
+  C++ name of an identifier declared in IDL (types, fields, operations, parameters): C++ keywords
+  get the `_cxx_` prefix of the C++ mapping. Parameter: name.
+#}
+{% if name in generator.reserved -%}
+  {{- '_cxx_' -}}
+{%- endif -%}
+{{- name -}}
+{%+ endmacro %}

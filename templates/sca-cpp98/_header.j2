@@ -1,0 +1,11 @@
+{% macro header(e=none) %}
+{#
+  Header of a module, relative to `include/`: `robot/core/Sensor.hpp`. Parameter: e.
+#}
+{{ project.ident|snake -}}
+{%- for parent in e.namespace -%}
+  {%- set part = parent|snake -%}
+  {{- '/' ~ part -}}
+{%- endfor -%}
+{{- '/' ~ e.name ~ '.hpp' -}}
+{%+ endmacro %}

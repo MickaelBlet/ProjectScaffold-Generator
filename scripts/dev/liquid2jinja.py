@@ -7,7 +7,7 @@ Partials (`_x.liquid`, rendered with `render '_x', a: v`) become macros `x` in `
 as `_x` and called `{{ _x(a=v) }}`. Variables assigned inside loops and used outside go through a
 namespace (`ns.var`): Jinja's loops do not leak their assignments. Liquid's line trimming
 (trimTagLines) is Jinja's trim_blocks + lstrip_blocks, with `+` where they differ.
-Bare conditions on values Liquid finds true and Jinja false ('' / 0 / []) are reported.
+Bare conditions on values Liquid finds true and Jinja false ('' / 0 / []) become `is not none`.
 """
 import os
 import re
@@ -169,7 +169,8 @@ class Expr:
         if name == 'remove_last':
             return f"{par(e)}.rsplit({a[0]}, 1)|join('')"
         if name == 'split':
-            return f'{par(e)}|split({a[0]})'
+            # Liquid drops the trailing empty strings (lists built as 'a,b,')
+            return f'{par(e)}|split({a[0]})|select|list'
         if name == 'where':
             if len(a) == 1:
                 return f'{par(e)}|selectattr({a[0]})'
@@ -215,10 +216,13 @@ class Expr:
             return f'{par(e)}|upper'
         if name == 'join':
             return f'{par(e)}|join({a[0]})'
+        if name == 'json':
+            return f'{par(e)}|json'
         if name == 'slice':
             start = a[0]
             n = a[1] if len(a) > 1 else '1'
-            return f'{par(e)}[{start}:{start} + {n}]'
+            # negative starts count from the end, as in Liquid
+            return f'({e})[{start}:][:{n}]'
         raise ValueError(f'unknown filter {name}')
 
     # conditions: comparisons joined by and / or, evaluated right to left as Liquid does
@@ -243,8 +247,7 @@ class Expr:
             self.take()
             b = self.filtered()
             return f'{b} in {par(a)}'
-        self.ctx.bare(a)
-        return a
+        return self.ctx.bare(a)
 
 
 def top_level_space(e):
@@ -309,7 +312,7 @@ class Ctx:
     def bare(self, e):
         # values Liquid finds true and Jinja false: text, numbers, lists
         if e.startswith('loop.') or e in ('true', 'false', 'none'):
-            return
+            return e
         last = e.split('.')[-1].split('|')[0]
         if last in ('description', 'name', 'value', 'default', 'label', 'labels', 'params', 'inputs',
                     'outputs', 'ports', 'fields', 'cases', 'values', 'flags', 'messages', 'children',
@@ -317,7 +320,9 @@ class Ctx:
                     'proxies', 'stubs', 'external', 'options', 'via', 'scope', 'namespace', 'host', 'port',
                     'path', 'topic', 'socket', 'device', 'raises', 'builtins', 'files', 'max', 'size', 'id',
                     'index', 'bit', 'capacity', 'baud', 'transport', 'metadata', 'color'):
-            warn(self.where, f'bare condition on {e!r}: Liquid holds it true for empty text, 0 and empty lists')
+            # Liquid's truthiness, for values never false nor undefined (every value present)
+            return f'{e} is not none'
+        return e
 
 
 # ------------------------------------------------------------------- templates ----
@@ -378,7 +383,7 @@ def split_top(s, sep):
 def call_text(name, args, self_name):
     mac = name.lstrip('_')
     target = mac if name == self_name else name
-    return f"{target}({', '.join(f'{k}={v}' for k, v in args)})"
+    return f"{target}({', '.join(f'{RENAME.get(k, k)}={v}' for k, v in args)})"
 
 
 class Converter:
@@ -434,7 +439,12 @@ class Converter:
             return 'block', f'for {ctx.var(var)} in {src}'
         if word == 'assign':
             name, _, value = rest.partition('=')
-            return 'block', f'set {ctx.var(name.strip())} = {expr(value, ctx)}'
+            x = expr(value, ctx)
+            # A missing key is nil in Liquid, undefined (an error) in Jinja
+            m = re.fullmatch(r'([A-Za-z_][\w.]*)\[([A-Za-z_][\w.]*)\]', x)
+            if m and m.group(1) != 'typeByKey':
+                x = f'{x} if {m.group(2)} in {m.group(1)} else none'
+            return 'block', f'set {ctx.var(name.strip())} = {x}'
         if word == 'capture':
             name = rest.strip()
             target = ctx.var(name)
@@ -772,7 +782,7 @@ def main():
                 # use each other: imports at the top would be circular)
                 body, used = conv.convert(f, s, self_name=base, ns_vars=ns)
                 mac = base.lstrip('_')
-                sig = ', '.join(f'{p}=none' for p in params[base])
+                sig = ', '.join(f'{RENAME.get(p, p)}=none' for p in params[base])
                 tags = [f"{{% from '{u}.j2' import {u.lstrip('_')} as {u} %}}" for u in sorted(used) if u != base]
                 if ns:
                     tags.append('{% set ns = namespace() %}')

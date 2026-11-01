@@ -1,0 +1,35 @@
+{% macro any_get(any=none, name=none, t=none) %}
+{% from '_cx_kind.j2' import cx_kind as _cx_kind %}
+{% from '_cx_prim.j2' import cx_prim as _cx_prim %}
+{% from '_member.j2' import member as _member %}
+{#
+  Expression extracting a value of type t from the any `any` into the member of attribute `name`
+  (true when the any holds one). Parameters: any, name, t.
+#}
+{% set target -%}
+  {{- _member(name=name) -}}
+{%- endset -%}
+{%- set kind -%}
+  {{- _cx_kind(t=t) -}}
+{%- endset -%}
+{%- if kind == 'basic' -%}
+  {%- set prim -%}
+    {{- _cx_prim(t=t) -}}
+  {%- endset -%}
+  {%- if prim == 'bool' -%}
+    {{- '(' ~ any ~ ' >>= ::CORBA::Any::to_boolean(' ~ target ~ '))' -}}
+  {%- elif prim == 'char' -%}
+    {{- '(' ~ any ~ ' >>= ::CORBA::Any::to_char(' ~ target ~ '))' -}}
+  {%- elif prim == 'int8' or prim == 'uint8' -%}
+    {{- '(' ~ any ~ ' >>= ::CORBA::Any::to_octet(' ~ target ~ '))' -}}
+  {%- else -%}
+    {{- '(' ~ any ~ ' >>= ' ~ target ~ ')' -}}
+  {%- endif -%}
+{%- elif kind == 'enum' -%}
+  {{- '(' ~ any ~ ' >>= ' ~ target ~ ')' -}}
+{%- elif kind == 'string' -%}
+  {{- '::sca::fromAny(' ~ any ~ ', ' ~ target ~ ')' -}}
+{%- else -%}
+  {{- '::sca::fromAnyValue(' ~ any ~ ', ' ~ target ~ ')' -}}
+{%- endif %}
+{%+ endmacro %}

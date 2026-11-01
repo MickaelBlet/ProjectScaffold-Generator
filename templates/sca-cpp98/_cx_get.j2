@@ -1,0 +1,16 @@
+{% macro cx_get(t=none, owner=none) %}
+{% from '_cx_in.j2' import cx_in as _cx_in %}
+{% from '_cx_kind.j2' import cx_kind as _cx_kind %}
+{#
+  Return type of an attribute's getter: `T` for basic types and enums, `const char*` for strings,
+  else `const T&`. Parameters: t, owner.
+#}
+{% set kind -%}
+  {{- _cx_kind(t=t) -}}
+{%- endset -%}
+{%- if kind == 'string' -%}
+  {{- 'const char*' -}}
+{%- else -%}
+  {{- _cx_in(t=t, owner=owner) -}}
+{%- endif %}
+{%+ endmacro %}

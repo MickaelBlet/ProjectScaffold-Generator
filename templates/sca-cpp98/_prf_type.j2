@@ -1,0 +1,45 @@
+{% macro prf_type(t=none) %}
+{#
+  PRF property of an attribute's type: `simple:<type>` for a primitive (through aliases),
+  `sequence:<type>` for a vector, list or set of primitives, nothing otherwise. Parameter: t.
+#}
+{% if t.kind == 'primitive' -%}
+  {%- if t.name == 'int8' or t.name == 'uint8' -%}
+    {{- 'simple:octet' -}}
+  {%- elif t.name == 'int16' -%}
+    {{- 'simple:short' -}}
+  {%- elif t.name == 'uint16' -%}
+    {{- 'simple:ushort' -}}
+  {%- elif t.name == 'int32' -%}
+    {{- 'simple:long' -}}
+  {%- elif t.name == 'uint32' -%}
+    {{- 'simple:ulong' -}}
+  {%- elif t.name == 'int64' -%}
+    {{- 'simple:longlong' -}}
+  {%- elif t.name == 'uint64' -%}
+    {{- 'simple:ulonglong' -}}
+  {%- elif t.name == 'float32' -%}
+    {{- 'simple:float' -}}
+  {%- elif t.name == 'float64' -%}
+    {{- 'simple:double' -}}
+  {%- elif t.name == 'bool' -%}
+    {{- 'simple:boolean' -}}
+  {%- elif t.name == 'char' -%}
+    {{- 'simple:char' -}}
+  {%- elif t.name == 'string' -%}
+    {{- 'simple:string' -}}
+  {%- endif -%}
+{%- elif t.kind == 'vector' or t.kind == 'list' or t.kind == 'set' -%}
+  {%- set inner -%}
+    {{- prf_type(t=t.of) -}}
+  {%- endset -%}
+  {%- if 'simple:' in inner -%}
+    {{- inner|replace('simple:', 'sequence:') -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- if def.kind == 'alias' -%}
+    {{- prf_type(t=def.type) -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

@@ -1,0 +1,268 @@
+// Renders a template set over a generation context: the files to generate, with the default
+// content of their user sections. Pure: merging with the files on disk is done by run.rs.
+use std::collections::HashSet;
+use std::sync::LazyLock;
+
+use minijinja::{AutoEscape, Environment, UndefinedBehavior, Value};
+use regex::Regex;
+use serde_json::Value as Json;
+
+use super::filters;
+use super::sections::{DROP, place_markers, user_filter};
+use super::template_set::{TemplateSet, is_inside_path};
+
+pub struct GeneratedFile {
+    /// Relative to the output directory, `/`-separated.
+    pub path: String,
+    pub text: String,
+    /// Line comment of the user section markers.
+    pub comment: String,
+}
+
+pub struct Generation {
+    pub files: Vec<GeneratedFile>,
+    pub warnings: Vec<String>,
+}
+
+/// Checks and normalizes a generated file path: relative, inside the output directory.
+pub fn output_path(path: &str) -> Result<String, String> {
+    if !is_inside_path(path) {
+        return Err(format!("invalid output path '{path}': must be relative, use '/' and stay inside"));
+    }
+    Ok(path.trim().split('/').filter(|s| !s.is_empty() && *s != ".").collect::<Vec<_>>().join("/"))
+}
+
+static DROP_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"(?m)^[ \t]*{DROP}[ \t]*\r?\n")).unwrap());
+static SQUEEZE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n[ \t]*(?:\n[ \t]*)+\n").unwrap());
+static LEADING_BLANK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*\n").unwrap());
+static TRAILING_BLANK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*$").unwrap());
+
+fn drop_lines(text: &str) -> String {
+    DROP_LINE.replace_all(text, "").replace(DROP, "")
+}
+
+/// Error message of a template error, with its cause chain.
+pub fn describe(e: &minijinja::Error) -> String {
+    if std::env::var_os("SCAFFOLD_GEN_DEBUG").is_some() {
+        return format!("{e:#}");
+    }
+    let mut s = e.to_string();
+    let mut cause = std::error::Error::source(e);
+    while let Some(c) = cause {
+        s.push_str(&format!(": {c}"));
+        cause = c.source();
+    }
+    s
+}
+
+/// Jinja environment of a template set: the context as globals (imported macros see them), and
+/// only language-neutral additions: the `user` filter and the case / comment filters.
+pub fn create_env(
+    set: &TemplateSet,
+    globals: &serde_json::Map<String, Json>,
+) -> Result<Environment<'static>, String> {
+    let mut env = Environment::new();
+    let trim = set.manifest.trim_tag_lines;
+    env.set_syntax(
+        minijinja::syntax::SyntaxConfig::builder()
+            .trim_blocks(trim)
+            .lstrip_blocks(trim)
+            .keep_trailing_newline(true)
+            .build()
+            .map_err(|e| describe(&e))?,
+    );
+    // Undefined values are errors, but in tests of `if` (Liquid's lenientIf).
+    env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
+    env.set_debug(std::env::var_os("SCAFFOLD_GEN_DEBUG").is_some());
+    env.set_auto_escape_callback(|_| AutoEscape::None);
+    // none prints nothing, as nil in Liquid.
+    env.set_formatter(
+        |out, state, value| {
+            if value.is_none() { Ok(()) } else { minijinja::escape_formatter(out, state, value) }
+        },
+    );
+    env.set_unknown_method_callback(unknown_method);
+    filters::register(&mut env);
+    env.add_filter("user", user_filter);
+    for (k, v) in globals {
+        env.add_global(k.clone(), Value::from(minijinja::value::Serde(v)));
+    }
+    for (name, text) in &set.files {
+        env.add_template_owned(name.clone(), text.clone()).map_err(|e| describe(&e))?;
+    }
+    Ok(env)
+}
+
+/// Python string methods (pycompat), and `rsplit`.
+fn unknown_method(
+    state: &mut minijinja::State,
+    value: &Value,
+    method: &str,
+    args: &[Value],
+) -> Result<Value, minijinja::Error> {
+    if let (Some(s), "rsplit") = (value.as_str(), method) {
+        let sep = args.first().and_then(|a| a.as_str()).unwrap_or(" ");
+        let n = args.get(1).and_then(|a| i64::try_from(a.clone()).ok()).unwrap_or(-1);
+        let mut parts: Vec<&str> =
+            if n < 0 { s.rsplit(sep).collect() } else { s.rsplitn(n as usize + 1, sep).collect() };
+        parts.reverse();
+        return Ok(Value::from_iter(parts.into_iter().map(Value::from)));
+    }
+    minijinja_contrib::pycompat::unknown_method_callback(state, value, method, args)
+}
+
+/// Names of the project that are reserved words of the target language.
+pub fn reserved_names(ctx: &Json, reserved: &[String]) -> Vec<String> {
+    let words: HashSet<&str> = reserved.iter().map(String::as_str).collect();
+    let mut warnings = Vec::new();
+    let mut check = |n: &Json, where_: String| {
+        if let Some(n) = n.as_str()
+            && words.contains(n)
+        {
+            warnings.push(format!("{where_}: '{n}' is a reserved word, renamed in the generated code"));
+        }
+    };
+    let list = |v: &Json, k: &str| v.get(k).and_then(Json::as_array).cloned().unwrap_or_default();
+    let s = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+    for t in list(ctx, "types") {
+        let tn = s(&t, "name");
+        check(&t["name"], tn.clone());
+        let kind = s(&t, "kind");
+        let members = match kind.as_str() {
+            "struct" | "exception" => "fields",
+            "enum" => "values",
+            "bitmask" => "flags",
+            _ => "",
+        };
+        if !members.is_empty() {
+            for f in list(&t, members) {
+                check(&f["name"], format!("{tn}.{}", s(&f, "name")));
+            }
+        }
+    }
+    for c in list(ctx, "constants") {
+        check(&c["name"], s(&c, "name"));
+    }
+    for i in list(ctx, "interfaces") {
+        let iname = s(&i, "name");
+        check(&i["name"], iname.clone());
+        for m in list(&i, "messages") {
+            let mn = s(&m, "name");
+            check(&m["name"], format!("{iname}.{mn}"));
+            for p in list(&m, "params") {
+                check(&p["name"], format!("{iname}.{mn}({})", s(&p, "name")));
+            }
+        }
+    }
+    for m in list(ctx, "modules") {
+        let path = s(&m, "path");
+        check(&m["name"], path.clone());
+        for a in list(&m, "attributes") {
+            check(&a["name"], format!("{path}.{}", s(&a, "name")));
+        }
+        for x in list(&m, "methods") {
+            let xn = s(&x, "name");
+            check(&x["name"], format!("{path}.{xn}"));
+            for p in list(&x, "params") {
+                check(&p["name"], format!("{path}.{xn}({})", s(&p, "name")));
+            }
+        }
+        for p in list(&m, "ports") {
+            check(&p["name"], format!("{path}:{}", s(&p, "name")));
+        }
+    }
+    warnings
+}
+
+/// Renders a template set over a generation context (`warnings` holds the context's own).
+pub fn generate(ctx: &Json, set: &TemplateSet) -> Result<Generation, String> {
+    let manifest = &set.manifest;
+    let mut globals = ctx.as_object().cloned().ok_or("the generation context is not an object")?;
+    globals.insert("files".into(), Json::Array(vec![]));
+    globals.insert(
+        "generator".into(),
+        serde_json::json!({ "name": manifest.name, "reserved": manifest.reserved }),
+    );
+    let mut env = create_env(set, &globals)?;
+    let mut files: Vec<GeneratedFile> = Vec::new();
+    let mut paths: HashSet<String> = HashSet::new();
+
+    for out in &manifest.outputs {
+        let template = &out.template;
+        let fail = |e: String, item: Option<&Value>| -> String {
+            let name = item
+                .and_then(|i| i.get_attr("name").ok())
+                .filter(|n| !n.is_undefined() && !n.is_none())
+                .map(|n| format!(" ({n})"))
+                .unwrap_or_default();
+            format!("{template}{name}: {e}")
+        };
+        if !set.files.contains_key(template) {
+            return Err(fail("template not found".into(), None));
+        }
+        let items: Vec<Option<Value>> = match &out.each {
+            Some(each) => {
+                let list = env
+                    .compile_expression(each)
+                    .and_then(|x| x.eval(minijinja::context! {}))
+                    .map_err(|e| fail(describe(&e), None))?;
+                if list.kind() != minijinja::value::ValueKind::Seq {
+                    return Err(fail(format!("'each: {each}' is not a list"), None));
+                }
+                list.try_iter().map_err(|e| fail(describe(&e), None))?.map(Some).collect()
+            }
+            None => vec![None],
+        };
+        let comment = out.comment.as_deref().unwrap_or(&manifest.comment);
+        for item in items {
+            let local = match &item {
+                Some(v) => Value::from_pairs([(out.as_.as_str(), v.clone())]),
+                None => minijinja::context! {},
+            };
+            let attempt = || -> Result<Option<GeneratedFile>, String> {
+                if let Some(when) = &out.when {
+                    let v = env
+                        .compile_expression(when)
+                        .and_then(|x| x.eval(local.clone()))
+                        .map_err(|e| describe(&e))?;
+                    // Liquid truthiness: only false and nil are false.
+                    if v.is_undefined() || v.is_none() || v == Value::from(false) {
+                        return Ok(None);
+                    }
+                }
+                let path = env.render_str(&out.path, local.clone()).map_err(|e| describe(&e))?;
+                let path = output_path(&path)?;
+                if paths.contains(&path) {
+                    return Err(format!("'{path}' is generated twice"));
+                }
+                let tpl = env.get_template(template).map_err(|e| describe(&e))?;
+                let mut text = drop_lines(&tpl.render(local.clone()).map_err(|e| describe(&e))?);
+                if manifest.squeeze_blank_lines {
+                    text = SQUEEZE.replace_all(&text, "\n\n").into_owned();
+                }
+                let text = place_markers(&text, comment)?;
+                let text = LEADING_BLANK.replace(&text, "");
+                let text = TRAILING_BLANK.replace(&text, "\n").into_owned();
+                Ok(Some(GeneratedFile { path, text, comment: comment.to_string() }))
+            };
+            match attempt() {
+                Ok(Some(f)) => {
+                    paths.insert(f.path.clone());
+                    files.push(f);
+                    let list: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+                    env.add_global("files", Value::from(minijinja::value::Serde(&list)));
+                }
+                Ok(None) => {}
+                Err(e) => return Err(fail(e, item.as_ref())),
+            }
+        }
+    }
+    let mut warnings: Vec<String> = ctx
+        .get("warnings")
+        .and_then(Json::as_array)
+        .map(|w| w.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    warnings.extend(reserved_names(ctx, &manifest.reserved));
+    Ok(Generation { files, warnings })
+}

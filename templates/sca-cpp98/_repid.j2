@@ -1,0 +1,9 @@
+{% macro repid(i=none) %}
+{% from '_iface_ns.j2' import iface_ns as _iface_ns %}
+{#
+  Repository id of an interface: `IDL:robot/Telemetry:1.0`. Parameter: i.
+#}
+{{ 'IDL:' -}}
+{{- _iface_ns(i=i) -}}
+{{- '/' ~ i.name ~ ':1.0' -}}
+{%+ endmacro %}

@@ -1,0 +1,15 @@
+{% macro idl_member(name=none, scope=none) %}
+{% from '_idl_id.j2' import idl_id as _idl_id %}
+{#
+  IDL name of a member (field, union case, operation) of scope `scope` (its struct, union or
+  interface): `_` appended when it is the scope's name whatever the case (IDL forbids it, and C++
+  takes it for a constructor), else as _idl_id. Parameters: name, scope.
+#}
+{% set a = name|lower -%}
+{%- set b = scope|lower -%}
+{%- if a == b -%}
+  {{- name ~ '_' -}}
+{%- else -%}
+  {{- _idl_id(name=name) -}}
+{%- endif %}
+{%+ endmacro %}

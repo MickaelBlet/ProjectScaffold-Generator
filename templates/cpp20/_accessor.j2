@@ -1,0 +1,11 @@
+{% macro accessor(name=none) %}
+{#
+  Accessor of a child module: `Sensor` -> `sensor`, `Operator` -> `operatorModule`.
+  Its member is the accessor followed by `_`. Parameter: name.
+#}
+{% set accessor = name|lcfirst -%}
+{{- accessor -}}
+{%- if accessor in generator.reserved -%}
+  {{- 'Module' -}}
+{%- endif %}
+{%+ endmacro %}

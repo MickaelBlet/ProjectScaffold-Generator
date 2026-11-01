@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const OUT = join(ROOT, 'dist-cli')
-const TEMPLATES = join(ROOT, 'templates')
+const TEMPLATES = join(ROOT, 'legacy/liquid')
 const node = resolve(process.argv[2] ?? process.execPath)
 const exe = join(OUT, node.endsWith('.exe') ? 'scaffold-gen.exe' : 'scaffold-gen')
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }

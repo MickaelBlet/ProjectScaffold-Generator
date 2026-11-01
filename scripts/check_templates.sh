@@ -13,7 +13,7 @@ if [ "${1:-}" = -w ]; then work=$2; shift 2; fi
 work=${work:-$(mktemp -d)}
 mkdir -p "$work"
 sets=("$@")
-[ ${#sets[@]} -gt 0 ] || sets=($(ls templates))
+[ ${#sets[@]} -gt 0 ] || sets=($(ls legacy/liquid))
 projects=(examples/robot.scaffold.yaml examples/rover.scaffold.yaml examples/station.scaffold.yaml
   examples/idl/filling_cell.scaffold.yaml
   tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml)

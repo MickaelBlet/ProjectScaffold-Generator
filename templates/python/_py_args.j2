@@ -1,0 +1,12 @@
+{% macro py_args(msg=none) %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{#
+  Arguments passing the inputs of a message on: `pose, tags`. Parameter: msg.
+#}
+{% for p in msg.inputs -%}
+  {{- _py_id(name=p.name) -}}
+  {%- if not loop.last -%}
+    {{- ', ' -}}
+  {%- endif -%}
+{%- endfor %}
+{%+ endmacro %}

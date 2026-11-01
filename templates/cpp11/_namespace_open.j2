@@ -1,0 +1,13 @@
+{% macro namespace_open(ns_=none) %}
+{#
+  Opens a namespace, one level at a time (no nested namespace definitions before C++17):
+  `robot::core` -> `namespace robot { namespace core {`. Parameter: ns.
+#}
+{% set parts = ns_|split('::')|select|list -%}
+{%- for part in parts -%}
+  {{- 'namespace ' ~ part ~ ' {' -}}
+  {%- if not loop.last -%}
+    {{- ' ' -}}
+  {%- endif -%}
+{%- endfor %}
+{%+ endmacro %}

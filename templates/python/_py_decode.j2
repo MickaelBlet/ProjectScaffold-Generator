@@ -1,0 +1,43 @@
+{% macro py_decode(t=none, r=none, prefix=none) %}
+{% from '_py_decoder.j2' import py_decoder as _py_decoder %}
+{#
+  Python expression decoding a value of type `t` with reader `r`: `r.seq(data.decode_Vec3)`.
+  Parameters: t, r, prefix.
+#}
+{% if t.kind == 'primitive' -%}
+  {{- r ~ '.' ~ t.name ~ '(' -}}
+  {%- if t.max is not none -%}
+    {{- t.max -}}
+  {%- endif -%}
+  {{- ')' -}}
+{%- elif t.kind == 'ref' -%}
+  {{- prefix ~ 'decode_' ~ t.name ~ '(' ~ r ~ ')' -}}
+{%- elif t.kind == 'array' -%}
+  {{- r ~ '.array(' ~ t.size ~ ', ' -}}
+  {{- _py_decoder(t=t.of, prefix=prefix) -}}
+  {{- ')' -}}
+{%- elif t.kind == 'optional' or t.kind == 'set' -%}
+  {{- r ~ '.' ~ t.kind ~ '(' -}}
+  {{- _py_decoder(t=t.of, prefix=prefix) -}}
+  {%- if t.kind == 'set' and t.max is not none -%}
+    {{- ', ' ~ t.max -}}
+  {%- endif -%}
+  {{- ')' -}}
+{%- elif t.kind == 'map' -%}
+  {{- r ~ '.map(' -}}
+  {{- _py_decoder(t=t.key, prefix=prefix) -}}
+  {{- ', ' -}}
+  {{- _py_decoder(t=t.value, prefix=prefix) -}}
+  {%- if t.max is not none -%}
+    {{- ', ' ~ t.max -}}
+  {%- endif -%}
+  {{- ')' -}}
+{%- else -%}
+  {{- r ~ '.seq(' -}}
+  {{- _py_decoder(t=t.of, prefix=prefix) -}}
+  {%- if t.max is not none -%}
+    {{- ', ' ~ t.max -}}
+  {%- endif -%}
+  {{- ')' -}}
+{%- endif %}
+{%+ endmacro %}

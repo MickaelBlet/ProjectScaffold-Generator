@@ -1,0 +1,119 @@
+{% from '_args.j2' import args as _args %}
+{% from '_bounds.j2' import bounds as _bounds %}
+{% from '_header.j2' import header as _header %}
+{% from '_id.j2' import id as _id %}
+{% from '_name.j2' import name as _name %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_type.j2' import type as _type %}
+{% set ns = namespace() %}
+{% include '_banner.j2' %}
+#pragma once
+
+#include <{{ _header(e=item) }}>
+#include <{{ project.ident|snake }}/remote/codec.hpp>
+#include <{{ project.ident|snake }}/remote/transport.hpp>
+{% filter user('includes') +%}
+{% endfilter +%}
+
+{% set remoteNs = project.ident|snake ~ '::remote' %}
+{{ _namespace_open(ns_=remoteNs) }}{##}
+
+/// Receives the calls of {{ _name(e=item) }} from another binary and makes them on the
+/// port bound. The calls come on the threads of the transport: several at once over tcp, http and
+/// websocket (one per connection).
+class {{ item.name }}Stub : private Handler, private Calls {
+public:
+    {{ item.name }}Stub() : target_(0) {}
+    ~{{ item.name }}Stub() { server_.reset(); }
+
+    void bind({{ _qualified(e=item) }}& target) { target_ = &target; }
+
+    /// Receives the calls over `transport`, at `address`; `capacity`: bytes of each ring of shm.
+    void serve(const std::string& transport, const std::string& address,
+               uint32_t capacity = remote::ringCapacity)
+    {
+        server_.reset(remote::serve(transport, address, *this, capacity));
+    }
+
+    /// Makes the call of a frame: true with the reply frame in `reply`, false when the call wants none.
+    bool dispatch(const Bytes& frame, Bytes& reply) { return respond(frame, *this, reply); }
+
+    {%+ filter user('public') +%}
+    {%+ endfilter +%}
+
+private:
+    {{ item.name }}Stub(const {{ item.name }}Stub&);
+    {{ item.name }}Stub& operator=(const {{ item.name }}Stub&);
+
+    bool handle(const Bytes& frame, Bytes& reply) { return dispatch(frame, reply); }
+
+    bool call(uint16_t message_, Reader& reader_, Writer& writer_)
+    {
+        (void)writer_;
+        if (!target_) throw Error("{{ item.name }}Stub not bound");
+        switch (message_) {
+{% for msg in item.messages %}
+        case {{ loop.index0 }}: {
+{% for p in msg.params %}
+            {{ _type(t=p.type) }} {{ _id(name=p.name) }} = {{ _type(t=p.type) }}();
+{% endfor %}
+{% for p in msg.inputs %}
+{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{# Decoded, then checked. #}
+            decode(reader_, {{ ns.value }});
+{% if ns.check != '' %}
+            {{ ns.check }}
+{% endif %}
+{% endfor %}
+            reader_.end();
+{% set call %}
+{% if msg.returns %}
+{% set __capture %}{{ _bounds(t=msg.returns, v='result_', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% if ns.check != '' %}
+            const {{ _type(t=msg.returns) }} result_ = target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }});
+            {{ ns.check }}
+            encode(writer_, result_);
+{% else %}
+            encode(writer_, target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }}));
+{% endif %}
+{% else %}
+            target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }});
+{% endif %}
+{% for p in msg.outputs %}
+{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% if ns.check != '' %}
+            {{ ns.check }}
+{% endif %}
+            encode(writer_, {{ ns.value }});
+{% endfor %}
+{% endset %}
+{% if msg.raises|length > 0 %}
+            try {
+{{ '    ' ~ call.rstrip()|replace('\n', '\n    ') }}
+{% for r in msg.raises %}
+            } catch (const {{ _type(t=r) }}& e) {
+                throw raised({{ loop.index0 }}, e);
+{% endfor %}
+            }
+{% else %}
+{{ call.rstrip() }}
+{% endif %}
+            return true;
+        }
+{% endfor %}
+        default:
+            return false;
+        }
+    }
+
+    {{ _qualified(e=item) }}* target_;
+    Owned<Server> server_;
+    {%+ filter user('private') +%}
+    {%+ endfilter +%}
+};
+
+{{ _namespace_close(ns_=remoteNs) -}}

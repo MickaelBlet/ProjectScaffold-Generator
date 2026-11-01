@@ -1,0 +1,12 @@
+{% macro cx_args(params=none) %}
+{% from '_cx_id.j2' import cx_id as _cx_id %}
+{#
+  Arguments passing the parameters on: `reading, value`. Parameter: params.
+#}
+{% for p in params -%}
+  {{- _cx_id(name=p.name) -}}
+  {%- if not loop.last -%}
+    {{- ', ' -}}
+  {%- endif -%}
+{%- endfor %}
+{%+ endmacro %}

@@ -1,0 +1,8 @@
+{% macro py_accessor(name=none) %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{#
+  Attribute holding a child module: `Sensor` -> `sensor`, `Import` -> `import_`. Parameter: name.
+#}
+{% set accessor = name|lcfirst -%}
+{{- _py_id(name=accessor) -}}
+{%+ endmacro %}

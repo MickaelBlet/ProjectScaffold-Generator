@@ -1,0 +1,10 @@
+{% macro member(name=none) %}
+{#
+  Data member holding an attribute or an out port: `rateHz` -> `rateHz_`. Parameter: name.
+#}
+{{ name -}}
+{%- if name in generator.reserved -%}
+  {{- 'Member' -}}
+{%- endif -%}
+{{- '_' -}}
+{%+ endmacro %}

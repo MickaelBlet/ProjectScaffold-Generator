@@ -1,0 +1,31 @@
+{% macro any_put(name=none, t=none) %}
+{% from '_cx_kind.j2' import cx_kind as _cx_kind %}
+{% from '_cx_prim.j2' import cx_prim as _cx_prim %}
+{% from '_member.j2' import member as _member %}
+{#
+  Right side of `any <<= ...` putting the member of attribute `name`, of type t, into an any.
+  Parameters: name, t.
+#}
+{% set value -%}
+  {{- _member(name=name) -}}
+{%- endset -%}
+{%- set kind -%}
+  {{- _cx_kind(t=t) -}}
+{%- endset -%}
+{%- set prim -%}
+  {{- _cx_prim(t=t) -}}
+{%- endset -%}
+{%- if kind == 'string' -%}
+  {{- value ~ '.in()' -}}
+{%- elif kind == 'basic' and prim == 'bool' -%}
+  {{- '::CORBA::Any::from_boolean(' ~ value ~ ')' -}}
+{%- elif kind == 'basic' and prim == 'char' -%}
+  {{- '::CORBA::Any::from_char(' ~ value ~ ')' -}}
+{%- elif kind == 'basic' and prim == 'int8' -%}
+  {{- '::CORBA::Any::from_octet(' ~ value ~ ')' -}}
+{%- elif kind == 'basic' and prim == 'uint8' -%}
+  {{- '::CORBA::Any::from_octet(' ~ value ~ ')' -}}
+{%- else -%}
+  {{- value -}}
+{%- endif %}
+{%+ endmacro %}

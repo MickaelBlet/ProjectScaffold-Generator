@@ -1,0 +1,74 @@
+{% macro includes(e=none) %}
+{% from '_header.j2' import header as _header %}
+{% set ns = namespace() %}
+{#
+  `#include` lines of an entity: the standard headers of what it uses, then the headers of the
+  types, interfaces, bases and modules it uses. Parameter: e.
+#}
+{% set root = project.ident|snake -%}
+{%- set ns.std = '' -%}
+{%- set ns.own = '' -%}
+{%- for b in e.uses.builtins -%}
+  {%- if b == 'int8' or b == 'int16' or b == 'int32' or b == 'int64' or b == 'uint8' or b == 'uint16' or b == 'uint32' or b == 'uint64' -%}
+    {%- set ns.std = ns.std ~ '<cstdint>,' -%}
+  {%- elif b == 'bytes' -%}
+    {%- set ns.std = ns.std ~ '<cstdint>,<vector>,' -%}
+  {%- elif b == 'string' or b == 'array' or b == 'vector' or b == 'list' or b == 'set' or b == 'optional' or b == 'map' -%}
+    {%- set ns.std = ns.std ~ '<' ~ b ~ '>,' -%}
+  {%- elif b == 'variant' -%}
+    {%- set ns.std = ns.std ~ '<utility>,<variant>,' -%}
+  {%- elif b == 'exception' -%}
+    {%- set ns.std = ns.std ~ '<exception>,' -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- for t in e.uses.types -%}
+  {%- set header -%}
+    {{- _header(e=t) -}}
+  {%- endset -%}
+  {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
+{%- endfor -%}
+{%- if e.entity == 'module' -%}
+  {%- for base in e.bases -%}
+    {%- set header -%}
+      {{- _header(e=base) -}}
+    {%- endset -%}
+    {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
+  {%- endfor -%}
+  {%- for p in e.ports -%}
+    {%- if p.interface -%}
+      {%- set header -%}
+        {{- _header(e=p.interface) -}}
+      {%- endset -%}
+      {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
+      {%- if p.role == 'out' -%}
+        {%- set ns.own = ns.own ~ '<' ~ root ~ '/ports.hpp>,' -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+{%- if e.entity == 'module' or e.entity == 'system' -%}
+  {%- for c in e.instances -%}
+    {%- set header -%}
+      {{- _header(e=c) -}}
+    {%- endset -%}
+    {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
+    {%- if c.abstract -%}
+      {%- set ns.std = ns.std ~ '<memory>,' -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+{%- set self_ -%}
+  {{- _header(e=e) -}}
+{%- endset -%}
+{%- set self_ = '<' ~ self_ ~ '>' -%}
+{%- set ns.std = ns.std|split(',')|select|list|unique|list|sort -%}
+{%- set ns.own = ns.own|split(',')|select|list|unique|list|sort %}
+{% for header in ns.std %}
+#include {{ header }}
+{% endfor %}
+{% for header in ns.own %}
+{% if header != self_ %}
+#include {{ header }}
+{% endif %}
+{% endfor %}
+{%+ endmacro %}

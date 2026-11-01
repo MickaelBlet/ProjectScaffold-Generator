@@ -1,0 +1,87 @@
+{% from '_bounds.j2' import bounds as _bounds %}
+{% from '_header.j2' import header as _header %}
+{% from '_id.j2' import id as _id %}
+{% from '_name.j2' import name as _name %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_params.j2' import params as _params %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_type.j2' import type as _type %}
+{% set ns = namespace() %}
+{% include '_banner.j2' %}
+#pragma once
+
+#include <{{ _header(e=item) }}>
+#include <{{ project.ident|snake }}/remote/codec.hpp>
+#include <{{ project.ident|snake }}/remote/transport.hpp>
+{% filter user('includes') +%}
+{% endfilter +%}
+
+{% set remoteNs = project.ident|snake ~ '::remote' %}
+{{ _namespace_open(ns_=remoteNs) }}{##}
+
+/// {{ _name(e=item) }} of another binary: each call is encoded and sent over the channel
+/// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
+class {{ item.name }}Proxy final : public {{ _qualified(e=item) }} {
+public:
+    /// Sends the calls over `channel`; `ack`: every call waits for its reply, within `timeout`.
+    void open(std::unique_ptr<Channel> channel, bool ack = false,
+              std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+    {
+        caller_.open(std::move(channel), ack, timeout);
+    }
+{% for msg in item.messages %}
+{% set call %}{% if msg.raises|length > 0 %}callRaising<{% for r in msg.raises %}{{ _type(t=r) }}{% if not loop.last %}, {% endif %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endset %}
+{# Declared exceptions thrown as such. #}
+
+    {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }}) override
+    {
+        Writer request_;
+{% for p in msg.inputs %}
+{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+        encode(request_, {{ ns.value }});
+{% endfor %}
+{% if msg.returns or msg.outputs|length > 0 %}
+        const Bytes reply_ = {{ call }}{{ loop.index0 }}, request_.bytes(), true);
+        Reader reader_(reply_);
+{% if msg.returns %}
+        {{ _type(t=msg.returns) }} result_{};
+        decode(reader_, result_);
+{% set __capture %}{{ _bounds(t=msg.returns, v='result_', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+{% endif %}
+{% for p in msg.outputs %}
+{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{# Decoded, then checked. #}
+        decode(reader_, {{ ns.value }});
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+{% endfor %}
+        reader_.end();
+{% if msg.returns %}
+        return result_;
+{% endif %}
+{% else %}
+        {{ call }}{{ loop.index0 }}, request_.bytes(), false);
+{% endif %}
+    }
+{% endfor %}
+
+    {%+ filter user('public') +%}
+    {%+ endfilter +%}
+
+private:
+    Caller caller_;
+    {%+ filter user('private') +%}
+    {%+ endfilter +%}
+};
+
+{{ _namespace_close(ns_=remoteNs) -}}

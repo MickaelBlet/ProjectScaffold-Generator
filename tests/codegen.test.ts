@@ -19,7 +19,7 @@ import { TEMPLATE_SETS } from '../src/model/templateSets'
 import type { FileProject } from '../src/model/schema'
 
 const builtin = (set: string): TemplateSet => {
-  const dir = `templates/${set}`
+  const dir = `legacy/liquid/${set}`
   const manifest = parseManifest(readFileSync(join(dir, 'manifest.yaml'), 'utf8'))
   const files = Object.fromEntries(
     [...manifest.outputs.map((o) => o.template), ...(manifest.partials ?? [])].map((f) => [

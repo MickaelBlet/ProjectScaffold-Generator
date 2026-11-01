@@ -1,0 +1,44 @@
+{% macro members(m=none, names=none, access=none) %}
+{% from '_id.j2' import id as _id %}
+{% from '_input.j2' import input as _input %}
+{% from '_member.j2' import member as _member %}
+{% from '_name.j2' import name as _name %}
+{% from '_params.j2' import params as _params %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_type.j2' import type as _type %}
+{#
+  Types (aliases), attribute accessors and methods of a module with an access level (`public`, `protected`,
+  `private`): attribute members stay private, private attributes have no accessors.
+  Parameters: m, names (taken by the model: no accessor of that name), access.
+#}
+{% set types = m.types|selectattr('access', 'equalto', access) %}
+{% if types|length > 0 %}
+
+{% for t in types %}
+    typedef {{ _qualified(e=t) }} {{ _name(e=t) }};
+{% endfor %}
+{% endif %}
+{% set attributes = m.attributes|selectattr('access', 'equalto', access) %}
+{% if access != 'private' and attributes|length > 0 %}
+
+{% for a in attributes %}
+{% set setter = 'set' ~ a.name|ucfirst %}
+{{ a.description|doc_comment('    /// ') }}
+{% if not (a.name in names) %}
+    {%+ if a.static %}static {% endif %}{{ _input(t=a.type) }} {{ _id(name=a.name) }}(){% if not a.static %} const{% endif %} { return {{ _member(name=a.name) }}{% if a.static %}(){% endif %}; }
+{% endif %}
+{% if not (a.const or setter in names) %}
+    {%+ if a.static %}static {% endif %}void {{ setter }}({{ _input(t=a.type) }} value) { {{ _member(name=a.name) }}{% if a.static %}(){% endif %} = value; }
+{% endif %}
+{% endfor %}
+{% endif %}
+{% set methods = m.methods|selectattr('access', 'equalto', access) %}
+{% for x in methods %}
+
+{{ x.description|doc_comment('    /// ') }}
+{% for r in x.raises %}
+    /// @throws {{ _type(t=r) }}
+{% endfor %}
+    {%+ if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{{ _type(t=x.returns) }} {{ _id(name=x.name) }}({{ _params(params=x.params) }}){% if x.const %} const{% endif %}{% if x.pure %} = 0{% endif %};
+{% endfor %}
+{%+ endmacro %}

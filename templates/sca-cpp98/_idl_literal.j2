@@ -1,0 +1,55 @@
+{% macro idl_literal(v=none, t=none) %}
+{#
+  IDL literal of a value of type t (constants, union labels); nothing when IDL has none (containers,
+  structs, unions). Parameters: v, t.
+#}
+{% if t.kind == 'primitive' -%}
+  {%- if t.name == 'bool' -%}
+    {%- if v == true or v == 'true' -%}
+      {{- 'TRUE' -}}
+    {%- else -%}
+      {{- 'FALSE' -}}
+    {%- endif -%}
+  {%- elif t.name == 'char' -%}
+    {%- set c = v|replace('\\', '\\\\')|replace("'", "\\'") -%}
+    {{- "'" ~ c ~ "'" -}}
+  {%- elif t.name == 'string' -%}
+    {%- set text = v|replace('\\', '\\\\')|replace('"', '\\"')|replace('\n', '\\n')|replace('\t', '\\t') -%}
+    {{- '"' ~ text ~ '"' -}}
+  {%- elif t.name == 'bytes' -%}
+  {%- elif t.name == 'int8' -%}
+    {#- An octet: negative values wrap around. -#}
+    {%- if v < 0 -%}
+      {{- (v + 256) -}}
+    {%- else -%}
+      {{- v -}}
+    {%- endif -%}
+  {%- elif t.name == 'float32' or t.name == 'float64' -%}
+    {%- set number = v ~ '' -%}
+    {{- number -}}
+    {%- if not ('.' in number or 'e' in number) -%}
+      {{- '.0' -}}
+    {%- endif -%}
+  {%- else -%}
+    {{- v -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- set ns_ = def.dependency|default(project.ident, true)|snake -%}
+  {%- if def.kind == 'enum' -%}
+    {{- '::' ~ ns_ ~ '::' ~ def.flatName ~ '_' ~ v -}}
+  {%- elif def.kind == 'bitmask' -%}
+    {%- if v|length == 0 -%}
+      {{- '0' -}}
+    {%- endif -%}
+    {%- for flag in v -%}
+      {{- '::' ~ ns_ ~ '::' ~ def.flatName ~ '_' ~ flag -}}
+      {%- if not loop.last -%}
+        {{- ' | ' -}}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- elif def.kind == 'alias' -%}
+    {{- idl_literal(v=v, t=def.type) -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

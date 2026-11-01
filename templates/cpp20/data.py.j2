@@ -1,0 +1,188 @@
+{% from '_py_decode.j2' import py_decode as _py_decode %}
+{% from '_py_encode.j2' import py_encode as _py_encode %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_labels.j2' import py_labels as _py_labels %}
+{% from '_py_type.j2' import py_type as _py_type %}
+{% from '_py_value.j2' import py_value as _py_value %}
+{% from '_py_zero.j2' import py_zero as _py_zero %}
+{% set ns = namespace() %}
+{% include '_py_banner.j2' %}
+"""Types of the calls between the binaries of {{ project.name }}, with their encoding (wire.py)."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field as _field
+from enum import IntEnum, IntFlag
+from typing import Any, Dict, List, Optional, Set
+
+from .wire import Reader, Writer, enum
+{% filter user('imports') +%}
+{% endfilter +%}
+{% for t in remoteTypes %}
+
+{%- if t.kind == 'enum' %}
+
+
+class {{ _py_id(name=t.name) }}(IntEnum):
+{{ t.description|doc_comment('    # ') }}
+{% for v in t['values'] %}
+    {{ _py_id(name=v.name) }} = {{ v.value }}
+{% else %}
+    pass
+{% endfor %}
+{% elif t.kind == 'bitmask' %}
+
+
+class {{ _py_id(name=t.name) }}(IntFlag):
+{{ t.description|doc_comment('    # ') }}
+{% for f in t.flags %}
+    {{ _py_id(name=f.name) }} = {{ f.value }}
+{% else %}
+    pass
+{% endfor %}
+{% elif t.kind == 'union' %}
+
+
+@dataclass
+class {{ _py_id(name=t.name) }}:
+{{ t.description|doc_comment('    # ') }}
+    # `d`: the discriminator; `value`: the case it selects ({% for c in t.cases %}{{ c.name }}{% if not loop.last %}, {% endif %}{% endfor %}), None for none.
+{% set first = t.cases|first %}
+{% if first and first.label != none %}
+    d: Any = _field(default_factory=lambda: {{ _py_value(v=first.label, t=t.discriminator, prefix='') }})
+    value: Any = _field(default_factory=lambda: {{ _py_zero(t=first.type, prefix='') }})
+{% else %}
+    d: Any = _field(default_factory=lambda: {{ _py_zero(t=t.discriminator, prefix='') }})
+    value: Any = None
+{% endif %}
+{% elif t.kind == 'struct' or t.kind == 'exception' %}
+
+
+@dataclass
+class {{ _py_id(name=t.name) }}{% if t.kind == 'exception' %}(Exception){% endif %}:
+{{ t.description|doc_comment('    # ') }}
+{% for f in t.fields %}
+{{ f.description|doc_comment('    # ') }}
+    {{ _py_id(name=f.name) }}: {{ _py_type(t=f.type, prefix='') }} = _field(default_factory=lambda: {% if f.hasDefault %}{{ _py_value(v=f.default, t=f.type, prefix='') }}{% else %}{{ _py_zero(t=f.type, prefix='') }}{% endif %})
+{% else %}
+    pass
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% for t in remoteTypes %}
+
+{%- if t.kind == 'enum' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: int) -> None:
+    w.{{ t.underlying }}(int(v))
+
+
+def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
+    return enum({{ _py_id(name=t.name) }}, r.{{ t.underlying }}())
+{% elif t.kind == 'bitmask' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: int) -> None:
+    w.{{ t.underlying }}(int(v))
+
+
+def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
+    return {{ _py_id(name=t.name) }}(r.{{ t.underlying }}())
+{% elif t.kind == 'union' %}
+{% set ns.fallback = none %}
+{% for c in t.cases %}
+{% if c.isDefault %}
+{% set ns.fallback = c %}
+{% endif %}
+{% endfor %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {{ _py_id(name=t.name) }}) -> None:
+{% set __capture %}{{ _py_encode(t=t.discriminator, v='v.d', w='w', prefix='') }}{% endset %}{% set ns.statement = __capture %}
+{# The discriminator, then the case it selects. #}
+    {{ ns.statement }}
+{% set ns.branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels|length > 0 %}
+{% set __capture %}{{ _py_labels(c=c, t=t.discriminator, d='v.d', prefix='') }}{% endset %}{% set ns.test = __capture %}
+{% set __capture %}{{ _py_encode(t=c.type, v='v.value', w='w', prefix='') }}{% endset %}{% set ns.statement = __capture %}
+{# Its labels. #}
+    {{ ns.branch }} {{ ns.test }}:
+        {{ ns.statement }}
+{% set ns.branch = 'elif' %}
+{% endif %}
+{% endfor %}
+{% if ns.fallback %}
+{% set __capture %}{{ _py_encode(t=ns.fallback.type, v='v.value', w='w', prefix='') }}{% endset %}{% set ns.statement = __capture %}
+{% if ns.branch == 'if' %}
+    {{ ns.statement }}
+{% else %}
+    else:
+        {{ ns.statement }}
+{% endif %}
+{% endif %}
+
+
+def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
+    d = {{ _py_decode(t=t.discriminator, r='r', prefix='') }}
+{% for c in t.cases %}
+{% if c.labels|length > 0 %}
+{% set __capture %}{{ _py_labels(c=c, t=t.discriminator, d='d', prefix='') }}{% endset %}{% set ns.test = __capture %}
+{# Its labels. #}
+    if {{ ns.test }}:
+        return {{ _py_id(name=t.name) }}(d, {{ _py_decode(t=c.type, r='r', prefix='') }})
+{% endif %}
+{% endfor %}
+{% if ns.fallback %}
+    return {{ _py_id(name=t.name) }}(d, {{ _py_decode(t=ns.fallback.type, r='r', prefix='') }})
+{% else %}
+    return {{ _py_id(name=t.name) }}(d, None)
+{% endif %}
+{% elif t.kind == 'struct' or t.kind == 'exception' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {{ _py_id(name=t.name) }}) -> None:
+{% for f in t.fields %}
+{% set value %}
+v.{{ _py_id(name=f.name) }}
+{%- endset %}
+{% set __capture %}
+{{ _py_encode(t=f.type, v=value, w='w', prefix='') }}
+{%- endset %}{% set ns.statement = __capture %}
+    {{ ns.statement }}
+{% else %}
+    pass
+{% endfor %}
+
+
+def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
+    return {{ _py_id(name=t.name) }}(
+{% for f in t.fields %}
+        {{ _py_id(name=f.name) }}={{ _py_decode(t=f.type, r='r', prefix='') }},
+{% endfor %}
+    )
+{% elif t.kind == 'alias' %}
+
+
+def encode_{{ t.name }}(w: Writer, v: {{ _py_type(t=t.type, prefix='') }}) -> None:
+{% set __capture %}
+{{ _py_encode(t=t.type, v='v', w='w', prefix='') }}
+{%- endset %}{% set ns.statement = __capture %}
+    {{ ns.statement }}
+
+
+def decode_{{ t.name }}(r: Reader) -> {{ _py_type(t=t.type, prefix='') }}:
+    return {{ _py_decode(t=t.type, r='r', prefix='') }}
+{% elif t.kind == 'primitive' %}
+
+
+{% filter user('codec.' ~ t.name) +%}
+def encode_{{ t.name }}(w: Writer, v: Any) -> None:
+    raise NotImplementedError('{{ t.name }} is a custom type: encode it as its C++ peer does (codec.hpp)')
+
+
+def decode_{{ t.name }}(r: Reader) -> Any:
+    raise NotImplementedError('{{ t.name }} is a custom type: decode it as its C++ peer does (codec.hpp)')
+{% endfilter +%}
+{% endif %}
+{% endfor %}

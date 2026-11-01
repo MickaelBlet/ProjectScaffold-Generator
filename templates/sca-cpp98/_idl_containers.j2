@@ -1,0 +1,56 @@
+{% from '_idl_name.j2' import idl_name as _idl_name %}
+{% from '_idl_type.j2' import idl_type as _idl_type %}
+{#
+  Typedefs of the containers of a type reference not declared yet, inner ones first: a sequence
+  (`vector`, `list`, `set`; `array` and `optional` bounded to their size and 1), a map as a sequence
+  of key / value structs. Included (not rendered): records them in `idl.declared` (a namespace), which the
+  including template starts. Parameter: t.
+#}
+{% if t.kind == 'primitive' or t.kind == 'ref' -%}
+{%- else -%}
+  {%- if t.kind == 'map' -%}
+    {%- with t = t.key %}{% include '_idl_containers.j2' %}{% endwith -%}
+    {%- with t = t.value %}{% include '_idl_containers.j2' %}{% endwith -%}
+  {%- else -%}
+    {%- with t = t.of %}{% include '_idl_containers.j2' %}{% endwith -%}
+  {%- endif -%}
+  {%- set idlc_name -%}
+    {{- _idl_name(t=t) -}}
+  {%- endset -%}
+  {%- set idlc_key = '|' ~ idlc_name ~ '|' -%}
+  {%- if not (idlc_key in idl.declared) -%}
+    {%- set idl.declared = idl.declared ~ idlc_key -%}
+    {%- if t.kind == 'map' -%}
+      {%- set idlc_entry -%}
+        {{- '    struct ' ~ idlc_name ~ 'Entry {' ~ '\n' -}}
+        {{- '        ' -}}
+        {{- _idl_type(t=t.key) -}}
+        {{- ' key;' ~ '\n' ~ '        ' -}}
+        {{- _idl_type(t=t.value) -}}
+        {{- ' value;' ~ '\n' ~ '    };' ~ '\n' -}}
+        {{- '    typedef sequence<::' -}}
+        {{- project.ident|snake -}}
+        {{- '::' ~ idlc_name ~ 'Entry' -}}
+        {%- if t.max is not none -%}
+          {{- ', ' ~ t.max -}}
+        {%- endif -%}
+        {{- '> ' ~ idlc_name ~ ';' ~ '\n' -}}
+      {%- endset -%}
+      {{- idlc_entry -}}
+    {%- else -%}
+      {{- '    typedef sequence<' -}}
+      {{- _idl_type(t=t.of) -}}
+      {%- if t.kind == 'optional' -%}
+        {{- ', 1> ' ~ idlc_name ~ '; // optional: empty or one' -}}
+      {%- elif t.kind == 'array' -%}
+        {{- ', ' ~ t.size ~ '> ' ~ idlc_name ~ '; // array of ' ~ t.size -}}
+      {%- else -%}
+        {%- if t.max is not none -%}
+          {{- ', ' ~ t.max -}}
+        {%- endif -%}
+        {{- '> ' ~ idlc_name ~ ';' -}}
+      {%- endif -%}
+      {{- '\n' -}}
+    {%- endif -%}
+  {%- endif -%}
+{%- endif %}

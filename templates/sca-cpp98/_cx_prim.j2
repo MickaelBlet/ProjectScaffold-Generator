@@ -1,0 +1,16 @@
+{% macro cx_prim(t=none) %}
+{#
+  Primitive of the model a basic type stands for (through aliases; a bitmask's underlying type):
+  `bool`, `char`, `uint8`... Parameter: t.
+#}
+{% if t.kind == 'primitive' -%}
+  {{- t.name -}}
+{%- elif t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- if def.kind == 'bitmask' -%}
+    {{- def.underlying -}}
+  {%- elif def.kind == 'alias' -%}
+    {{- cx_prim(t=def.type) -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

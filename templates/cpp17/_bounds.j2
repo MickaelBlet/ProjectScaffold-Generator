@@ -1,0 +1,57 @@
+{% macro bounds(t=none, v=none, depth=none) %}
+{#
+  C++ statements, on one line, checking the bounds of value `v` of type `t` (`string<16>`,
+  `vector<T, 8>`, through aliases; structs check their own fields): nothing when unbounded.
+  Parameters: t, v, depth (of the loops, from 0).
+#}
+{% set item = 'x' ~ depth ~ '_' -%}
+{%- set next = (depth + 1) -%}
+{%- if t.kind == 'primitive' -%}
+  {%- if t.max is not none -%}
+    {{- 'checkBound(' ~ v ~ ', ' ~ t.max ~ ');' -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {%- if t.typeKind == 'alias' -%}
+    {%- set def = typeByKey[t.key] -%}
+    {{- bounds(t=def.type, v=v, depth=depth) -}}
+  {%- endif -%}
+{%- elif t.kind == 'optional' -%}
+  {%- set value = '*' ~ v -%}
+  {%- set inner -%}
+    {{- bounds(t=t.of, v=value, depth=depth) -}}
+  {%- endset -%}
+  {%- if inner != '' -%}
+    {{- 'if (' ~ v ~ ') { ' ~ inner ~ ' }' -}}
+  {%- endif -%}
+{%- elif t.kind == 'map' -%}
+  {%- if t.max is not none -%}
+    {{- 'checkBound(' ~ v ~ ', ' ~ t.max ~ ');' -}}
+  {%- endif -%}
+  {%- set key = item ~ '.first' -%}
+  {%- set value = item ~ '.second' -%}
+  {%- set inner -%}
+    {{- bounds(t=t.key, v=key, depth=next) -}}
+    {{- bounds(t=t.value, v=value, depth=next) -}}
+  {%- endset -%}
+  {%- if inner != '' -%}
+    {%- if t.max is not none -%}
+      {{- ' ' -}}
+    {%- endif -%}
+    {{- 'for (const auto& ' ~ item ~ ' : ' ~ v ~ ') { ' ~ inner ~ ' }' -}}
+  {%- endif -%}
+{%- else -%}
+  {#- array, vector, list, set -#}
+  {%- if t.kind != 'array' and t.max is not none -%}
+    {{- 'checkBound(' ~ v ~ ', ' ~ t.max ~ ');' -}}
+  {%- endif -%}
+  {%- set inner -%}
+    {{- bounds(t=t.of, v=item, depth=next) -}}
+  {%- endset -%}
+  {%- if inner != '' -%}
+    {%- if t.kind != 'array' and t.max is not none -%}
+      {{- ' ' -}}
+    {%- endif -%}
+    {{- 'for (const auto& ' ~ item ~ ' : ' ~ v ~ ') { ' ~ inner ~ ' }' -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

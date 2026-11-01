@@ -1,0 +1,15 @@
+{% macro py_labels(c=none, t=none, d=none, prefix=none) %}
+{% from '_py_value.j2' import py_value as _py_value %}
+{#
+  Python test of discriminator `d` against the labels of a union case: `d in (1, 2)`.
+  Parameters: c (the case), t (the discriminator type), d (expression), prefix.
+#}
+{{ d ~ ' in (' -}}
+{%- for l in c.labels -%}
+  {{- _py_value(v=l, t=t, prefix=prefix) -}}
+  {%- if loop.length == 1 or loop.last == false -%}
+    {{- ', ' -}}
+  {%- endif -%}
+{%- endfor -%}
+{{- ')' -}}
+{%+ endmacro %}

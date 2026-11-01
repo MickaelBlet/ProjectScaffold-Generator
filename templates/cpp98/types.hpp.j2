@@ -1,0 +1,7 @@
+{% from '_header.j2' import header as _header %}
+{% include '_banner.j2' %}
+#pragma once
+
+{% for t in types %}
+#include <{{ _header(e=t) }}>
+{% endfor %}

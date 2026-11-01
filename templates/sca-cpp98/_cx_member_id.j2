@@ -1,0 +1,13 @@
+{% macro cx_member_id(name=none, scope=none) %}
+{% from '_cx_id.j2' import cx_id as _cx_id %}
+{#
+  C++ name of a member of an IDL scope (see _idl_member). Parameters: name, scope.
+#}
+{% set a = name|lower -%}
+{%- set b = scope|lower -%}
+{%- if a == b -%}
+  {{- name ~ '_' -}}
+{%- else -%}
+  {{- _cx_id(name=name) -}}
+{%- endif %}
+{%+ endmacro %}

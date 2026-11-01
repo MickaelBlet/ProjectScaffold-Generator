@@ -1,0 +1,100 @@
+{% macro cx_init(target=none, v=none, t=none, owner=none, pad=none, depth=none) %}
+{% from '_cx_kind.j2' import cx_kind as _cx_kind %}
+{% from '_cx_literal.j2' import cx_literal as _cx_literal %}
+{% from '_cx_member.j2' import cx_member as _cx_member %}
+{% from '_cx_member_id.j2' import cx_member_id as _cx_member_id %}
+{% set ns = namespace() %}
+{#
+  Statements setting `target` to a default value of the model (as in the YAML file) of type t:
+  sequences sized then filled, structs field by field (the value's, else the field's default),
+  unions through the modifier of their case. Parameters: target, v, t, owner, pad, depth.
+#}
+{% set next = (depth + 1) -%}
+{%- if t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- set defKind = def.kind -%}
+{%- else -%}
+  {%- set defKind = '' -%}
+{%- endif -%}
+{%- set literal -%}
+  {{- _cx_literal(v=v, t=t) -}}
+{%- endset %}
+{% if literal != '' %}
+{{ pad }}{{ target }} = {{ literal }};
+{% elif t.kind == 'primitive' and t.name == 'string' %}
+{{ pad }}{{ target }} = ::CORBA::string_dup("{{ v|replace('\\', '\\\\')|replace('"', '\\"')|replace('\n', '\\n')|replace('\t', '\\t') }}");
+{% elif t.kind == 'primitive' and t.name == 'bytes' %}
+{% set chars = v|split('')|select|list %}
+{{ pad }}{{ target }}.length({{ chars|length }});
+{% for ch in chars %}
+{{ pad }}{{ target }}[{{ loop.index0 }}] = '{{ ch|replace('\\', '\\\\')|replace("'", "\\'") }}';
+{% endfor %}
+{% elif t.kind == 'optional' %}
+{% if v == none %}
+{{ pad }}{{ target }}.length(0);
+{% else %}
+{{ pad }}{{ target }}.length(1);
+{% set ns.element = target ~ '[0]' %}
+{{ cx_init(target=ns.element, v=v, t=t.of, owner=owner, pad=pad, depth=next) }}
+{%- endif %}
+{% elif t.kind == 'vector' or (t.kind == 'list' or (t.kind == 'set' or t.kind == 'array')) %}
+{{ pad }}{{ target }}.length({{ v|length }});
+{% for item in v %}
+{% set ns.element = target ~ '[' ~ loop.index0 ~ ']' %}
+{{ cx_init(target=ns.element, v=item, t=t.of, owner=owner, pad=pad, depth=next) }}
+{%- endfor %}
+{% elif t.kind == 'map' %}
+{{ pad }}{{ target }}.length({{ v|length }});
+{% for entry in v.items() %}
+{% set ns.key = target ~ '[' ~ loop.index0 ~ '].key' %}
+{% set value = target ~ '[' ~ loop.index0 ~ '].value' %}
+{{ cx_init(target=ns.key, v=entry[0], t=t.key, owner=owner, pad=pad, depth=next) }}
+{{- cx_init(target=value, v=entry[1], t=t.value, owner=owner, pad=pad, depth=next) }}
+{%- endfor %}
+{% elif defKind == 'alias' %}
+{{ cx_init(target=target, v=v, t=def.type, owner=owner, pad=pad, depth=next) }}
+{%- elif defKind == 'struct' or defKind == 'exception' %}
+{% set ns.given = '|' %}
+{% for entry in v.items() %}
+{% set ns.given = ns.given ~ entry[0] ~ '|' %}
+{% endfor %}
+{% for f in def.fields %}
+{% set ns.key = '|' ~ f.name ~ '|' %}
+{% set field -%}
+  {{- target ~ '.' -}}
+  {{- _cx_member_id(name=f.name, scope=def.flatName) -}}
+{%- endset %}
+{% if ns.key in ns.given %}
+{{ cx_init(target=field, v=v[f.name], t=f.type, owner=owner, pad=pad, depth=next) }}
+{%- elif f.hasDefault %}
+{{ cx_init(target=field, v=f.default, t=f.type, owner=owner, pad=pad, depth=next) }}
+{%- endif %}
+{% endfor %}
+{% elif defKind == 'union' %}
+{% for entry in v.items() %}
+{% set c = def.cases|selectattr('name', 'equalto', entry[0])|first %}
+{% set modifier -%}
+  {{- _cx_member_id(name=c.name, scope=def.flatName) -}}
+{%- endset -%}
+{%- set kind -%}
+  {{- _cx_kind(t=c.type) -}}
+{%- endset -%}
+{%- set caseLiteral -%}
+  {{- _cx_literal(v=entry[1], t=c.type) -}}
+{%- endset %}
+{% if caseLiteral != '' %}
+{{ pad }}{{ target }}.{{ modifier }}({{ caseLiteral }});
+{% else %}
+{% set temp = 'value' ~ depth %}
+{{ pad }}{
+{{ pad }}    {{ _cx_member(t=c.type, owner=owner) }} {{ temp }};
+{% set inner = pad ~ '    ' %}
+{{ cx_init(target=temp, v=entry[1], t=c.type, owner=owner, pad=inner, depth=next) }}
+{{- pad }}    {{ target }}.{{ modifier }}({{ temp }}{% if kind == 'string' %}.in(){% endif %});
+{{ pad }}}
+{% endif %}
+{% endfor %}
+{% elif defKind == 'primitive' %}
+{{ pad }}// {{ target }}: custom primitive, default {{ v|json }} to set by hand.
+{% endif %}
+{%+ endmacro %}

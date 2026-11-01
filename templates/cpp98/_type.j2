@@ -1,0 +1,62 @@
+{% macro type(t=none) %}
+{% from '_id.j2' import id as _id %}
+{% from '_primitive.j2' import primitive as _primitive %}
+{#
+  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`, `::robot::core::sensor::Mode`
+  for a type of a module; `void` for none.
+  Template arguments are spaced where C++98 needs it: `< ::a::B>` (`<:` is a digraph) and
+  `vector<int> >` (`>>` is a shift). Parameter: t.
+#}
+{% if t == none -%}
+  {{- 'void' -}}
+{%- else -%}
+  {%- if t.kind == 'primitive' -%}
+    {{- _primitive(name=t.name) -}}
+  {%- elif t.kind == 'ref' -%}
+    {{- '::' -}}
+    {%- if t.dependency -%}
+      {{- t.dependency|snake -}}
+    {%- else -%}
+      {{- project.ident|snake -}}
+    {%- endif -%}
+    {%- for part in t.scope -%}
+      {{- '::' -}}
+      {{- part|snake -}}
+    {%- endfor -%}
+    {{- '::' -}}
+    {{- _id(name=t.name) -}}
+  {%- else -%}
+    {%- if t.kind == 'array' -%}
+      {{- '::scaffold::Array<' -}}
+    {%- elif t.kind == 'optional' -%}
+      {{- '::scaffold::Optional<' -}}
+    {%- else -%}
+      {{- 'std::' ~ t.kind ~ '<' -}}
+    {%- endif -%}
+    {%- if t.kind == 'map' -%}
+      {%- set inner -%}
+        {{- type(t=t.key) -}}
+        {{- ', ' -}}
+        {{- type(t=t.value) -}}
+      {%- endset -%}
+    {%- else -%}
+      {%- set inner -%}
+        {{- type(t=t.of) -}}
+      {%- endset -%}
+    {%- endif -%}
+    {%- if t.kind == 'array' -%}
+      {%- set inner = inner ~ ', ' ~ t.size -%}
+    {%- endif -%}
+    {%- set first = (inner)[0:][:1] -%}
+    {%- if first == ':' -%}
+      {{- ' ' -}}
+    {%- endif -%}
+    {{- inner -}}
+    {%- set last = (inner)[-1:][:1] -%}
+    {%- if last == '>' -%}
+      {{- ' ' -}}
+    {%- endif -%}
+    {{- '>' -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

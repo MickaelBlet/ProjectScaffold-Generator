@@ -1,0 +1,37 @@
+{% macro cx_params(params=none, owner=none) %}
+{% from '_cx_id.j2' import cx_id as _cx_id %}
+{% from '_cx_in.j2' import cx_in as _cx_in %}
+{% from '_cx_kind.j2' import cx_kind as _cx_kind %}
+{% from '_cx_name.j2' import cx_name as _cx_name %}
+{#
+  Parameter list of an operation in the C++ mapping: `in` as _cx_in; `inout` as `T&` (`char*&`);
+  `out` as `T&` for fixed-length types, `T_out` for variable-length ones, `CORBA::String_out`.
+  Parameters: params, owner.
+#}
+{% for p in params -%}
+  {%- set kind -%}
+    {{- _cx_kind(t=p.type) -}}
+  {%- endset -%}
+  {%- set name -%}
+    {{- _cx_name(t=p.type, owner=owner) -}}
+  {%- endset -%}
+  {%- if p.direction == 'in' -%}
+    {{- _cx_in(t=p.type, owner=owner) -}}
+  {%- elif p.direction == 'inout' -%}
+    {{- name ~ '&' -}}
+  {%- else -%}
+    {%- if kind == 'string' -%}
+      {{- '::CORBA::String_out' -}}
+    {%- elif kind == 'variable' -%}
+      {{- name ~ '_out' -}}
+    {%- else -%}
+      {{- name ~ '&' -}}
+    {%- endif -%}
+  {%- endif -%}
+  {{- ' ' -}}
+  {{- _cx_id(name=p.name) -}}
+  {%- if not loop.last -%}
+    {{- ', ' -}}
+  {%- endif -%}
+{%- endfor %}
+{%+ endmacro %}

@@ -1,0 +1,46 @@
+{% macro variable(t=none, depth=none) %}
+{% set ns = namespace() %}
+{#
+  `true` for a variable-length type of the C++ mapping (strings, sequences, any, and the structs
+  and unions holding one): returned as `T*`, passed out as `T_out`. Parameters: t, depth.
+#}
+{% if t.kind == 'primitive' -%}
+  {%- if t.name == 'string' or t.name == 'bytes' -%}
+    {{- 'true' -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- set next = (depth + 1) -%}
+  {%- if next > 16 -%}
+    {{- 'true' -}}
+  {%- else -%}
+    {%- if def.kind == 'struct' or def.kind == 'exception' -%}
+      {%- for f in def.fields -%}
+        {%- set __capture -%}
+          {{- variable(t=f.type, depth=next) -}}
+        {%- endset %}{% set ns.inner = __capture -%}
+        {%- if ns.inner == 'true' -%}
+          {{- 'true' -}}
+          {%- break -%}
+        {%- endif -%}
+      {%- endfor -%}
+    {%- elif def.kind == 'union' -%}
+      {%- for c in def.cases -%}
+        {%- set __capture -%}
+          {{- variable(t=c.type, depth=next) -}}
+        {%- endset %}{% set ns.inner = __capture -%}
+        {%- if ns.inner == 'true' -%}
+          {{- 'true' -}}
+          {%- break -%}
+        {%- endif -%}
+      {%- endfor -%}
+    {%- elif def.kind == 'alias' -%}
+      {{- variable(t=def.type, depth=next) -}}
+    {%- elif def.kind == 'primitive' -%}
+      {{- 'true' -}}
+    {%- endif -%}
+  {%- endif -%}
+{%- else -%}
+  {{- 'true' -}}
+{%- endif %}
+{%+ endmacro %}

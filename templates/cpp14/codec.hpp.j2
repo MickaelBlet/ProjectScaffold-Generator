@@ -1,0 +1,162 @@
+{% from '_bounds.j2' import bounds as _bounds %}
+{% from '_header.j2' import header as _header %}
+{% from '_id.j2' import id as _id %}
+{% from '_labels.j2' import labels as _labels %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_type.j2' import type as _type %}
+{% set ns = namespace() %}
+{% include '_banner.j2' %}
+#pragma once
+
+#include <{{ project.ident|snake }}/remote/wire.hpp>
+{% for t in remoteTypes %}
+#include <{{ _header(e=t) }}>
+{% endfor %}
+{% filter user('includes') +%}
+{% endfilter +%}
+
+// Encoding of the types of the calls between binaries (enums, bitmasks and aliases need none: see wire.hpp).
+{% set remoteNs = project.ident|snake ~ '::remote' %}
+{{ _namespace_open(ns_=remoteNs) }}{##}
+
+{% for t in remoteTypes %}
+{% if t.kind == 'struct' or (t.kind == 'union' or t.kind == 'exception') %}
+inline void encode(Writer& w, const {{ _qualified(e=t) }}& v);
+inline void decode(Reader& r, {{ _qualified(e=t) }}& v);
+{% endif %}
+{% endfor %}
+{% for t in remoteTypes %}
+
+{%- if t.kind == 'struct' or t.kind == 'exception' %}
+
+inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
+{
+{% for f in t.fields %}
+{% set __capture %}v.{{ _id(name=f.name) }}{% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=f.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% if ns.check != '' %}
+    {{ ns.check }}
+{% endif %}
+    encode(w, {{ ns.value }});
+{% else %}
+    (void)w;
+    (void)v;
+{% endfor %}
+}
+
+inline void decode(Reader& r, {{ _qualified(e=t) }}& v)
+{
+{% for f in t.fields %}
+{% set __capture %}v.{{ _id(name=f.name) }}{% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=f.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{# Decoded, then checked. #}
+    decode(r, {{ ns.value }});
+{% if ns.check != '' %}
+    {{ ns.check }}
+{% endif %}
+{% else %}
+    (void)r;
+    (void)v;
+{% endfor %}
+}
+{% elif t.kind == 'union' %}
+{% set ns.fallback = none %}
+{% for c in t.cases %}
+{% if c.isDefault %}
+{% set ns.fallback = c %}
+{% endif %}
+{% endfor %}
+{% set disc %}{{ _type(t=t.discriminator) }}{% endset %}
+{# The discriminator, then the case it selects. #}
+
+inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
+{
+    const {{ disc }} d = v._d();
+    encode(w, d);
+{% set ns.branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels|length > 0 %}
+{% set __capture %}{{ _labels(c=c, t=t.discriminator, d='d') }}{% endset %}{% set ns.test = __capture %}
+{% set __capture %}v.{{ _id(name=c.name) }}(){% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=c.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{# Its labels. #}
+    {{ ns.branch }} ({{ ns.test }}) {
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+        encode(w, {{ ns.value }});
+{% set ns.branch = '} else if' %}
+{% endif %}
+{% endfor %}
+{% if ns.fallback %}
+{% set __capture %}v.{{ _id(name=ns.fallback.name) }}(){% endset %}{% set ns.value = __capture %}
+{% set __capture %}{{ _bounds(t=ns.fallback.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% if ns.branch == 'if' %}
+{% if ns.check != '' %}
+    {{ ns.check }}
+{% endif %}
+    encode(w, {{ ns.value }});
+{% else %}
+    } else {
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+        encode(w, {{ ns.value }});
+    }
+{% endif %}
+{% elif ns.branch != 'if' %}
+    }
+{% endif %}
+}
+
+inline void decode(Reader& r, {{ _qualified(e=t) }}& v)
+{
+    {{ disc }} d{};
+    decode(r, d);
+{% set ns.branch = 'if' %}
+{% for c in t.cases %}
+{% if c.labels|length > 0 %}
+{% set __capture %}{{ _labels(c=c, t=t.discriminator, d='d') }}{% endset %}{% set ns.test = __capture %}
+{% set __capture %}{{ _bounds(t=c.type, v='x', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{# Its labels. #}
+    {{ ns.branch }} ({{ ns.test }}) {
+        {{ _type(t=c.type) }} x{};
+        decode(r, x);
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+        v.{{ _id(name=c.name) }}(std::move(x), d);
+{% set ns.branch = '} else if' %}
+{% endif %}
+{% endfor %}
+{% if ns.branch != 'if' %}
+    } else {
+{% endif %}
+{% if ns.fallback %}
+{% set __capture %}{{ _bounds(t=ns.fallback.type, v='x', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{# The default case. #}
+        {{ _type(t=ns.fallback.type) }} x{};
+        decode(r, x);
+{% if ns.check != '' %}
+        {{ ns.check }}
+{% endif %}
+        v.{{ _id(name=ns.fallback.name) }}(std::move(x), d);
+{% else %}
+        v._default(d);
+{% endif %}
+{% if ns.branch != 'if' %}
+    }
+{% endif %}
+}
+{% elif t.kind == 'primitive' %}
+
+{% filter user('codec.' ~ t.name) +%}
+// {{ t.name }} is a custom type: write encode(Writer&, const {{ _qualified(e=t) }}&) and
+// decode(Reader&, {{ _qualified(e=t) }}&) here, as its Python peer does (data.py).
+{% endfilter +%}
+{% endif %}
+{% endfor %}
+
+{{ _namespace_close(ns_=remoteNs) -}}

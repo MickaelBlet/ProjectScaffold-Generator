@@ -1,0 +1,9 @@
+{% macro generated_transport(transport=none) %}
+{#
+  `true` for a transport written by transport.cpp and transport.py: tcp, udp, http, websocket, shm.
+  Parameter: transport.
+#}
+{% if transport == 'tcp' or transport == 'udp' or transport == 'http' or transport == 'websocket' or transport == 'shm' -%}
+  {{- 'true' -}}
+{%- endif %}
+{%+ endmacro %}

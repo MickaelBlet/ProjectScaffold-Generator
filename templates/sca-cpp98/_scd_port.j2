@@ -1,0 +1,16 @@
+{#
+  A port of an SCD: `provides` (in port) or `uses` (out port, a CF::Port). Included. Parameters:
+  role, name, repid, description.
+#}
+{% if description != '' %}
+            <!-- {{ description|escape|string }} -->
+{% endif %}
+{% if role == 'in' %}
+            <provides repid="{{ repid }}" providesname="{{ name|escape|string }}">
+                <porttype type="data"/>
+            </provides>
+{% else %}
+            <uses repid="{{ repid }}" usesname="{{ name|escape|string }}">
+                <porttype type="data"/>
+            </uses>
+{% endif %}

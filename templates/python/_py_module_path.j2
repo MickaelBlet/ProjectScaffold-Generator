@@ -1,0 +1,16 @@
+{% macro py_module_path(m=none) %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{#
+  Import path of the Python module of a module: `robot.modules.core.sensor` (a module with children
+  is a package: its class is in its `__init__.py`). Parameter: m.
+#}
+{{ project.ident|snake ~ '.modules' -}}
+{%- for parent in m.namespace -%}
+  {%- set part = parent|snake -%}
+  {{- '.' -}}
+  {{- _py_id(name=part) -}}
+{%- endfor -%}
+{%- set leaf = m.name|snake -%}
+{{- '.' -}}
+{{- _py_id(name=leaf) -}}
+{%+ endmacro %}

@@ -1,0 +1,11 @@
+{% macro qualified(e=none) %}
+{% from '_name.j2' import name as _name %}
+{% from '_ns.j2' import ns as _ns %}
+{#
+  Fully qualified class name: `::robot::core::Sensor`. Parameter: e.
+#}
+{{ '::' -}}
+{{- _ns(e=e) -}}
+{{- '::' -}}
+{{- _name(e=e) -}}
+{%+ endmacro %}

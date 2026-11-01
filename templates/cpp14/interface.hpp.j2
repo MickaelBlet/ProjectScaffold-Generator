@@ -1,0 +1,31 @@
+{% from '_id.j2' import id as _id %}
+{% from '_includes.j2' import includes as _includes %}
+{% from '_name.j2' import name as _name %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_ns.j2' import ns as _ns %}
+{% from '_params.j2' import params as _params %}
+{% from '_type.j2' import type as _type %}
+{% include '_banner.j2' %}
+#pragma once
+
+{{ _includes(e=item) }}{##}
+
+{% set ns_ %}{{ _ns(e=item) }}{% endset +%}
+{{ _namespace_open(ns_=ns_) }}{##}
+
+{{ item.description|doc_comment }}
+class {{ _name(e=item) }} {
+public:
+    virtual ~{{ _name(e=item) }}() = default;
+{% for msg in item.messages %}
+
+{{ msg.description|doc_comment('    /// ') }}
+{% for r in msg.raises %}
+    /// @throws {{ _type(t=r) }}
+{% endfor %}
+    virtual {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }}) = 0;
+{% endfor %}
+};
+
+{{ _namespace_close(ns_=ns_) -}}

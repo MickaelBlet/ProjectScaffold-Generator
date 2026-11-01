@@ -1,0 +1,21 @@
+{% macro cx_in(t=none, owner=none) %}
+{% from '_cx_kind.j2' import cx_kind as _cx_kind %}
+{% from '_cx_name.j2' import cx_name as _cx_name %}
+{#
+  C++ type of an `in` parameter: `T` for basic types and enums, `const char*` for strings, else
+  `const T&`. Parameters: t, owner.
+#}
+{% set kind -%}
+  {{- _cx_kind(t=t) -}}
+{%- endset -%}
+{%- set name -%}
+  {{- _cx_name(t=t, owner=owner) -}}
+{%- endset -%}
+{%- if kind == 'basic' or kind == 'enum' -%}
+  {{- name -}}
+{%- elif kind == 'string' -%}
+  {{- 'const char*' -}}
+{%- else -%}
+  {{- 'const ' ~ name ~ '&' -}}
+{%- endif %}
+{%+ endmacro %}

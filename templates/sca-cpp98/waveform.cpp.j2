@@ -1,0 +1,96 @@
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_component.j2' import component as _component %}
+{% from '_header.j2' import header as _header %}
+{% from '_port_name.j2' import port_name as _port_name %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_waveform_links.j2' import waveform_links as _waveform_links %}
+{% set ns = namespace() %}
+{% include '_banner.j2' %}
+{% set root = project.ident|snake -%}
+{%- set ns.components = '' -%}
+{%- for m in modules -%}
+  {%- set isComponent -%}
+    {{- _component(m=m) -}}
+  {%- endset -%}
+  {%- if isComponent == 'true' -%}
+    {%- set ns.components = ns.components ~ m.path ~ ',' -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set ns.components = ns.components|split(',')|select|list %}
+// Waveform {{ project.name }} in one process, without a Core Framework: its components activated,
+// connected as its SAD connects them (dom/waveforms/{{ root }}), initialized and started, until
+// SIGINT or SIGTERM.
+{% for path in ns.components %}
+{% set m = modules|selectattr('path', 'equalto', path)|first %}
+#include <{{ _header(e=m) }}>
+{% endfor %}
+{% filter user('includes') +%}
+{% endfilter +%}
+
+#include <iostream>
+
+int main(int argc, char** argv)
+{
+    try {
+        ::sca::Runtime runtime(argc, argv);
+{% for path in ns.components %}
+{% set m = modules|selectattr('path', 'equalto', path)|first %}
+        {{ _qualified(e=m) }}* {{ _accessor(name=m.name) }} = new {{ _qualified(e=m) }};
+        ::CF::Resource_var {{ _accessor(name=m.name) }}Ref = runtime.activate(*{{ _accessor(name=m.name) }}, "{{ m.name }}_1");
+{% endfor %}
+        std::vector< ::sca::Resource*> components;
+{% for path in ns.components %}
+{% set m = modules|selectattr('path', 'equalto', path)|first %}
+        components.push_back({{ _accessor(name=m.name) }});
+{% endfor %}
+
+{% set links -%}
+  {{- _waveform_links() -}}
+{%- endset %}
+{% set waveLinks = links|split(';')|select|list %}
+{% for entry in waveLinks %}
+{% set x = entry|split('|')|select|list %}
+{% set from = x[1]|split('.')|select|list|first %}
+{% set to = x[3]|split('.')|select|list|first %}
+{% set fromModule = modules|selectattr('path', 'equalto', from)|first %}
+{% set toModule = modules|selectattr('path', 'equalto', to)|first %}
+{% set fromComponent -%}
+  {{- _component(m=fromModule) -}}
+{%- endset -%}
+{%- set toComponent -%}
+  {{- _component(m=toModule) -}}
+{%- endset +%}
+        // {{ x[0] }}: {{ x[1] }}:{{ x[2] }} -> {{ x[3] }}:{{ x[4] }}
+{% if fromComponent == 'true' and toComponent == 'true' %}
+        ::sca::connect(*{{ _accessor(name=from) }}, "{{ _port_name(module=x[1], port=x[2], component=from) }}", *{{ _accessor(name=to) }}, "{{ _port_name(module=x[3], port=x[4], component=to) }}", "{{ x[0] }}");
+{% else %}
+        // Not connected: an end is not in a component.
+{% endif %}
+{% endfor %}
+        {%+ filter user('connected') +%}
+        {%+ endfilter +%}
+
+        for (std::size_t i = 0; i < components.size(); ++i) components[i]->initialize();
+        for (std::size_t i = 0; i < components.size(); ++i) components[i]->start();
+        {%+ filter user('started') +%}
+        std::cerr << "{{ project.name }}: started, SIGINT or SIGTERM to stop" << std::endl;
+        {%+ endfilter +%}
+        runtime.wait();
+        for (std::size_t i = components.size(); i-- > 0;) {
+            try {
+                components[i]->stop();
+                components[i]->releaseObject();
+            } catch (const ::CORBA::Exception& e) {
+                ::sca::reportError("{{ project.name }}", e);
+            }
+        }
+        runtime.shutdown();
+        for (std::size_t i = 0; i < components.size(); ++i) delete components[i];
+        return 0;
+    } catch (const ::CORBA::Exception& e) {
+        ::sca::reportError("{{ project.name }}", e);
+    } catch (const std::exception& e) {
+        ::sca::reportError("{{ project.name }}", e.what());
+    }
+    return 1;
+}

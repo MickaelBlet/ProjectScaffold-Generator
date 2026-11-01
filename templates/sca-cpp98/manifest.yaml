@@ -22,110 +22,110 @@ reserved: >-
   template this thread_local throw true try typedef typeid typename union unsigned using virtual
   void volatile wchar_t while xor xor_eq
 partials:
-  - _members.liquid
-  - _banner.liquid
-  - _xml_banner.liquid
-  - _id.liquid
-  - _accessor.liquid
-  - _member.liquid
-  - _ns.liquid
-  - _qualified.liquid
-  - _header.liquid
-  - _source.liquid
-  - _namespace_open.liquid
-  - _namespace_close.liquid
-  - _component.liquid
-  - _iface_ns.liquid
-  - _repid.liquid
-  - _endpoint.liquid
-  - _exposed.liquid
-  - _port_name.liquid
-  - _waveform_links.liquid
-  - _init.liquid
-  - _idl_id.liquid
-  - _idl_member.liquid
-  - _idl_prim.liquid
-  - _idl_name.liquid
-  - _idl_type.liquid
-  - _idl_literal.liquid
-  - _idl_containers.liquid
-  - _idl_decl.liquid
-  - _idl_forward.liquid
-  - _idl_type_containers.liquid
-  - _cx_id.liquid
-  - _cx_member_id.liquid
-  - _cx_kind.liquid
-  - _cx_prim.liquid
-  - _variable.liquid
-  - _cx_name.liquid
-  - _cx_in.liquid
-  - _cx_params.liquid
-  - _cx_args.liquid
-  - _cx_ret.liquid
-  - _cx_member.liquid
-  - _cx_get.liquid
-  - _cx_empty.liquid
-  - _cx_outs.liquid
-  - _cx_literal.liquid
-  - _cx_init.liquid
-  - _any_get.liquid
-  - _any_put.liquid
-  - _prf_type.liquid
-  - _prf_value.liquid
-  - _scd_port.liquid
-  - _sad_placement.liquid
+  - _members.j2
+  - _banner.j2
+  - _xml_banner.j2
+  - _id.j2
+  - _accessor.j2
+  - _member.j2
+  - _ns.j2
+  - _qualified.j2
+  - _header.j2
+  - _source.j2
+  - _namespace_open.j2
+  - _namespace_close.j2
+  - _component.j2
+  - _iface_ns.j2
+  - _repid.j2
+  - _endpoint.j2
+  - _exposed.j2
+  - _port_name.j2
+  - _waveform_links.j2
+  - _init.j2
+  - _idl_id.j2
+  - _idl_member.j2
+  - _idl_prim.j2
+  - _idl_name.j2
+  - _idl_type.j2
+  - _idl_literal.j2
+  - _idl_containers.j2
+  - _idl_decl.j2
+  - _idl_forward.j2
+  - _idl_type_containers.j2
+  - _cx_id.j2
+  - _cx_member_id.j2
+  - _cx_kind.j2
+  - _cx_prim.j2
+  - _variable.j2
+  - _cx_name.j2
+  - _cx_in.j2
+  - _cx_params.j2
+  - _cx_args.j2
+  - _cx_ret.j2
+  - _cx_member.j2
+  - _cx_get.j2
+  - _cx_empty.j2
+  - _cx_outs.j2
+  - _cx_literal.j2
+  - _cx_init.j2
+  - _any_get.j2
+  - _any_put.j2
+  - _prf_type.j2
+  - _prf_value.j2
+  - _scd_port.j2
+  - _sad_placement.j2
 outputs:
   # IDL: the Core Framework interfaces a component needs, and the project's.
-  - template: CF.idl.liquid
-    path: idl/CF.idl
-  - template: idl.liquid
-    path: idl/{{ project.ident | snake }}.idl
+  - template: CF.idl.j2
+    path: "idl/CF.idl"
+  - template: idl.j2
+    path: "idl/{{ project.ident|snake }}.idl"
   # What every component uses, the same in every project: sca::Resource, sca::UsesPort, sca::Runtime.
-  - template: support.hpp.liquid
-    path: include/sca/support.hpp
-  - template: support.cpp.liquid
-    path: src/sca/support.cpp
-  - template: module.hpp.liquid
+  - template: support.hpp.j2
+    path: "include/sca/support.hpp"
+  - template: support.cpp.j2
+    path: "src/sca/support.cpp"
+  - template: module.hpp.j2
     each: modules
-    path: "include/{% render '_header', e: item %}"
-  - template: module.cpp.liquid
+    path: "{% from '_header.j2' import header as _header %}include/{{ _header(e=item) }}"
+  - template: module.cpp.j2
     each: modules
     when: item.kind != 'interface'
-    path: "src/{% render '_source', e: item %}"
+    path: "{% from '_source.j2' import source as _source %}src/{{ _source(e=item) }}"
   # Executables: one per binary serving its components, one serving the components of no binary.
-  - template: binary_main.cpp.liquid
+  - template: binary_main.cpp.j2
     each: binaries
     as: binary
-    when: "modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', binary.name | first"
-    path: src/main/{{ binary.name | snake }}_main.cpp
-  - template: binary_main.cpp.liquid
-    each: "modules | where: 'depth', 0 | where: 'abstract', false | where: 'binary', nil | slice: 0 | map: 'binary'"
+    when: "modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|selectattr('binary', 'equalto', binary.name)|first"
+    path: "src/main/{{ binary.name|snake }}_main.cpp"
+  - template: binary_main.cpp.j2
+    each: "(modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|selectattr('binary', 'none'))[0:][:1]|map(attribute='binary')"
     as: binary
-    path: src/main/main.cpp
+    path: "src/main/main.cpp"
   # Components: concrete top-level modules.
-  - template: spd.xml.liquid
+  - template: spd.xml.j2
     each: modules
     when: item.depth == 0 and item.abstract == false
-    path: dom/components/{{ item.name }}/{{ item.name }}.spd.xml
+    path: "dom/components/{{ item.name }}/{{ item.name }}.spd.xml"
     comment: '#'
-  - template: scd.xml.liquid
+  - template: scd.xml.j2
     each: modules
     when: item.depth == 0 and item.abstract == false
-    path: dom/components/{{ item.name }}/{{ item.name }}.scd.xml
+    path: "dom/components/{{ item.name }}/{{ item.name }}.scd.xml"
     comment: '#'
-  - template: prf.xml.liquid
+  - template: prf.xml.j2
     each: modules
     when: item.depth == 0 and item.abstract == false
-    path: dom/components/{{ item.name }}/{{ item.name }}.prf.xml
+    path: "dom/components/{{ item.name }}/{{ item.name }}.prf.xml"
     comment: '#'
   # The waveform: its assembly, and a launcher running it in one process.
-  - template: sad.xml.liquid
-    path: dom/waveforms/{{ project.ident | snake }}/{{ project.ident | snake }}.sad.xml
-    when: "modules | where: 'depth', 0 | where: 'abstract', false | first"
+  - template: sad.xml.j2
+    path: "dom/waveforms/{{ project.ident|snake }}/{{ project.ident|snake }}.sad.xml"
+    when: "modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|first"
     comment: '#'
-  - template: waveform.cpp.liquid
-    path: src/main/waveform.cpp
-    when: "modules | where: 'depth', 0 | where: 'abstract', false | first"
-  - template: CMakeLists.txt.liquid
-    path: CMakeLists.txt
+  - template: waveform.cpp.j2
+    path: "src/main/waveform.cpp"
+    when: "modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|first"
+  - template: CMakeLists.txt.j2
+    path: "CMakeLists.txt"
     comment: '#'

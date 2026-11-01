@@ -17,10 +17,22 @@ npm run generate -- <project file> -d   # generate code (default set cpp17) with
 scripts/build_cli.sh                 # standalone dist-cli/scaffold-gen (Node SEA) + .cjs bundle
 scripts/check_remote.sh [-t <set>]  # calls between binaries: C++ <-> Python over each transport (cmake, python3)
 scripts/check_templates.sh [set]...  # generate examples/fixtures with each built-in template set, build them
+cargo test --manifest-path rust/Cargo.toml              # Rust generator (rewrite in progress)
+cargo build --release --manifest-path rust/Cargo.toml   # rust/target/release/scaffold-gen
+scripts/dev/compare_outputs.sh <set> [project]...       # TS (legacy/liquid) vs Rust (templates/) outputs, diffed
 ```
 
 - `tests/serialize.test.ts` fails when `schema/scaffold.schema.json` is stale: run `npm run schema` after changing `src/model/schema.ts`.
-- Prettier: no semicolons, single quotes, width 110, no trailing commas.
+- Prettier: no semicolons, single quotes, width 110, no trailing commas. Rust: `cargo fmt` (`rust/rustfmt.toml`).
+
+## Rewrite in Rust (in progress)
+
+Plan: TypeScript generator replaced by a native `rust/` crate rendering Jinja templates with minijinja; the TS generator stays the parity reference until removed.
+
+- Done: rendering, user sections, merge into a directory (`rust/src/codegen/`), from a context JSON (`scaffold-gen --context <json>`, made by `scripts/dump-context.ts`). Next: model (loading, validation, dependencies, IDL) and context in Rust, then the CLI, then removal of the TS.
+- `templates/<set>/*.j2` (Jinja) are the source of the built-in sets, embedded in the Rust binary; `legacy/liquid/<set>` are the Liquid sets the TS generator still uses (`scripts/builtinTemplates.ts`). A template fix goes in both until the TS is removed; `scripts/dev/compare_outputs.sh` must stay `ok`.
+- Jinja environment: `trim_blocks` + `lstrip_blocks` (manifest `trimTagLines`), undefined values are errors except in `if` (SemiStrict), `none` prints nothing; partials are macros (`{% from '_x.j2' import x as _x %}`), sections `{% filter user('id') %}…{% endfilter %}`. `SCAFFOLD_GEN_DEBUG=1` prints template errors with their source and variables.
+- `scripts/dev/liquid2jinja.py` converted the sets (for users' own Liquid sets too); `relay` is not comparable through JSON (its context has cycles).
 
 ## Architecture
 

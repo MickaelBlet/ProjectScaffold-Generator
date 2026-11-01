@@ -1,0 +1,31 @@
+{% macro idl_prim(name=none) %}
+{#
+  IDL type of a primitive of the model; int8 is an octet too (IDL 3 has no 8-bit signed integer).
+  Parameter: name.
+#}
+{% if name == 'int8' or name == 'uint8' -%}
+  {{- 'octet' -}}
+{%- elif name == 'int16' -%}
+  {{- 'short' -}}
+{%- elif name == 'uint16' -%}
+  {{- 'unsigned short' -}}
+{%- elif name == 'int32' -%}
+  {{- 'long' -}}
+{%- elif name == 'uint32' -%}
+  {{- 'unsigned long' -}}
+{%- elif name == 'int64' -%}
+  {{- 'long long' -}}
+{%- elif name == 'uint64' -%}
+  {{- 'unsigned long long' -}}
+{%- elif name == 'float32' -%}
+  {{- 'float' -}}
+{%- elif name == 'float64' -%}
+  {{- 'double' -}}
+{%- elif name == 'bool' -%}
+  {{- 'boolean' -}}
+{%- elif name == 'bytes' -%}
+  {{- '::CF::OctetSequence' -}}
+{%- else -%}
+  {{- name -}}
+{%- endif %}
+{%+ endmacro %}

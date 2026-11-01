@@ -1,0 +1,21 @@
+{% from '_header.j2' import header as _header %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% include '_banner.j2' %}
+#include <{{ _header(e=system) }}>
+{% filter user('includes') +%}
+{% endfilter +%}
+
+int main(int argc, char** argv)
+{
+    {{ _qualified(e=system) }} system;
+    {%+ filter user('main') +%}
+    (void)argc;
+    (void)argv;
+{% if system.stubs|length > 0 %}
+    // Serves the calls of the other binaries until SIGINT / SIGTERM.
+    {{ project.ident|snake }}::remote::waitForStop();
+{% endif %}
+    (void)system;
+    {%+ endfilter +%}
+    return 0;
+}

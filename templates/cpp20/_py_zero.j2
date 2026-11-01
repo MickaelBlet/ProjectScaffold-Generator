@@ -1,0 +1,63 @@
+{% macro py_zero(t=none, prefix=none) %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_ref.j2' import py_ref as _py_ref %}
+{#
+  Python expression of the default value of a type (what C++ value-initializes to; an enum gets its
+  first value). Parameters: t, prefix.
+#}
+{% if t == none -%}
+  {{- 'None' -}}
+{%- else -%}
+  {%- if t.kind == 'primitive' -%}
+    {%- if t.name == 'bool' -%}
+      {{- 'False' -}}
+    {%- elif t.name == 'char' -%}
+      {{- "'\\0'" -}}
+    {%- elif t.name == 'string' -%}
+      {{- "''" -}}
+    {%- elif t.name == 'bytes' -%}
+      {{- "b''" -}}
+    {%- elif t.name == 'float32' or t.name == 'float64' -%}
+      {{- '0.0' -}}
+    {%- else -%}
+      {{- '0' -}}
+    {%- endif -%}
+  {%- elif t.kind == 'ref' -%}
+    {%- set def = typeByKey[t.key] -%}
+    {%- if def.kind == 'struct' -%}
+      {{- _py_ref(t=t, prefix=prefix) -}}
+      {{- '()' -}}
+    {%- elif def.kind == 'enum' -%}
+      {%- if def['values']|length > 0 -%}
+        {{- _py_ref(t=t, prefix=prefix) -}}
+        {{- '.' -}}
+        {{- _py_id(name=def['values'][0].name) -}}
+      {%- else -%}
+        {{- '0' -}}
+      {%- endif -%}
+    {%- elif def.kind == 'union' -%}
+      {{- _py_ref(t=t, prefix=prefix) -}}
+      {{- '()' -}}
+    {%- elif def.kind == 'bitmask' -%}
+      {{- _py_ref(t=t, prefix=prefix) -}}
+      {{- '(0)' -}}
+    {%- elif def.kind == 'alias' -%}
+      {{- py_zero(t=def.type, prefix=prefix) -}}
+    {%- else -%}
+      {{- 'None' -}}
+    {%- endif -%}
+  {%- elif t.kind == 'optional' -%}
+    {{- 'None' -}}
+  {%- elif t.kind == 'set' -%}
+    {{- 'set()' -}}
+  {%- elif t.kind == 'map' -%}
+    {{- '{}' -}}
+  {%- elif t.kind == 'array' -%}
+    {{- '[' -}}
+    {{- py_zero(t=t.of, prefix=prefix) -}}
+    {{- ' for _ in range(' ~ t.size ~ ')]' -}}
+  {%- else -%}
+    {{- '[]' -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

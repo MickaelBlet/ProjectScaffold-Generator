@@ -1,0 +1,7 @@
+{% macro prf_value(v=none) %}
+{#
+  Text of a value of a PRF simple property. Parameter: v.
+#}
+{% set text = v ~ '' -%}
+{{- text|escape|string -}}
+{%+ endmacro %}

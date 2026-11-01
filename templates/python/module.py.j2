@@ -1,0 +1,168 @@
+{% from '_py_accessor.j2' import py_accessor as _py_accessor %}
+{% from '_py_args.j2' import py_args as _py_args %}
+{% from '_py_class.j2' import py_class as _py_class %}
+{% from '_py_endpoint.j2' import py_endpoint as _py_endpoint %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_module_path.j2' import py_module_path as _py_module_path %}
+{% from '_py_params.j2' import py_params as _py_params %}
+{% from '_py_results.j2' import py_results as _py_results %}
+{% from '_py_type.j2' import py_type as _py_type %}
+{% from '_py_value.j2' import py_value as _py_value %}
+{% from '_py_zero.j2' import py_zero as _py_zero %}
+{% include '_py_banner.j2' %}
+{% set m = item -%}
+{%- set root = project.ident|snake -%}
+{%- set class -%}
+  {{- _py_class(e=m) -}}
+{%- endset %}
+"""Module {{ m.path }} of {{ project.name }}."""
+from __future__ import annotations
+
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple  # noqa: F401
+
+from {{ root }} import data, interfaces  # noqa: F401
+{% if allModuleTypes|length > 0 %}
+from {{ root }} import module_types  # noqa: F401
+{% endif %}
+from {{ root }}.ports import OutPort  # noqa: F401
+{% for b in m.bases %}
+from {{ _py_module_path(m=b) }} import {{ _py_class(e=b) }}
+{% endfor %}
+{% for c in m.instances %}
+from {{ _py_module_path(m=c) }} import {{ _py_class(e=c) }}
+{% endfor %}
+{% filter user('imports') +%}
+{% endfilter +%}
+
+
+class {{ class }}{% if m.bases|length > 0 %}({% for b in m.bases %}{{ _py_class(e=b) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}:
+{{ m.description|doc_comment('    # ') }}
+{% for t in m.types %}
+    {%+ if t.access != 'public' %}_{% endif %}{{ _py_id(name=t.name) }} = module_types.{{ _py_id(name=t.flatName) }}
+{% endfor %}
+{% for a in m.attributes %}
+{% if a.static %}
+{{ a.description|doc_comment('    # ') }}
+    {%+ if a.access != 'public' %}_{% endif %}{{ _py_id(name=a.name) }}: ClassVar[{{ _py_type(t=a.type, prefix='data.') }}] = {% if a.hasDefault %}{{ _py_value(v=a.default, t=a.type, prefix='data.') }}{% else %}{{ _py_zero(t=a.type, prefix='data.') }}{% endif %}{% if a.const %}  # constant{% endif +%}
+{% endif %}
+{% endfor %}
+
+    def __init__(self) -> None:
+{% if m.bases|length > 0 %}
+        super().__init__()
+{% endif %}
+{% for a in m.attributes %}
+{% if not a.static %}
+{{ a.description|doc_comment('        # ') }}
+        self.{% if a.access != 'public' %}_{% endif %}{{ _py_id(name=a.name) }}: {{ _py_type(t=a.type, prefix='data.') }} = {% if a.hasDefault %}{{ _py_value(v=a.default, t=a.type, prefix='data.') }}{% else %}{{ _py_zero(t=a.type, prefix='data.') }}{% endif %}{% if a.const %}  # constant{% endif +%}
+{% endif %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.interface %}
+{% set iface %}interfaces.{{ _py_class(e=p.interface) }}{% endset %}
+{# Its kind. #}
+        # {{ p.role }} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates|length > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif +%}
+{{ p.description|doc_comment('        # ') }}
+{% if p.role == 'out' %}
+        self.{{ _py_id(name=p.name) }}: OutPort[{{ iface }}] = OutPort()
+{% elif p.delegates|length == 0 %}
+        self.{{ _py_id(name=p.name) }}: {{ iface }} = _{{ class }}{{ p.name|ucfirst }}In(self)
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+        # Abstract: an instance of a class deriving from it.
+        self.{{ _py_accessor(name=c.name) }}: {{ _py_class(e=c) }} = None  # type: ignore[assignment]
+        {%+ filter user('create.' ~ c.name) +%}
+        # self.{{ _py_accessor(name=c.name) }} = ConcreteClass()
+        {%+ endfilter +%}
+{% else %}
+        self.{{ _py_accessor(name=c.name) }} = {{ _py_class(e=c) }}()
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+{% with connection = c %}{% include '_py_connection.j2' %}{% endwith %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+        {{ _py_endpoint(x=d) }}.forward(self.{{ _py_id(name=p.name) }})
+{% endfor %}
+{% endif %}
+{% endfor %}
+        {%+ filter user('constructor') +%}
+        pass
+        {%+ endfilter +%}
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length > 0) %}
+
+    @property
+    def {{ _py_id(name=p.name) }}(self) -> interfaces.{{ _py_class(e=p.interface) }}:
+        """In port {{ p.name }}, handled by {{ p.delegates[0].module }}:{{ p.delegates[0].port }}."""
+        return {{ _py_endpoint(x=p.delegates[0]) }}
+{% endif %}
+{% endfor %}
+{% for x in m.methods %}
+
+{% if x.static %}
+    @staticmethod
+    def {% if x.access != 'public' %}_{% endif %}{{ _py_id(name=x.name) }}({% for p in x.inputs %}{{ _py_id(name=p.name) }}: {{ _py_type(t=p.type, prefix='data.') }}{% if not loop.last %}, {% endif %}{% endfor %}) -> {{ _py_results(msg=x, what='hint', prefix='data.') }}:
+{% else %}
+    def {% if x.access != 'public' %}_{% endif %}{{ _py_id(name=x.name) }}(self{{ _py_params(msg=x) }}) -> {{ _py_results(msg=x, what='hint', prefix='data.') }}:
+{% endif %}
+{{ x.description|doc_comment('        # ') }}
+{% if x.raises|length > 0 %}
+        # Raises {% for r in x.raises %}data.{{ _py_id(name=r.name) }}{% if not loop.last %}, {% endif %}{% endfor %}.
+{% endif %}
+{% if x.pure %}
+        raise NotImplementedError('{{ m.name }}.{{ x.name }}')
+{% else %}
+        {%+ filter user('method.' ~ x.name) +%}
+{% if x.returns or x.outputs|length > 0 %}
+        return {{ _py_results(msg=x, what='zero', prefix='data.') }}
+{% else %}
+        pass
+{% endif %}
+        {%+ endfilter +%}
+{% endif %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
+{% for msg in p.interface.messages %}
+
+    def on_{{ p.name|snake }}_{{ msg.name|snake }}(self{{ _py_params(msg=msg) }}) -> {{ _py_results(msg=msg, what='hint', prefix='data.') }}:
+        """Call {{ msg.name }} received by in port {{ p.name }}."""
+        {%+ filter user('on.' ~ p.name ~ '.' ~ msg.name) +%}
+{% if msg.returns or msg.outputs|length > 0 %}
+        return {{ _py_results(msg=msg, what='zero', prefix='data.') }}
+{% else %}
+        pass
+{% endif %}
+        {%+ endfilter +%}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+    {%+ filter user('members') +%}
+    {%+ endfilter +%}
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
+{% set adapter = '_' ~ class ~ p.name|ucfirst ~ 'In' %}
+
+
+class {{ adapter }}(interfaces.{{ _py_class(e=p.interface) }}):
+    """In port {{ p.name }} of {{ class }}: hands its calls to the module's on_{{ p.name|snake }}_* methods."""
+
+    def __init__(self, owner: {{ class }}) -> None:
+        self._owner = owner
+{% for msg in p.interface.messages %}
+
+    def {{ _py_id(name=msg.name) }}(self{{ _py_params(msg=msg) }}) -> {{ _py_results(msg=msg, what='hint', prefix='data.') }}:
+        return self._owner.on_{{ p.name|snake }}_{{ msg.name|snake }}({{ _py_args(msg=msg) }})
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% filter user('end') +%}
+{% endfilter +%}

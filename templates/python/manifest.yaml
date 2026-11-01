@@ -11,85 +11,85 @@ reserved: >-
   False None True and as assert async await break class continue def del elif else except finally
   for from global if import in is lambda nonlocal not or pass raise return self try while with yield
 partials:
-  - _py_banner.liquid
-  - _py_id.liquid
-  - _py_class.liquid
-  - _py_accessor.liquid
-  - _py_module_path.liquid
-  - _py_endpoint.liquid
-  - _py_params.liquid
-  - _py_args.liquid
-  - _py_connection.liquid
-  - _py_type.liquid
-  - _py_ref.liquid
-  - _py_encode.liquid
-  - _py_encoder.liquid
-  - _py_decode.liquid
-  - _py_decoder.liquid
-  - _py_zero.liquid
-  - _py_value.liquid
-  - _py_results.liquid
-  - _py_labels.liquid
-  - _address.liquid
-  - _address_variable.liquid
-  - _settings.liquid
+  - _py_banner.j2
+  - _py_id.j2
+  - _py_class.j2
+  - _py_accessor.j2
+  - _py_module_path.j2
+  - _py_endpoint.j2
+  - _py_params.j2
+  - _py_args.j2
+  - _py_connection.j2
+  - _py_type.j2
+  - _py_ref.j2
+  - _py_encode.j2
+  - _py_encoder.j2
+  - _py_decode.j2
+  - _py_decoder.j2
+  - _py_zero.j2
+  - _py_value.j2
+  - _py_results.j2
+  - _py_labels.j2
+  - _address.j2
+  - _address_variable.j2
+  - _settings.j2
 outputs:
-  - template: pyproject.toml.liquid
-    path: pyproject.toml
-  - template: init.py.liquid
-    path: "{{ project.ident | snake }}/__init__.py"
-  - template: main.py.liquid
-    path: "{{ project.ident | snake }}/__main__.py"
-    when: modules.size > 0
-  - template: wire.py.liquid
-    path: "{{ project.ident | snake }}/wire.py"
-  - template: data.py.liquid
-    path: "{{ project.ident | snake }}/data.py"
-  - template: module_types.py.liquid
-    path: "{{ project.ident | snake }}/module_types.py"
-    when: allModuleTypes.size > 0
-  - template: constants.py.liquid
-    path: "{{ project.ident | snake }}/constants.py"
-    when: constants.size > 0
-  - template: interfaces.py.liquid
-    path: "{{ project.ident | snake }}/interfaces.py"
-  - template: ports.py.liquid
-    path: "{{ project.ident | snake }}/ports.py"
-    when: modules.size > 0
+  - template: pyproject.toml.j2
+    path: "pyproject.toml"
+  - template: init.py.j2
+    path: "{{ project.ident|snake }}/__init__.py"
+  - template: main.py.j2
+    path: "{{ project.ident|snake }}/__main__.py"
+    when: modules|length > 0
+  - template: wire.py.j2
+    path: "{{ project.ident|snake }}/wire.py"
+  - template: data.py.j2
+    path: "{{ project.ident|snake }}/data.py"
+  - template: module_types.py.j2
+    path: "{{ project.ident|snake }}/module_types.py"
+    when: allModuleTypes|length > 0
+  - template: constants.py.j2
+    path: "{{ project.ident|snake }}/constants.py"
+    when: constants|length > 0
+  - template: interfaces.py.j2
+    path: "{{ project.ident|snake }}/interfaces.py"
+  - template: ports.py.j2
+    path: "{{ project.ident|snake }}/ports.py"
+    when: modules|length > 0
   # One Python module per module; a module with children is a package (its class in __init__.py).
-  - template: modules_init.py.liquid
-    path: "{{ project.ident | snake }}/modules/__init__.py"
-    when: modules.size > 0
-  - template: module.py.liquid
+  - template: modules_init.py.j2
+    path: "{{ project.ident|snake }}/modules/__init__.py"
+    when: modules|length > 0
+  - template: module.py.j2
     each: modules
-    path: "{% capture p %}{% render '_py_module_path', m: item %}{% endcapture %}{{ p | replace: '.', '/' }}{% if item.children.size > 0 %}/__init__.py{% else %}.py{% endif %}"
+    path: "{% from '_py_module_path.j2' import py_module_path as _py_module_path %}{% set p %}{{ _py_module_path(m=item) }}{% endset %}{{ p|replace('.', '/') }}{% if item.children|length > 0 %}/__init__.py{% else %}.py{% endif %}"
   # One system per binary of the project, or one for the whole project.
-  - template: systems_init.py.liquid
-    path: "{{ project.ident | snake }}/systems/__init__.py"
-    when: modules.size > 0
-  - template: system.py.liquid
+  - template: systems_init.py.j2
+    path: "{{ project.ident|snake }}/systems/__init__.py"
+    when: modules|length > 0
+  - template: system.py.j2
     each: systems
     as: system
-    path: "{{ project.ident | snake }}/systems/{% capture file %}{{ system.name | snake }}{% endcapture %}{% render '_py_id', name: file %}.py"
-    when: modules.size > 0
+    path: "{% from '_py_id.j2' import py_id as _py_id %}{{ project.ident|snake }}/systems/{% set file %}{{ system.name|snake }}{% endset %}{{ _py_id(name=file) }}.py"
+    when: modules|length > 0
   # Calls between binaries: transports, link addresses, proxies / handlers / stubs, peers.
-  - template: transport.py.liquid
-    path: "{{ project.ident | snake }}/transport.py"
-    when: remoteLinks.size > 0
-  - template: links.py.liquid
-    path: "{{ project.ident | snake }}/links.py"
-    when: remoteLinks.size > 0
-  - template: remote_init.py.liquid
-    path: "{{ project.ident | snake }}/remote/__init__.py"
-    when: remoteLinks.size > 0
-  - template: remote.py.liquid
+  - template: transport.py.j2
+    path: "{{ project.ident|snake }}/transport.py"
+    when: remoteLinks|length > 0
+  - template: links.py.j2
+    path: "{{ project.ident|snake }}/links.py"
+    when: remoteLinks|length > 0
+  - template: remote_init.py.j2
+    path: "{{ project.ident|snake }}/remote/__init__.py"
+    when: remoteLinks|length > 0
+  - template: remote.py.j2
     each: remoteInterfaces
-    path: "{{ project.ident | snake }}/remote/{% capture module %}{{ item.name | snake }}{% endcapture %}{% render '_py_id', name: module %}.py"
-  - template: peers_init.py.liquid
-    path: "{{ project.ident | snake }}/peers/__init__.py"
-    when: remoteLinks.size > 0
-  - template: peer.py.liquid
+    path: "{% from '_py_id.j2' import py_id as _py_id %}{{ project.ident|snake }}/remote/{% set module %}{{ item.name|snake }}{% endset %}{{ _py_id(name=module) }}.py"
+  - template: peers_init.py.j2
+    path: "{{ project.ident|snake }}/peers/__init__.py"
+    when: remoteLinks|length > 0
+  - template: peer.py.j2
     each: systems
     as: system
-    when: system.proxies.size > 0 or system.stubs.size > 0
-    path: "{{ project.ident | snake }}/peers/{{ system.binary.name | snake }}.py"
+    when: system.proxies|length > 0 or system.stubs|length > 0
+    path: "{{ project.ident|snake }}/peers/{{ system.binary.name|snake }}.py"

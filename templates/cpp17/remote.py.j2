@@ -1,0 +1,150 @@
+{% from '_py_decode.j2' import py_decode as _py_decode %}
+{% from '_py_encode.j2' import py_encode as _py_encode %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_results.j2' import py_results as _py_results %}
+{% from '_py_type.j2' import py_type as _py_type %}
+{% set ns = namespace() %}
+{% include '_py_banner.j2' %}
+"""Calls of interface {{ item.name }} between binaries: {{ item.name }}Proxy makes them on another binary,
+{{ item.name }}Stub receives them and makes them on its {{ item.name }}Handler.
+
+Calls give back their return value then their out / inout parameters, as a tuple when there are
+several.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+from .. import data as _data
+from ..links import Link
+from ..transport import Caller, Channel, Server, connect, serve
+from ..wire import Reader, Writer, raised, respond
+{% filter user('imports') +%}
+{% endfilter +%}
+
+_log = logging.getLogger(__name__)
+
+
+class {{ item.name }}Proxy:
+{{ item.description|doc_comment('    # ') }}
+    """{{ item.name }} of another binary: each call is encoded and sent over the channel, and waits for
+    its reply when it has a result or the link acknowledges calls (else returns at once)."""
+
+    def __init__(self, channel: Channel, ack: bool = False, timeout: float = 5.0) -> None:
+        self._caller = Caller(channel, ack, timeout)
+
+    @classmethod
+    def connect(cls, link: Link) -> {{ item.name }}Proxy:
+        """Proxy calling the server of `link`; connects on the first call."""
+        return cls(connect(link.transport, link.client_address, link.path), link.ack, link.timeout)
+
+    def close(self) -> None:
+        self._caller.close()
+{% for msg in item.messages %}
+{% set raises %}{% if msg.raises|length > 0 %}, ({% for r in msg.raises %}_data.decode_{{ r.name }}{% if loop.length == 1 %},{% elif loop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endset %}
+{# The decoders of its declared exceptions. #}
+
+    def {{ _py_id(name=msg.name) }}(self{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}: {{ _py_type(t=p.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(msg=msg, what='hint', prefix='_data.') }}:
+{{ msg.description|doc_comment('        # ') }}
+        _w = Writer()
+{% for p in msg.inputs %}
+{% set __capture %}
+{{ _py_id(name=p.name) }}
+{%- endset %}{% set ns.value = __capture %}
+{% set __capture %}
+{{ _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') }}
+{%- endset %}{% set ns.statement = __capture %}
+        {{ ns.statement }}
+{% endfor %}
+{% if msg.returns or msg.outputs|length > 0 %}
+        _r = self._caller.call({{ loop.index0 }}, _w, True{{ raises }})
+{% set ns.k = 0 %}
+{% if msg.returns %}
+        _v0 = {{ _py_decode(t=msg.returns, r='_r', prefix='_data.') }}
+{% set ns.k = 1 %}
+{% endif %}
+{% for p in msg.outputs %}
+        _v{{ (loop.index0 + ns.k) }} = {{ _py_decode(t=p.type, r='_r', prefix='_data.') }}
+{% endfor %}
+        _r.end()
+        return {{ _py_results(msg=msg, what='names') }}
+{% else %}
+        self._caller.call({{ loop.index0 }}, _w, False{{ raises }})
+{% endif %}
+{% endfor %}
+
+    {%+ filter user('proxy') +%}
+    {%+ endfilter +%}
+
+
+class {{ item.name }}Handler:
+    """Calls of {{ item.name }} received from another binary: override its methods. The defaults log the
+    call and give back default values (inout parameters unchanged)."""
+{% for msg in item.messages %}
+
+    def {{ _py_id(name=msg.name) }}(self{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}: {{ _py_type(t=p.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(msg=msg, what='hint', prefix='_data.') }}:
+{{ msg.description|doc_comment('        # ') }}
+        _log.info('{{ item.name }}.{{ msg.name }}({% for p in msg.inputs %}%r{% if not loop.last %}, {% endif %}{% endfor %})'{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}{% endfor %})
+{% if msg.returns or msg.outputs|length > 0 %}
+        return {{ _py_results(msg=msg, what='zero', prefix='_data.') }}
+{% endif %}
+{% endfor %}
+
+    {%+ filter user('handler') +%}
+    {%+ endfilter +%}
+
+
+class {{ item.name }}Stub:
+    """Receives the calls of {{ item.name }} (frames) and makes them on its handler. The calls come on the
+    threads of the transport: several at once over tcp, http and websocket (one per connection)."""
+
+    def __init__(self, handler: {{ item.name }}Handler) -> None:
+        self.handler = handler
+
+    @classmethod
+    def serve(cls, link: Link, handler: {{ item.name }}Handler) -> Server:
+        """Receives the calls of `link` into `handler` until the server is closed."""
+        return serve(link.transport, link.server_address, cls(handler), link.capacity)
+
+    def __call__(self, frame: bytes) -> Optional[bytes]:
+        return respond(frame, self._handle)
+
+    def _handle(self, _message: int, _r: Reader, _w: Writer) -> bool:
+        _h = self.handler
+{% for msg in item.messages %}
+        if _message == {{ loop.index0 }}:
+{% for p in msg.inputs %}
+            {{ _py_id(name=p.name) }} = {{ _py_decode(t=p.type, r='_r', prefix='_data.') }}
+{% endfor %}
+            _r.end()
+{% set call %}{% if msg.returns or msg.outputs|length > 0 %}{{ _py_results(msg=msg, what='names') }} = {% endif %}_h.{{ _py_id(name=msg.name) }}({% for p in msg.inputs %}{{ _py_id(name=p.name) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endset %}
+{% if msg.raises|length > 0 %}
+            try:
+                {{ call }}
+{% for r in msg.raises %}
+            except _data.{{ _py_id(name=r.name) }} as _e:
+                raise raised({{ loop.index0 }}, _data.encode_{{ r.name }}, _e) from None
+{% endfor %}
+{% else %}
+            {{ call }}
+{% endif %}
+{% set ns.k = 0 %}
+{% if msg.returns %}
+{% set __capture %}
+{{ _py_encode(t=msg.returns, v='_v0', w='_w', prefix='_data.') }}
+{%- endset %}{% set ns.statement = __capture %}
+            {{ ns.statement }}
+{% set ns.k = 1 %}
+{% endif %}
+{% for p in msg.outputs %}
+{% set i = (loop.index0 + ns.k) %}
+{% set ns.value = '_v' ~ i %}
+{% set __capture %}
+{{ _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') }}
+{%- endset %}{% set ns.statement = __capture %}
+            {{ ns.statement }}
+{% endfor %}
+            return True
+{% endfor %}
+        return False

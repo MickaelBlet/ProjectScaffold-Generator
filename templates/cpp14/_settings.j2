@@ -1,0 +1,26 @@
+{% macro settings(s=none) %}
+{% set ns = namespace() %}
+{#
+  Settings of a link's transport set in the project, as text: `broker 10.0.0.1:1883, topic rover, qos=1`
+  (empty when none). Parameter: s (a link's `constraints.remote.settings`).
+#}
+{% set ns.parts = '' -%}
+{%- set ends = 'client,server,broker'|split(',')|select|list -%}
+{%- for e in ends -%}
+  {%- set at = s[e] if e in s else none -%}
+  {%- if at.host != none or at.port != none -%}
+    {%- set ns.parts = ns.parts ~ '|' ~ e ~ ' ' ~ at.host ~ ':' ~ at.port -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set scalars = 'path,name,capacity,socket,topic,interface,id,device,baud'|split(',')|select|list -%}
+{%- for k in scalars -%}
+  {%- set v = s[k] if k in s else none -%}
+  {%- if v != none -%}
+    {%- set ns.parts = ns.parts ~ '|' ~ k ~ ' ' ~ v -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- for o in s.options -%}
+  {%- set ns.parts = ns.parts ~ '|' ~ o.name ~ '=' ~ o.value -%}
+{%- endfor -%}
+{{- ns.parts|replace('|', '', 1)|split('|')|select|list|join(', ') -}}
+{%+ endmacro %}

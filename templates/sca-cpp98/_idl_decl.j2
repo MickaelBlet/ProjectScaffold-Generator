@@ -1,0 +1,58 @@
+{% from '_idl_id.j2' import idl_id as _idl_id %}
+{% from '_idl_literal.j2' import idl_literal as _idl_literal %}
+{% from '_idl_member.j2' import idl_member as _idl_member %}
+{% from '_idl_prim.j2' import idl_prim as _idl_prim %}
+{% from '_idl_type.j2' import idl_type as _idl_type %}
+{#
+  IDL declaration of a type of the project. Enum values and bitmask flags are prefixed with their
+  type's name (`State_On`): IDL puts them in the enclosing module. Included (not rendered): a
+  custom primitive's user section belongs to the including file. Parameter: e.
+#}
+{% set idld_name -%}
+  {{- _idl_id(name=e.flatName) -}}
+{%- endset +%}
+
+{{ e.description|doc_comment('    // ') }}{##}
+
+{% if e.kind == 'struct' or e.kind == 'exception' %}
+    {{ e.kind }} {{ idld_name }} {
+{% for f in e.fields %}
+{{ f.description|doc_comment('        // ') }}
+        {{ _idl_type(t=f.type) }} {{ _idl_member(name=f.name, scope=e.flatName) }};{% if f.hasDefault %} // default: {{ f.default|json }}{% endif +%}
+{% endfor %}
+{% if e.kind == 'struct' and e.fields|length == 0 %}
+        octet unused; // an IDL struct has members
+{% endif %}
+    };
+{% elif e.kind == 'enum' %}
+    enum {{ idld_name }} {
+{% for v in e['values'] %}
+        {{ e.flatName }}_{{ v.name }}{% if not loop.last %},{% endif %} // {{ v.value }}
+{% endfor %}
+    };
+{% elif e.kind == 'bitmask' %}
+    typedef {{ _idl_prim(name=e.underlying) }} {{ idld_name }};
+{% for f in e.flags %}
+    const {{ idld_name }} {{ e.flatName }}_{{ f.name }} = {{ f.value }};
+{% endfor %}
+{% elif e.kind == 'union' %}
+    union {{ idld_name }} switch ({{ _idl_type(t=e.discriminator) }}) {
+{% for c in e.cases %}
+{{ c.description|doc_comment('        // ') }}
+{% for l in c.labels %}
+    case {{ _idl_literal(v=l, t=e.discriminator) }}:
+{% endfor %}
+{% if c.isDefault %}
+    default:
+{% endif %}
+        {{ _idl_type(t=c.type) }} {{ _idl_member(name=c.name, scope=e.flatName) }};
+{% endfor %}
+    };
+{% elif e.kind == 'alias' %}
+    typedef {{ _idl_type(t=e.type) }} {{ idld_name }};
+{% elif e.kind == 'primitive' %}
+    // Custom primitive: an any until given its IDL type.
+    {%+ filter user('primitive.' ~ e.flatName) +%}
+    typedef any {{ idld_name }};
+    {%+ endfilter +%}
+{% endif %}

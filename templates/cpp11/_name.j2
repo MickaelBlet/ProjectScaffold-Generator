@@ -1,0 +1,11 @@
+{% macro name(e=none) %}
+{% from '_id.j2' import id as _id %}
+{#
+  Class name of a type, interface (`I` + name), module or the system. Parameter: e.
+#}
+{% if e.entity == 'interface' -%}
+  {{- 'I' ~ e.name -}}
+{%- else -%}
+  {{- _id(name=e.name) -}}
+{%- endif %}
+{%+ endmacro %}

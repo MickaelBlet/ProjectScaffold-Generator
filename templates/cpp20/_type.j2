@@ -1,0 +1,43 @@
+{% macro type(t=none) %}
+{% from '_id.j2' import id as _id %}
+{% from '_primitive.j2' import primitive as _primitive %}
+{#
+  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`, `::robot::core::sensor::Mode`
+  for a type of a module; `void` for none.
+  Parameter: t.
+#}
+{% if t == none -%}
+  {{- 'void' -}}
+{%- else -%}
+  {%- if t.kind == 'primitive' -%}
+    {{- _primitive(name=t.name) -}}
+  {%- elif t.kind == 'ref' -%}
+    {{- '::' -}}
+    {%- if t.dependency -%}
+      {{- t.dependency|snake -}}
+    {%- else -%}
+      {{- project.ident|snake -}}
+    {%- endif -%}
+    {%- for part in t.scope -%}
+      {{- '::' -}}
+      {{- part|snake -}}
+    {%- endfor -%}
+    {{- '::' -}}
+    {{- _id(name=t.name) -}}
+  {%- elif t.kind == 'array' -%}
+    {{- 'std::array<' -}}
+    {{- type(t=t.of) -}}
+    {{- ', ' ~ t.size ~ '>' -}}
+  {%- elif t.kind == 'map' -%}
+    {{- 'std::map<' -}}
+    {{- type(t=t.key) -}}
+    {{- ', ' -}}
+    {{- type(t=t.value) -}}
+    {{- '>' -}}
+  {%- else -%}
+    {{- 'std::' ~ t.kind ~ '<' -}}
+    {{- type(t=t.of) -}}
+    {{- '>' -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

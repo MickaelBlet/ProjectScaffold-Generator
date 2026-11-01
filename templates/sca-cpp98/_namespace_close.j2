@@ -1,0 +1,13 @@
+{% macro namespace_close(ns_=none) %}
+{#
+  Closes a namespace opened by _namespace_open: `} } // namespace robot::core`. Parameter: ns.
+#}
+{% set parts = ns_|split('::')|select|list -%}
+{%- for part in parts -%}
+  {{- '}' -}}
+  {%- if not loop.last -%}
+    {{- ' ' -}}
+  {%- endif -%}
+{%- endfor -%}
+{{- ' // namespace ' ~ ns_ -}}
+{%+ endmacro %}

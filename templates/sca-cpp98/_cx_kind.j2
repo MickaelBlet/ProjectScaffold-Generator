@@ -1,0 +1,39 @@
+{% macro cx_kind(t=none) %}
+{% from '_variable.j2' import variable as _variable %}
+{#
+  How the C++ mapping passes a type: `basic` (numbers, bool, char, octet, bitmasks), `enum`,
+  `string`, `fixed` (fixed-length structs and unions) or `variable` (sequences, any, structs and
+  unions holding them). Parameter: t.
+#}
+{% if t.kind == 'primitive' -%}
+  {%- if t.name == 'string' -%}
+    {{- 'string' -}}
+  {%- elif t.name == 'bytes' -%}
+    {{- 'variable' -}}
+  {%- else -%}
+    {{- 'basic' -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- if def.kind == 'enum' -%}
+    {{- 'enum' -}}
+  {%- elif def.kind == 'bitmask' -%}
+    {{- 'basic' -}}
+  {%- elif def.kind == 'alias' -%}
+    {{- cx_kind(t=def.type) -}}
+  {%- elif def.kind == 'primitive' -%}
+    {{- 'variable' -}}
+  {%- else -%}
+    {%- set variable -%}
+      {{- _variable(t=t, depth=0) -}}
+    {%- endset -%}
+    {%- if variable == 'true' -%}
+      {{- 'variable' -}}
+    {%- else -%}
+      {{- 'fixed' -}}
+    {%- endif -%}
+  {%- endif -%}
+{%- else -%}
+  {{- 'variable' -}}
+{%- endif %}
+{%+ endmacro %}

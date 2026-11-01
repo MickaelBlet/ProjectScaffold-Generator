@@ -1,0 +1,261 @@
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_any_get.j2' import any_get as _any_get %}
+{% from '_any_put.j2' import any_put as _any_put %}
+{% from '_component.j2' import component as _component %}
+{% from '_cx_empty.j2' import cx_empty as _cx_empty %}
+{% from '_cx_init.j2' import cx_init as _cx_init %}
+{% from '_cx_outs.j2' import cx_outs as _cx_outs %}
+{% from '_cx_params.j2' import cx_params as _cx_params %}
+{% from '_cx_ret.j2' import cx_ret as _cx_ret %}
+{% from '_endpoint.j2' import endpoint as _endpoint %}
+{% from '_exposed.j2' import exposed as _exposed %}
+{% from '_header.j2' import header as _header %}
+{% from '_id.j2' import id as _id %}
+{% from '_iface_ns.j2' import iface_ns as _iface_ns %}
+{% from '_init.j2' import init as _init %}
+{% from '_member.j2' import member as _member %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_ns.j2' import ns as _ns %}
+{% from '_port_name.j2' import port_name as _port_name %}
+{% from '_qualified.j2' import qualified as _qualified %}
+{% set ns = namespace() %}
+{% include '_banner.j2' %}
+{% set m = item -%}
+{%- set root = project.ident|snake -%}
+{%- set class -%}
+  {{- _id(name=m.name) -}}
+{%- endset -%}
+{%- set component -%}
+  {{- _component(m=m) -}}
+{%- endset -%}
+{%- set ns.baseComponent = false -%}
+{%- for b in m.bases -%}
+  {%- set isComponent -%}
+    {{- _component(m=b) -}}
+  {%- endset -%}
+  {%- if isComponent == 'true' and ns.baseComponent == false -%}
+    {%- set ns.baseComponent = b -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- if ns.baseComponent -%}
+  {%- set base -%}
+    {{- _qualified(e=ns.baseComponent) -}}
+  {%- endset -%}
+{%- endif -%}
+{#- Properties: the component's own instance attributes. -#}
+{%- set properties = m.attributes|selectattr('static', 'equalto', false) -%}
+{%- set exposed -%}
+  {{- _exposed(m=m) -}}
+{%- endset -%}
+{%- set exposed = exposed|split(',')|select|list %}
+#include <{{ _header(e=m) }}>
+{% filter user('includes') +%}
+{% endfilter +%}
+
+{% set ns_ %}{{ _ns(e=m) }}{% endset +%}
+{{ _namespace_open(ns_=ns_) }}{##}
+
+{{ class }}::{{ class }}(){{ _init(m=m) }}
+{
+{% for a in m.attributes %}
+{% if a.hasDefault and a.static == false %}
+{% set member -%}
+  {{- _member(name=a.name) -}}
+{%- endset %}
+{{ _cx_init(target=member, v=a.default, t=a.type, owner=root, pad='    ', depth=0) }}
+{%- endif %}
+{% endfor %}
+{% for c in m.instances %}
+{% if c.abstract %}
+    {%+ filter user('create.' ~ c.name) +%}
+    // {{ _accessor(name=c.name) }}_ = new ConcreteClass;
+    {%+ endfilter +%}
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+{% set l = c.link %}
+    // {{ l.name }}: {{ l.from.module }}:{{ l.from.port }} -> {{ l.to.module }}:{{ l.to.port }}, {{ l.constraints.direction }}, {{ l.constraints.performance.class }}
+{{ l.description|doc_comment('    // ') }}
+    {{ _endpoint(x=c.from, skip=0) }}.connect({{ _endpoint(x=c.to, skip=0) }});
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+    {{ _endpoint(x=d, skip=0) }}.forward({{ _member(name=p.name) }});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {%+ filter user('constructor') +%}
+    {%+ endfilter +%}
+}
+
+{{ class }}::~{{ class }}()
+{
+    {%+ filter user('destructor') +%}
+    {%+ endfilter +%}
+{% for c in m.instances %}
+{% if c.abstract %}
+    delete {{ _accessor(name=c.name) }}_;
+{% endif %}
+{% endfor %}
+}
+{% for x in m.methods %}
+{% if not x.pure %}
+
+{{ _cx_ret(t=x.returns, owner=root) }} {{ class }}::{{ _id(name=x.name) }}({{ _cx_params(params=x.params, owner=root) }}){% if x.const %} const{% endif +%}
+{
+    {%+ filter user('method.' ~ x.name) +%}
+{{ _cx_outs(params=x.params, owner=root, pad='    ') }}
+{%- if x.returns %}
+    return {{ _cx_empty(t=x.returns, owner=root) }};
+{% endif %}
+    {%+ endfilter +%}
+}
+{% endif %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
+{% set ifns -%}
+  {{- _iface_ns(i=p.interface) -}}
+{%- endset %}
+{% for msg in p.interface.messages %}
+
+{{ _cx_ret(t=msg.returns, owner=ifns) }} {{ class }}::on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _cx_params(params=msg.params, owner=ifns) }})
+{
+    {%+ filter user('on.' ~ p.name ~ '.' ~ msg.name) +%}
+{{ _cx_outs(params=msg.params, owner=ifns, pad='    ') }}
+{%- if msg.returns %}
+    return {{ _cx_empty(t=msg.returns, owner=ifns) }};
+{% endif %}
+    {%+ endfilter +%}
+}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% if component == 'true' %}
+
+void {{ class }}::onInitialize()
+{
+    {%+ filter user('onInitialize') +%}
+{% if ns.baseComponent %}
+    {{ base }}::onInitialize();
+{% endif %}
+    {%+ endfilter +%}
+}
+
+void {{ class }}::onStart()
+{
+    {%+ filter user('onStart') +%}
+{% if ns.baseComponent %}
+    {{ base }}::onStart();
+{% endif %}
+    {%+ endfilter +%}
+}
+
+void {{ class }}::onStop()
+{
+    {%+ filter user('onStop') +%}
+{% if ns.baseComponent %}
+    {{ base }}::onStop();
+{% endif %}
+    {%+ endfilter +%}
+}
+
+void {{ class }}::onRelease()
+{
+    {%+ filter user('onRelease') +%}
+{% if ns.baseComponent %}
+    {{ base }}::onRelease();
+{% endif %}
+    {%+ endfilter +%}
+}
+
+void {{ class }}::onConfigured(const std::string& id)
+{
+    {%+ filter user('onConfigured') +%}
+{% if ns.baseComponent %}
+    {{ base }}::onConfigured(id);
+{% else %}
+    (void)id;
+{% endif %}
+    {%+ endfilter +%}
+}
+
+bool {{ class }}::configureProperty(const std::string& id, const ::CORBA::Any& value)
+{
+{% for a in properties %}
+{% if a.const %}
+    if (id == "{{ a.name }}") return false; // read only
+{% else %}
+    if (id == "{{ a.name }}") return {{ _any_get(any='value', name=a.name, t=a.type) }};
+{% endif %}
+{% endfor %}
+{% if ns.baseComponent %}
+    return {{ base }}::configureProperty(id, value);
+{% else %}
+    (void)id;
+    (void)value;
+    return false;
+{% endif %}
+}
+
+bool {{ class }}::queryProperty(const std::string& id, ::CORBA::Any& value)
+{
+{% for a in properties %}
+    if (id == "{{ a.name }}") {
+        value <<= {{ _any_put(name=a.name, t=a.type) }};
+        return true;
+    }
+{% endfor %}
+{% if ns.baseComponent %}
+    return {{ base }}::queryProperty(id, value);
+{% else %}
+    (void)id;
+    (void)value;
+    return false;
+{% endif %}
+}
+
+void {{ class }}::propertyIds(std::vector<std::string>& ids)
+{
+{% if ns.baseComponent %}
+    {{ base }}::propertyIds(ids);
+{% endif %}
+{% for a in properties %}
+    ids.push_back("{{ a.name }}");
+{% endfor %}
+{% if properties|length == 0 and ns.baseComponent == false %}
+    (void)ids;
+{% endif %}
+}
+
+::CORBA::Object_ptr {{ class }}::port(const std::string& name)
+{
+{% for p in m.ports %}
+{% if p.interface %}
+    if (name == "{{ p.name }}") return {{ _id(name=p.name) }}()._this();
+{% endif %}
+{% endfor %}
+{% for x in exposed %}
+{% set parts = x|split(':')|select|list %}
+{% set inner = modules|selectattr('path', 'equalto', parts[0])|first %}
+{% set innerPort = inner.ports|selectattr('name', 'equalto', parts[1])|first %}
+{% if innerPort.interface %}
+{% set segments = parts[0]|split('.')|select|list %}
+    if (name == "{{ _port_name(module=parts[0], port=parts[1], component=m.path) }}") return {% for s in segments[1:] %}{{ _accessor(name=s) }}().{% endfor %}{{ _id(name=parts[1]) }}()._this();
+{% endif %}
+{% endfor %}
+{% if ns.baseComponent %}
+    return {{ base }}::port(name);
+{% else %}
+    (void)name;
+    return ::CORBA::Object::_nil();
+{% endif %}
+}
+{% endif %}
+
+{% filter user('end') +%}
+{% endfilter +%}
+
+{{ _namespace_close(ns_=ns_) -}}

@@ -1,0 +1,67 @@
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_type.j2' import py_type as _py_type %}
+{% from '_py_value.j2' import py_value as _py_value %}
+{% from '_py_zero.j2' import py_zero as _py_zero %}
+{% include '_py_banner.j2' %}
+"""Types of the modules of {{ project.name }} (those of its dependencies included), by flat name
+(`Core_Sensor_Mode` for type Mode of module Core.Sensor); each module's class names its own ones."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field as _field
+from enum import IntEnum, IntFlag
+from typing import Any, Dict, List, Optional, Set  # noqa: F401
+
+from .data import *  # noqa: F401,F403
+{% filter user('imports') +%}
+{% endfilter +%}
+{% for t in allModuleTypes %}
+
+{%- if t.kind == 'enum' %}
+
+
+class {{ _py_id(name=t.flatName) }}(IntEnum):
+{{ t.description|doc_comment('    # ') }}
+{% for v in t['values'] %}
+    {{ _py_id(name=v.name) }} = {{ v.value }}
+{% else %}
+    pass
+{% endfor %}
+{% elif t.kind == 'bitmask' %}
+
+
+class {{ _py_id(name=t.flatName) }}(IntFlag):
+{{ t.description|doc_comment('    # ') }}
+{% for f in t.flags %}
+    {{ _py_id(name=f.name) }} = {{ f.value }}
+{% else %}
+    pass
+{% endfor %}
+{% elif t.kind == 'union' %}
+
+
+@dataclass
+class {{ _py_id(name=t.flatName) }}:
+{{ t.description|doc_comment('    # ') }}
+    # `d`: the discriminator; `value`: the case it selects ({% for c in t.cases %}{{ c.name }}{% if not loop.last %}, {% endif %}{% endfor %}), None for none.
+{% set first = t.cases|first %}
+{% if first and first.label != none %}
+    d: Any = _field(default_factory=lambda: {{ _py_value(v=first.label, t=t.discriminator, prefix='') }})
+    value: Any = _field(default_factory=lambda: {{ _py_zero(t=first.type, prefix='') }})
+{% else %}
+    d: Any = _field(default_factory=lambda: {{ _py_zero(t=t.discriminator, prefix='') }})
+    value: Any = None
+{% endif %}
+{% elif t.kind == 'struct' or t.kind == 'exception' %}
+
+
+@dataclass
+class {{ _py_id(name=t.flatName) }}{% if t.kind == 'exception' %}(Exception){% endif %}:
+{{ t.description|doc_comment('    # ') }}
+{% for f in t.fields %}
+{{ f.description|doc_comment('    # ') }}
+    {{ _py_id(name=f.name) }}: {{ _py_type(t=f.type, prefix='') }} = _field(default_factory=lambda: {% if f.hasDefault %}{{ _py_value(v=f.default, t=f.type, prefix='') }}{% else %}{{ _py_zero(t=f.type, prefix='') }}{% endif %})
+{% else %}
+    pass
+{% endfor %}
+{% endif %}
+{% endfor %}

@@ -1,0 +1,10 @@
+{% macro iface_ns(i=none) %}
+{#
+  IDL module (and C++ namespace) of an interface: its dependency's, else the project's. Parameter: i.
+#}
+{% if i.dependency -%}
+  {{- i.dependency|snake -}}
+{%- else -%}
+  {{- project.ident|snake -}}
+{%- endif %}
+{%+ endmacro %}

@@ -1,0 +1,35 @@
+{% macro idl_name(t=none) %}
+{#
+  Name of the IDL typedef standing for a container of the model (IDL has no anonymous types in
+  operations): `vector<Reading>` -> `ReadingSeq`, `map<string, int32>` -> `StringInt32Map`,
+  `optional<string>` -> `StringOpt`, `array<float32, 3>` -> `Float32Array3`, bounds appended
+  (`Int32Seq16`). Parameter: t.
+#}
+{% if t.kind == 'primitive' -%}
+  {{- t.name|ucfirst -}}
+  {%- if t.max is not none -%}
+    {{- t.max -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {{- t.flatName -}}
+{%- elif t.kind == 'map' -%}
+  {{- idl_name(t=t.key) -}}
+  {{- idl_name(t=t.value) -}}
+  {{- 'Map' -}}
+  {%- if t.max is not none -%}
+    {{- t.max -}}
+  {%- endif -%}
+{%- elif t.kind == 'optional' -%}
+  {{- idl_name(t=t.of) -}}
+  {{- 'Opt' -}}
+{%- elif t.kind == 'array' -%}
+  {{- idl_name(t=t.of) -}}
+  {{- 'Array' ~ t.size -}}
+{%- else -%}
+  {{- idl_name(t=t.of) -}}
+  {{- 'Seq' -}}
+  {%- if t.max is not none -%}
+    {{- t.max -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}

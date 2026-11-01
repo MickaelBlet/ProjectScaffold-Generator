@@ -1,0 +1,152 @@
+{% from '_py_accessor.j2' import py_accessor as _py_accessor %}
+{% from '_py_class.j2' import py_class as _py_class %}
+{% from '_py_endpoint.j2' import py_endpoint as _py_endpoint %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_module_path.j2' import py_module_path as _py_module_path %}
+{% set ns = namespace() %}
+{% include '_py_banner.j2' %}
+{% set root = project.ident|snake -%}
+{%- set generated = 'tcp,udp,http,websocket,shm'|split(',')|select|list -%}
+{%- set faces = system.proxies|map(attribute='interface') -%}
+{%- set more = system.stubs|map(attribute='interface') -%}
+{%- set faces = (faces + more)|unique|list -%}
+{%- set module -%}
+  {%- set ns.file = system.name|snake -%}
+  {{- _py_id(name=ns.file) -}}
+{%- endset %}
+"""{% if system.binary %}Binary {{ system.binary.name }} of {{ project.name }}: its top-level modules, wired together and to the other
+binaries{% else %}The top-level modules of {{ project.name }}, wired together{% endif %}.
+
+    python -m {{ root }}.systems.{{ module }}    # Ctrl-C stops
+"""
+from __future__ import annotations
+
+import logging
+import time
+from typing import List
+
+{% for c in system.instances %}
+from {{ _py_module_path(m=c) }} import {{ _py_class(e=c) }}
+{% endfor %}
+{% if faces|length > 0 %}
+from {{ root }} import links  # noqa: F401
+from {{ root }}.transport import Server
+{% for i in faces %}
+from {{ root }}.remote.{% set __capture %}{{ i.name|snake }}{% endset %}{% set ns.file = __capture %}{{ _py_id(name=ns.file) }} import {{ i.name }}Proxy, {{ i.name }}Stub  # noqa: F401
+{% endfor %}
+{% else %}
+from {{ root }}.ports import OutPort  # noqa: F401
+{% endif %}
+{% filter user('imports') +%}
+{% endfilter +%}
+
+
+class {{ system.name }}:
+{{ project.description|doc_comment('    # ') }}
+{% if system.binary %}
+{{ system.binary.description|doc_comment('    # ') }}
+{% endif %}
+    """serve() starts receiving the calls of the other binaries, close() stops; also a context manager."""
+
+    def __init__(self) -> None:
+{% for c in system.instances %}
+{% if c.abstract %}
+        # Abstract: an instance of a class deriving from it.
+        self.{{ _py_accessor(name=c.name) }}: {{ _py_class(e=c) }} = None  # type: ignore[assignment]
+        {%+ filter user('create.' ~ c.name) +%}
+        # self.{{ _py_accessor(name=c.name) }} = ConcreteClass()
+        {%+ endfilter +%}
+{% else %}
+        self.{{ _py_accessor(name=c.name) }} = {{ _py_class(e=c) }}()
+{% endif %}
+{% endfor %}
+{% for c in system.connections %}
+{% with connection = c %}{% include '_py_connection.j2' %}{% endwith %}
+{% endfor %}
+{% for r in system.proxies %}
+{% set transport = r.link.constraints.remote.transport|default('an unset transport', true) %}
+        # {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ transport }}
+{{ r.link.description|doc_comment('        # ') }}
+{% if r.link.constraints.remote.transport in generated %}
+        self.{{ r.link.name|snake }}_proxy = {{ r.interface.name }}Proxy.connect(links.{{ r.link.name|constant }})
+        {{ _py_endpoint(x=r.local) }}.connect(self.{{ r.link.name|snake }}_proxy)
+{% endif %}
+        {%+ filter user('link.' ~ r.link.name) +%}
+{% if not (r.link.constraints.remote.transport in generated) %}
+        # Connect {{ _py_endpoint(x=r.local) }} to a {{ r.interface.name }}Proxy over a Channel of {{ transport }} to binary {{ r.peer.binary }}.
+{% endif %}
+        {%+ endfilter +%}
+{% endfor %}
+{% for e in system.external %}
+        # {{ e.link.name }}: {{ e.link.from.project|default(project.ident, true) }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project|default(project.ident, true) }}.{{ e.link.to.module }}:{{ e.link.to.port }}
+        {%+ filter user('external.' ~ e.link.name) +%}
+        # Other project: connect {{ _py_endpoint(x=e.local) }} through a transport{% if e.link.constraints.remote.transport is not none %} ({{ e.link.constraints.remote.transport }}){% endif %}.
+        {%+ endfilter +%}
+{% endfor %}
+{% if faces|length > 0 %}
+        self._servers: List[Server] = []
+{% endif %}
+        {%+ filter user('constructor') +%}
+        pass
+        {%+ endfilter +%}
+
+    def serve(self) -> {{ system.name }}:
+        """Starts receiving the calls of the other binaries."""
+{% if system.stubs|length > 0 %}
+        if not self._servers:
+{% for r in system.stubs %}
+            # {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ r.link.constraints.remote.transport|default('an unset transport', true) }}
+{% if r.link.constraints.remote.transport in generated %}
+            self._servers.append({{ r.interface.name }}Stub.serve(links.{{ r.link.name|constant }}, {{ _py_endpoint(x=r.local) }}))
+{% else %}
+            # Transport not generated: receive its frames into {{ r.interface.name }}Stub({{ _py_endpoint(x=r.local) }}).
+{% endif %}
+{% endfor %}
+{% endif %}
+        {%+ filter user('serve') +%}
+        {%+ endfilter +%}
+        return self
+
+    def close(self) -> None:
+{% if faces|length > 0 %}
+        for server in self._servers:
+            server.close()
+        self._servers = []
+{% endif %}
+{% for r in system.proxies %}
+{% if r.link.constraints.remote.transport in generated %}
+        self.{{ r.link.name|snake }}_proxy.close()
+{% endif %}
+{% endfor %}
+        {%+ filter user('close') +%}
+        pass
+        {%+ endfilter +%}
+
+    def __enter__(self) -> {{ system.name }}:
+        return self.serve()
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    {%+ filter user('members') +%}
+    {%+ endfilter +%}
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s: %(message)s')
+    with {{ system.name }}() as system:
+        {%+ filter user('main') +%}
+{% if system.stubs|length > 0 %}
+        # Serves the calls of the other binaries until Ctrl-C.
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+{% endif %}
+        del system
+        {%+ endfilter +%}
+
+
+if __name__ == '__main__':
+    main()

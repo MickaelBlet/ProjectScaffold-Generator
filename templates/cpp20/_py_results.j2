@@ -1,0 +1,60 @@
+{% macro py_results(msg=none, what=none, prefix=none) %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_type.j2' import py_type as _py_type %}
+{% from '_py_zero.j2' import py_zero as _py_zero %}
+{#
+  What a message gives back in Python: its return value then its out / inout parameters, as a tuple
+  when there are several. `what`: `hint` (type hint), `names` (`_v0, _v1`), `zero` (default values,
+  inout parameters unchanged). Parameters: msg, what, prefix.
+#}
+{% set n = msg.outputs|length -%}
+{%- if msg.returns -%}
+  {%- set n = (n + 1) -%}
+{%- endif -%}
+{%- if what == 'hint' -%}
+  {%- if n == 0 -%}
+    {{- 'None' -}}
+  {%- elif n > 1 -%}
+    {{- 'Tuple[' -}}
+  {%- endif -%}
+  {%- if msg.returns -%}
+    {{- _py_type(t=msg.returns, prefix=prefix) -}}
+    {%- if msg.outputs|length > 0 -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endif -%}
+  {%- for p in msg.outputs -%}
+    {{- _py_type(t=p.type, prefix=prefix) -}}
+    {%- if not loop.last -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- if n > 1 -%}
+    {{- ']' -}}
+  {%- endif -%}
+{%- elif what == 'names' -%}
+  {%- for i in range(1, n + 1) -%}
+    {{- '_v' ~ loop.index0 -}}
+    {%- if not loop.last -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endfor -%}
+{%- elif what == 'zero' -%}
+  {%- if msg.returns -%}
+    {{- _py_zero(t=msg.returns, prefix=prefix) -}}
+    {%- if msg.outputs|length > 0 -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endif -%}
+  {%- for p in msg.outputs -%}
+    {%- if p.direction == 'inout' -%}
+      {{- _py_id(name=p.name) -}}
+    {%- else -%}
+      {{- _py_zero(t=p.type, prefix=prefix) -}}
+    {%- endif -%}
+    {%- if not loop.last -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif %}
+{%+ endmacro %}

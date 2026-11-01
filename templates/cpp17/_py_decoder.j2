@@ -1,0 +1,20 @@
+{% macro py_decoder(t=none, prefix=none) %}
+{% from '_py_decode.j2' import py_decode as _py_decode %}
+{#
+  Python function `(reader) -> value` decoding a type: `Reader.int32`, `data.decode_Pose`, a lambda.
+  Parameters: t, prefix.
+#}
+{% if t.kind == 'primitive' -%}
+  {%- if t.max is not none -%}
+    {{- 'lambda r: ' -}}
+    {{- _py_decode(t=t, r='r', prefix=prefix) -}}
+  {%- else -%}
+    {{- 'Reader.' ~ t.name -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {{- prefix ~ 'decode_' ~ t.name -}}
+{%- else -%}
+  {{- 'lambda r: ' -}}
+  {{- _py_decode(t=t, r='r', prefix=prefix) -}}
+{%- endif %}
+{%+ endmacro %}

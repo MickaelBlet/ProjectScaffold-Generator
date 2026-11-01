@@ -1,0 +1,15 @@
+{#
+  Typedefs of the containers a type names, not declared yet. Included (shares `idl.declared`).
+  Parameter: e.
+#}
+{% if e.kind == 'struct' or e.kind == 'exception' -%}
+  {%- for f in e.fields -%}
+    {%- with t = f.type %}{% include '_idl_containers.j2' %}{% endwith -%}
+  {%- endfor -%}
+{%- elif e.kind == 'union' -%}
+  {%- for c in e.cases -%}
+    {%- with t = c.type %}{% include '_idl_containers.j2' %}{% endwith -%}
+  {%- endfor -%}
+{%- elif e.kind == 'alias' -%}
+  {%- with t = e.type %}{% include '_idl_containers.j2' %}{% endwith -%}
+{%- endif %}

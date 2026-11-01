@@ -1,0 +1,11 @@
+{% macro ns(e=none) %}
+{#
+  C++ namespace of a module: the project's (`robot`, also the IDL module), then its parents
+  (`robot::core`). Parameter: e.
+#}
+{{ project.ident|snake -}}
+{%- for parent in e.namespace -%}
+  {%- set part = parent|snake -%}
+  {{- '::' ~ part -}}
+{%- endfor %}
+{%+ endmacro %}

@@ -1,0 +1,30 @@
+{% macro idl_type(t=none) %}
+{% from '_idl_id.j2' import idl_id as _idl_id %}
+{% from '_idl_name.j2' import idl_name as _idl_name %}
+{% from '_idl_prim.j2' import idl_prim as _idl_prim %}
+{#
+  IDL spelling of a type reference, fully scoped (a scoped name brings no identifier into the
+  scope using it, so members may be named like their types): `::robot::Pose`, `::robot::PoseSeq`,
+  `string<16>`. Parameter: t.
+#}
+{% if t.kind == 'primitive' -%}
+  {{- _idl_prim(name=t.name) -}}
+  {%- if t.name == 'string' and t.max is not none -%}
+    {{- '<' ~ t.max ~ '>' -}}
+  {%- endif -%}
+{%- elif t.kind == 'ref' -%}
+  {{- '::' -}}
+  {%- if t.dependency -%}
+    {{- t.dependency|snake -}}
+  {%- else -%}
+    {{- project.ident|snake -}}
+  {%- endif -%}
+  {{- '::' -}}
+  {{- _idl_id(name=t.flatName) -}}
+{%- else -%}
+  {{- '::' -}}
+  {{- project.ident|snake -}}
+  {{- '::' -}}
+  {{- _idl_name(t=t) -}}
+{%- endif %}
+{%+ endmacro %}

@@ -1,0 +1,84 @@
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_endpoint.j2' import endpoint as _endpoint %}
+{% from '_header.j2' import header as _header %}
+{% from '_id.j2' import id as _id %}
+{% from '_member.j2' import member as _member %}
+{% from '_name.j2' import name as _name %}
+{% from '_namespace_close.j2' import namespace_close as _namespace_close %}
+{% from '_namespace_open.j2' import namespace_open as _namespace_open %}
+{% from '_ns.j2' import ns as _ns %}
+{% from '_params.j2' import params as _params %}
+{% from '_type.j2' import type as _type %}
+{% include '_banner.j2' %}
+{% set m = item -%}
+{%- set class -%}
+  {{- _name(e=m) -}}
+{%- endset %}
+#include <{{ _header(e=m) }}>
+{% filter user('includes') +%}
+{% endfilter +%}
+
+{% set ns_ %}{{ _ns(e=m) }}{% endset +%}
+{{ _namespace_open(ns_=ns_) }}{##}
+
+{{ class }}::{{ class }}()
+{
+{% for c in m.instances %}
+{% if c.abstract %}
+    {%+ filter user('create.' ~ c.name) +%}
+    // {{ _accessor(name=c.name) }}_ = std::make_unique<ConcreteClass>();
+    {%+ endfilter +%}
+{% endif %}
+{% endfor %}
+{% for c in m.connections %}
+    {% with connection = c %}{% include '_connection.j2' %}{% endwith %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'out' and p.interface %}
+{% for d in p.delegates %}
+    {{ _endpoint(x=d) }}.forward({{ _member(name=p.name) }});
+{% endfor %}
+{% endif %}
+{% endfor %}
+    {%+ filter user('constructor') +%}
+    {%+ endfilter +%}
+}
+
+{{ class }}::~{{ class }}()
+{
+    {%+ filter user('destructor') +%}
+    {%+ endfilter +%}
+}
+{% for x in m.methods %}
+{% if not x.pure %}
+
+{{ _type(t=x.returns) }} {{ class }}::{{ _id(name=x.name) }}({{ _params(params=x.params) }}){% if x.const %} const{% endif +%}
+{
+    {%+ filter user('method.' ~ x.name) +%}
+{% if x.returns %}
+    return {};
+{% endif %}
+    {%+ endfilter +%}
+}
+{% endif %}
+{% endfor %}
+{% for p in m.ports %}
+{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
+{% for msg in p.interface.messages %}
+
+{{ _type(t=msg.returns) }} {{ class }}::on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _params(params=msg.params) }})
+{
+    {%+ filter user('on.' ~ p.name ~ '.' ~ msg.name) +%}
+{% if msg.returns %}
+    return {};
+{% endif %}
+    {%+ endfilter +%}
+}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% filter user('end') +%}
+{% endfilter +%}
+
+{{ _namespace_close(ns_=ns_) -}}

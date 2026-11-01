@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-const DIR = resolve(import.meta.dirname, '../templates')
+const DIR = resolve(import.meta.dirname, '../legacy/liquid')
 
 export async function readBuiltin(set: string, path: string): Promise<string | null> {
   try {

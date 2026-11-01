@@ -1,0 +1,128 @@
+{% macro py_value(v=none, t=none, prefix=none) %}
+{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_ref.j2' import py_ref as _py_ref %}
+{% set ns = namespace() %}
+{#
+  Python literal of a default value of the model (as in the YAML file) of type t.
+  Parameters: v, t, prefix.
+#}
+{% if t.kind == 'primitive' -%}
+  {%- if t.name == 'bool' -%}
+    {%- if v == true or v == 'true' -%}
+      {{- 'True' -}}
+    {%- else -%}
+      {{- 'False' -}}
+    {%- endif -%}
+  {%- elif t.name == 'char' or t.name == 'string' or t.name == 'bytes' -%}
+    {%- set text = (v ~ '')|replace('\\', '\\\\')|replace("'", "\\'")|replace('\n', '\\n')|replace('\t', '\\t') -%}
+    {%- if t.name == 'bytes' -%}
+      {{- 'b' -}}
+    {%- endif -%}
+    {{- "'" ~ text ~ "'" -}}
+  {%- elif t.name == 'float32' or t.name == 'float64' -%}
+    {%- set number = v ~ '' -%}
+    {{- number -}}
+    {%- if not ('.' in number or 'e' in number) -%}
+      {{- '.0' -}}
+    {%- endif -%}
+  {%- else -%}
+    {{- v -}}
+  {%- endif -%}
+{%- elif t.kind == 'optional' -%}
+  {%- if v == none -%}
+    {{- 'None' -}}
+  {%- else -%}
+    {{- py_value(v=v, t=t.of, prefix=prefix) -}}
+  {%- endif -%}
+{%- elif t.kind == 'set' -%}
+  {%- if v|length == 0 -%}
+    {{- 'set()' -}}
+  {%- else -%}
+    {{- '{' -}}
+    {%- for item in v -%}
+      {{- py_value(v=item, t=t.of, prefix=prefix) -}}
+      {%- if not loop.last -%}
+        {{- ', ' -}}
+      {%- endif -%}
+    {%- endfor -%}
+    {{- '}' -}}
+  {%- endif -%}
+{%- elif t.kind == 'array' or t.kind == 'vector' or t.kind == 'list' -%}
+  {{- '[' -}}
+  {%- for item in v -%}
+    {{- py_value(v=item, t=t.of, prefix=prefix) -}}
+    {%- if not loop.last -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endfor -%}
+  {{- ']' -}}
+{%- elif t.kind == 'map' -%}
+  {{- '{' -}}
+  {%- for entry in v.items() -%}
+    {{- py_value(v=entry[0], t=t.key, prefix=prefix) -}}
+    {{- ': ' -}}
+    {{- py_value(v=entry[1], t=t.value, prefix=prefix) -}}
+    {%- if not loop.last -%}
+      {{- ', ' -}}
+    {%- endif -%}
+  {%- endfor -%}
+  {{- '}' -}}
+{%- elif t.kind == 'ref' -%}
+  {%- set def = typeByKey[t.key] -%}
+  {%- if def.kind == 'enum' -%}
+    {{- _py_ref(t=t, prefix=prefix) -}}
+    {{- '.' -}}
+    {{- _py_id(name=v) -}}
+  {%- elif def.kind == 'union' -%}
+    {#- The case of the one-entry mapping, with its first label. -#}
+    {%- for entry in v.items() -%}
+      {%- set c = def.cases|selectattr('name', 'equalto', entry[0])|first -%}
+      {{- _py_ref(t=t, prefix=prefix) -}}
+      {{- '(' -}}
+      {%- if c.label == none -%}
+        {{- 'None' -}}
+      {%- else -%}
+        {{- py_value(v=c.label, t=def.discriminator, prefix=prefix) -}}
+      {%- endif -%}
+      {{- ', ' -}}
+      {{- py_value(v=entry[1], t=c.type, prefix=prefix) -}}
+      {{- ')' -}}
+    {%- endfor -%}
+  {%- elif def.kind == 'bitmask' -%}
+    {%- if v|length == 0 -%}
+      {{- _py_ref(t=t, prefix=prefix) -}}
+      {{- '(0)' -}}
+    {%- endif -%}
+    {%- for flag in v -%}
+      {{- _py_ref(t=t, prefix=prefix) -}}
+      {{- '.' -}}
+      {{- _py_id(name=flag) -}}
+      {%- if not loop.last -%}
+        {{- ' | ' -}}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- elif def.kind == 'alias' -%}
+    {{- py_value(v=v, t=def.type, prefix=prefix) -}}
+  {%- elif def.kind == 'struct' -%}
+    {#- The fields given; the others keep their defaults. -#}
+    {{- _py_ref(t=t, prefix=prefix) -}}
+    {{- '(' -}}
+    {%- set ns.first = true -%}
+    {%- for f in def.fields -%}
+      {%- set given = v[f.name] if f.name in v else none -%}
+      {%- if given != none -%}
+        {%- if not ns.first -%}
+          {{- ', ' -}}
+        {%- endif -%}
+        {%- set ns.first = false -%}
+        {{- _py_id(name=f.name) -}}
+        {{- '=' -}}
+        {{- py_value(v=given, t=f.type, prefix=prefix) -}}
+      {%- endif -%}
+    {%- endfor -%}
+    {{- ')' -}}
+  {%- else -%}
+    {{- v -}}
+  {%- endif -%}
+{%- endif %}
+{%+ endmacro %}
