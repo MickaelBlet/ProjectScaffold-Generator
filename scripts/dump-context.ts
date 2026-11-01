@@ -1,4 +1,4 @@
-// Parity check of the sh/awk rewrite: prints the generation context of a project file as JSON
+// Parity check of the Rust rewrite: prints the generation context of a project file as JSON
 // (keys sorted), or `error: <message>`. Removed once the TypeScript generator is.
 import { readFileSync } from 'node:fs'
 import { buildContext } from '../src/codegen/context'

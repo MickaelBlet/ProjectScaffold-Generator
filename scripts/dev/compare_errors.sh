@@ -1,6 +1,6 @@
 #!/bin/sh
-# Error parity of the sh/awk rewrite: for each tests/errors case, the TypeScript generator's message
-# (written to <case>.expected with -w) against bin/scaffold-gen's. Run from the repository root.
+# Error parity of the Rust rewrite: for each tests/errors case, the TypeScript generator's message
+# (written to <case>.expected with -w) against the Rust scaffold-gen's. Run from the repository root.
 set -u
 write=0
 [ "${1-}" = -w ] && { write=1; shift; }
@@ -12,7 +12,7 @@ for f in "$@"; do
 		npx tsx scripts/dump-context.ts "$f" | sed -n '/^error: /,$p' | sed "1s|^error: |$f: error: |" >"$exp"
 		[ -s "$exp" ] || echo "NO ERROR from TS: $f"
 	fi
-	got=$(bin/scaffold-gen --dump-context "$f" 2>&1 >/dev/null)
+	got=$("${SCAFFOLD_GEN:-rust/target/release/scaffold-gen}" --dump-context "$f" 2>&1 >/dev/null)
 	if [ "$got" = "$(cat "$exp")" ]; then
 		[ -n "${VERBOSE:-}" ] && echo "ok $f"
 	else
