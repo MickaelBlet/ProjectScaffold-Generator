@@ -1,0 +1,2 @@
+tests/errors/validate-override-signature.scaffold.yaml: error: the project has 1 error:
+  D.f: signature differs from Root.f it overrides

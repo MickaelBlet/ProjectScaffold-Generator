@@ -1,0 +1,1 @@
+tests/errors/schema-missing-types.scaffold.yaml: error: Line 1: types: Invalid input: expected array, received undefined

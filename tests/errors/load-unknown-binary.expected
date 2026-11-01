@@ -1,0 +1,1 @@
+tests/errors/load-unknown-binary.scaffold.yaml: error: Line 509: Module 'Caller': unknown binary 'Nope'

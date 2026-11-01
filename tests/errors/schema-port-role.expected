@@ -1,0 +1,1 @@
+tests/errors/schema-port-role.scaffold.yaml: error: Line 133: modules.2.ports.0.role: Invalid option: expected one of "out"|"in"

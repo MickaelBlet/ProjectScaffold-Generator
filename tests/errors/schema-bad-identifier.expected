@@ -1,0 +1,1 @@
+tests/errors/schema-bad-identifier.scaffold.yaml: error: Line 6: types.0.name: must be a valid identifier

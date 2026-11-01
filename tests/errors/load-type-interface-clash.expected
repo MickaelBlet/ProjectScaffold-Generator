@@ -1,0 +1,1 @@
+tests/errors/load-type-interface-clash.scaffold.yaml: error: Line 67: Duplicate interface name 'Sink'

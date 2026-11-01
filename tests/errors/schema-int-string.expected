@@ -1,0 +1,1 @@
+tests/errors/schema-int-string.scaffold.yaml: error: Line 10: types.0.values.0.value: Invalid input: expected number, received string

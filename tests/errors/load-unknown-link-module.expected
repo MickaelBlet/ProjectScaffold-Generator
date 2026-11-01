@@ -1,0 +1,1 @@
+tests/errors/load-unknown-link-module.scaffold.yaml: error: Line 213: Link 'sensor_to_store' from: unknown module 'Nope'

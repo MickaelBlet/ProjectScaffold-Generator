@@ -1,0 +1,3 @@
+tests/errors/validate-enum.scaffold.yaml: error: the project has 2 errors:
+  Enum 'State': duplicate value name 'Off'
+  Enum 'State': Big = 300 does not fit in int8

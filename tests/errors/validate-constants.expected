@@ -1,0 +1,3 @@
+tests/errors/validate-constants.scaffold.yaml: error: the project has 2 errors:
+  Constant 'K': 1000 does not fit in int8
+  Constant 'L': Expected a value of State (Off, On), got text Nope

@@ -1,0 +1,3 @@
+tests/errors/validate-module-type-access.scaffold.yaml: error: the project has 2 errors:
+  Outside: 'Core.Sensor.Sample' is a protected type of module Core.Sensor, used by modules only
+  Other.s: 'Core.Sensor.Sample' is protected in Core.Sensor

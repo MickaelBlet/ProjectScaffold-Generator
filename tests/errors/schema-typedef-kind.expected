@@ -1,0 +1,1 @@
+tests/errors/schema-typedef-kind.scaffold.yaml: error: Line 5: types.0.kind: Invalid discriminator value. Expected 'struct' | 'enum' | 'exception' | 'bitmask' | 'union' | 'alias' | 'primitive'

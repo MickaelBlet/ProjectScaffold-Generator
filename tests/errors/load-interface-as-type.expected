@@ -1,0 +1,1 @@
+tests/errors/load-interface-as-type.scaffold.yaml: error: Line 57: Readings: unknown type 'Sink'

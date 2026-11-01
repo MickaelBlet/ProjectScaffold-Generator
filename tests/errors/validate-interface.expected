@@ -1,0 +1,6 @@
+tests/errors/validate-interface.scaffold.yaml: error: the project has 5 errors:
+  Interface 'Sink': duplicate message 'push'
+  Sink.push: duplicate parameter 'reading'
+  Sink.push raises 'Reading', which is not an exception
+  Sink.push raises 'Reading', which is not an exception
+  Sink.push raises 'Reading' more than once

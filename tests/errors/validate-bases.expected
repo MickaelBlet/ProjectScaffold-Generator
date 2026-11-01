@@ -1,0 +1,9 @@
+tests/errors/validate-bases.scaffold.yaml: error: the project has 8 errors:
+  B1 derives from itself through its bases
+  B2 derives from itself through its bases
+  B2 derives from B1 more than once
+  C.g: overrides no virtual method of a base
+  C derives from itself
+  C does not implement pure method B1.f (implement it or make the module abstract)
+  I.h: methods of an interface module must be pure
+  I: an interface module cannot have attributes

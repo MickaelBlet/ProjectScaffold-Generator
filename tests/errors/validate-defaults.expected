@@ -1,0 +1,6 @@
+tests/errors/validate-defaults.scaffold.yaml: error: the project has 5 errors:
+  Reading.value default: Expected a number, got text x
+  Reading.state default: Expected a value of State (Off, On), got text Maybe
+  Reading.tags default: Expected a mapping, got a list
+  Reading.label default: Expected text, got number 12 (quote it: "12")
+  Reading.count default: 18446744073709551616 does not fit in uint64

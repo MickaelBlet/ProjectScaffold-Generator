@@ -1,0 +1,9 @@
+tests/errors/validate-methods.scaffold.yaml: error: the project has 8 errors:
+  Plant: duplicate method 'b'
+  Plant.a: a static method cannot be const
+  Plant.a: a static method cannot be virtual
+  Plant: 'a' is both an attribute and a method
+  Plant.b: a pure method must be virtual
+  Plant.b: pure method in a concrete module (make it abstract or an interface)
+  Plant.b(x): an out parameter cannot be const
+  Plant.b: overrides no virtual method of a base

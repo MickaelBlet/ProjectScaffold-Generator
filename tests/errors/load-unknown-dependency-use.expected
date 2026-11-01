@@ -1,0 +1,1 @@
+tests/errors/load-unknown-dependency-use.scaffold.yaml: error: Line 166: Dependency 'Common' uses unknown dependency 'Nope'

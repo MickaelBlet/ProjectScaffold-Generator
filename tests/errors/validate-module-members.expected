@@ -1,0 +1,4 @@
+tests/errors/validate-module-members.scaffold.yaml: error: the project has 3 errors:
+  Plant: 'feed' is both a type or constant and a member or submodule
+  Plant: duplicate attribute 'z'
+  Plant.z default: Expected true or false, got number 3

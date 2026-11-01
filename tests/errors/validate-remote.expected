@@ -1,0 +1,3 @@
+tests/errors/validate-remote.scaffold.yaml: error: the project has 2 errors:
+  Link 'echo_tcp' joins binaries Client and Server: it must be remote
+  Link 'echo_udp' joins binaries Client and Server: it needs a transport

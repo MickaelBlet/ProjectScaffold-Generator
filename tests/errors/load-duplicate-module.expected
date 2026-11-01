@@ -1,0 +1,1 @@
+tests/errors/load-duplicate-module.scaffold.yaml: error: Line 210: Duplicate module 'Client'

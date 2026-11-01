@@ -1,0 +1,3 @@
+tests/errors/validate-union-labels.scaffold.yaml: error: the project has 2 errors:
+  Union 'U': label of case 'x': Expected a value of State (Off, On), got text Nope
+  Union 'U': label On used by several cases

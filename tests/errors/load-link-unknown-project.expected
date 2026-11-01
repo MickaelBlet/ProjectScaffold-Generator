@@ -1,0 +1,1 @@
+tests/errors/load-link-unknown-project.scaffold.yaml: error: Line 48: Link 'sensor_to_monitor' from: unknown dependency 'Nope'

@@ -1,0 +1,1 @@
+tests/errors/schema-returns-missing.scaffold.yaml: error: Line 67: interfaces.0.messages.0.returns: Invalid input

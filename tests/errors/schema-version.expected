@@ -1,0 +1,1 @@
+tests/errors/schema-version.scaffold.yaml: error: Line 1: schemaVersion: Invalid input: expected 1

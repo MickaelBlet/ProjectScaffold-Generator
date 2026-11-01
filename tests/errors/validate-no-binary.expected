@@ -1,0 +1,2 @@
+tests/errors/validate-no-binary.scaffold.yaml: error: the project has 1 error:
+  Caller: runs in no binary (the project has binaries)

@@ -1,0 +1,1 @@
+tests/errors/load-duplicate-constant.scaffold.yaml: error: Line 371: Duplicate constant name 'State'

@@ -1,0 +1,4 @@
+tests/errors/schema-many.scaffold.yaml: error: Line 373: transports.0: Too small: expected string to have >=1 characters
+Line 10: types.0.values.0.value: Invalid input: expected int, received number
+Line 75: interfaces.0.messages.0.raises.0: must be a type name, with its module path for a type of a module (and its dependency name and a slash for a module of a dependency)
+Line 221: links.0.constraints.direction: Invalid option: expected one of "unidirectional"|"bidirectional"

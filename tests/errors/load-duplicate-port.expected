@@ -1,0 +1,1 @@
+tests/errors/load-duplicate-port.scaffold.yaml: error: Line 141: Duplicate port 'Plant:feed'
