@@ -94,11 +94,19 @@ fn relative(path: &Path) -> String {
 /// A project file, checked: its data (editor data left in).
 fn load_project(file: &Path) -> Result<Json, String> {
     let path = file.to_string_lossy();
-    if path.to_lowercase().ends_with(".idl") {
-        return Err("IDL files are not read yet by this generator".into());
-    }
     let text = std::fs::read_to_string(file).map_err(|_| "cannot read the file".to_string())?;
-    let doc = read_project(&text, format_from_path(&path))?;
+    let doc = if path.to_lowercase().ends_with(".idl") {
+        // An IDL file stands for a project: its definitions, its includes as dependencies.
+        let read = |p: &str| std::fs::read_to_string(p).ok();
+        let files = model::idl::read_idl_includes(&path, &text, &read)?;
+        let (value, warnings) = model::idl::idl_project(&path, &files)?;
+        for w in warnings {
+            eprintln!("{}: warning: {w}", relative(file));
+        }
+        model::text::Doc { value, lines: model::text::Lines::None }
+    } else {
+        read_project(&text, format_from_path(&path))?
+    };
     {
         let index = index_project(&doc.value, &doc.lines)?;
         let errors = model::validate::validate(&doc.value, &index);

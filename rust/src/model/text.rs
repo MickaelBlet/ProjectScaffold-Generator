@@ -335,6 +335,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::useless_vec)] // path! builds the DataPath (a Vec) the code passes
     fn values_and_lines() {
         let d = parse_text("# c\na: 1\nb:\n  - x: 1.0\n    y: '1'\n  - [no, ~, 0x1f, 1e3]\n", Format::Yaml)
             .ok()
