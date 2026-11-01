@@ -8,12 +8,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The generator: SCAFFOLD_GEN, else built from rust/.
+if [ -z "${SCAFFOLD_GEN:-}" ]; then
+  cargo build --release --quiet --manifest-path rust/Cargo.toml
+  SCAFFOLD_GEN=rust/target/release/scaffold-gen
+fi
+
 work=
 if [ "${1:-}" = -w ]; then work=$2; shift 2; fi
 work=${work:-$(mktemp -d)}
 mkdir -p "$work"
 sets=("$@")
-[ ${#sets[@]} -gt 0 ] || sets=($(ls legacy/liquid))
+[ ${#sets[@]} -gt 0 ] || sets=($(ls templates))
 projects=(examples/robot.scaffold.yaml examples/rover.scaffold.yaml examples/station.scaffold.yaml
   examples/idl/filling_cell.scaffold.yaml
   tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml)
@@ -34,7 +40,7 @@ check() {
   local set=$1 project=$2 name out
   name=$(basename "$project" .scaffold.yaml)
   out="$work/$set/$name"
-  if ! npm run -s generate -- "$project" -t "$set" -o "$out" -d --force >"$work/log" 2>&1; then
+  if ! "$SCAFFOLD_GEN" "$project" -t "$set" -o "$out" -d --force >"$work/log" 2>&1; then
     echo "FAILED  $set: $name (generation)"; sed 's/^/        /' "$work/log"; failed=1; return
   fi
   local cmake_args=()

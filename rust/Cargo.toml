@@ -1,6 +1,6 @@
 [package]
 name = "scaffold-gen"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
@@ -14,3 +14,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
 yaml-rust2 = "0.13.0"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

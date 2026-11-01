@@ -7,6 +7,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The generator: SCAFFOLD_GEN, else built from rust/.
+if [ -z "${SCAFFOLD_GEN:-}" ]; then
+  cargo build --release --quiet --manifest-path rust/Cargo.toml
+  SCAFFOLD_GEN=rust/target/release/scaffold-gen
+fi
+
 set=cpp17
 if [ "${1:-}" = -t ]; then set=$2; shift 2; fi
 work=${1:-$(mktemp -d)}
@@ -17,9 +23,9 @@ pydir="$work/relay/python"
 if [ "$set" = python ]; then
   cppset=cpp17
   pydir="$work/relay-py"
-  npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t python -o "$pydir" --force >/dev/null
+  "$SCAFFOLD_GEN" tests/fixtures/relay.scaffold.yaml -t python -o "$pydir" --force >/dev/null
 fi
-npm run -s generate -- tests/fixtures/relay.scaffold.yaml -t "$cppset" -o "$work/relay" --force >/dev/null
+"$SCAFFOLD_GEN" tests/fixtures/relay.scaffold.yaml -t "$cppset" -o "$work/relay" --force >/dev/null
 # Unused parameters: the generated handlers are empty.
 # interop.cpp in the standard of the set (cpp11 -> C++11).
 cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" -DCMAKE_CXX_STANDARD="${cppset#cpp}" \
