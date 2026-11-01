@@ -1,4 +1,4 @@
-# Python template set of ProjectScaffold: `npm run generate -- <project file> -t python -o <dir>`.
+# Python template set of ProjectScaffold: `scaffold-gen <project file> -t python -o <dir>`.
 # A Python package (3.8+, standard library only): types, interfaces, one module per module, systems
 # wired through the ports, and the calls between binaries over the same wire format and transports
 # as the C++ template sets. The `_py_*` partials spell the Python of the model; edit them freely.

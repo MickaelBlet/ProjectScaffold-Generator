@@ -2,58 +2,48 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ProjectScaffold-Generator: generates code skeletons from ProjectScaffold project files (YAML/JSON, or OMG IDL) through Liquid template sets. Command line only: `scripts/generate.ts`, bundled into a standalone executable. The editor lives in ProjectScaffold-Viewer (separate repository, its own copy of the model).
+ProjectScaffold-Generator: generates code skeletons from ProjectScaffold project files (YAML/JSON, or OMG IDL) through Jinja template sets (MiniJinja). Command line only, in Rust: `scaffold-gen`, one static executable with the templates embedded. The editor lives in ProjectScaffold-Viewer (separate repository, TypeScript, its own copy of the model).
 
 ## Commands
 
 ```sh
-npm test                             # vitest, tests/**/*.test.ts
-npx vitest run tests/codegen.test.ts           # one file
-npx vitest run -t 'part of a test name'        # one test
-npm run typecheck
-npm run lint                         # eslint, type-checked rules
-npm run schema                       # regenerate schema/*.schema.json from src/model/schema.ts
-npm run generate -- <project file> -d   # generate code (default set cpp17) with its dependencies
-scripts/build_cli.sh                 # standalone dist-cli/scaffold-gen (Node SEA) + .cjs bundle
-scripts/check_remote.sh [-t <set>]  # calls between binaries: C++ <-> Python over each transport (cmake, python3)
-scripts/check_templates.sh [set]...  # generate examples/fixtures with each built-in template set, build them
-cargo test --manifest-path rust/Cargo.toml              # Rust generator (rewrite in progress)
-cargo build --release --manifest-path rust/Cargo.toml   # rust/target/release/scaffold-gen
-scripts/dev/compare_outputs.sh <set> [project]...       # TS (legacy/liquid) vs Rust (templates/) outputs, diffed
+cargo test                            # unit tests (src/) and tests/cli.rs (tests/errors, every example with every set)
+cargo test -- error_messages          # one test
+cargo clippy --all-targets
+cargo fmt                             # rustfmt.toml: width 110
+cargo run --release -- <project file> -d   # generate code (default set cpp17) with its dependencies
+scripts/build_cli.sh [target]         # static dist-cli/scaffold-gen (musl by default)
+scripts/check_remote.sh [-t <set>]    # calls between binaries: C++ <-> Python over each transport (cmake, python3)
+scripts/check_templates.sh [set]...   # generate examples/fixtures with each built-in template set, build them
 ```
 
-- `tests/serialize.test.ts` fails when `schema/scaffold.schema.json` is stale: run `npm run schema` after changing `src/model/schema.ts`.
-- Prettier: no semicolons, single quotes, width 110, no trailing commas. Rust: `cargo fmt` (`rust/rustfmt.toml`).
-
-## Rewrite in Rust (in progress)
-
-Plan: TypeScript generator replaced by a native `rust/` crate rendering Jinja templates with minijinja; the TS generator stays the parity reference until removed.
-
-- Done: `scaffold-gen <project file> [-o -t -d -f -p -n]` reads, checks and generates in Rust (`rust/src/model/`: `text.rs` YAML/JSON with lines, `schema.rs` zod's messages, `load.rs` names and index, `values.rs`, `validate.rs`; `rust/src/codegen/context.rs` over the arena of `node.rs`, shared and cyclic objects compared by identity). Parity: `scripts/dev/compare_errors.sh` (tests/errors), `scripts/compare_context.sh`, `scripts/dev/compare_outputs.sh <set>`. `rust/src/model/idl.rs`: IDL files read as projects (`dump_idl` ignored test vs `scripts/dev/dump-idl.ts`). `rust/tests/cli.rs`: tests/errors messages, every example with every set. Next: removal of the TS (step 5).
-- `templates/<set>/*.j2` (Jinja) are the source of the built-in sets, embedded in the Rust binary; `legacy/liquid/<set>` are the Liquid sets the TS generator still uses (`scripts/builtinTemplates.ts`). A template fix goes in both until the TS is removed; `scripts/dev/compare_outputs.sh` must stay `ok`.
-- Jinja environment: `trim_blocks` + `lstrip_blocks` (manifest `trimTagLines`), undefined values are errors except in `if` (SemiStrict), `none` prints nothing; partials are macros (`{% from '_x.j2' import x as _x %}`), sections `{% filter user('id') %}…{% endfilter %}`. `SCAFFOLD_GEN_DEBUG=1` prints template errors with their source and variables.
-- `scripts/dev/liquid2jinja.py` converted the sets (for users' own Liquid sets too). `--context <json>` renders a context dumped by `scripts/dump-context.ts` (no cycles: not for `relay`).
+- `SCAFFOLD_GEN_DEBUG=1` prints template errors with their source and variables.
+- In this environment a shell wrapper filters `cargo`, `diff`, `grep` output (and `diff`'s exit code): use `command diff`, `command cmp`, `/usr/bin/grep`, `~/.cargo/bin/cargo` when the exact output matters.
 
 ## Architecture
 
-### Model (`src/model/`, pure)
+### Model (`src/model/`)
 
-- Copy of the editor's model (ProjectScaffold-Viewer `src/renderer/src/model/`), kept to what generation needs: file format changes (`schema.ts`, `serialize.ts`, `validate.ts`, `dependencies.ts`, `idl.ts`...) must be made in both repositories.
-- Two representations: the in-memory `Project` (`types.ts`) references entities by **id**; the file format (`schema.ts`, zod, source of the published JSON Schema) references them by **qualified name** (`Core.Sensor`). `serialize.ts` converts between them and YAML/JSON text; the `editor` section holds layout/view data, stripped on export.
-- `validate.ts`: semantic checks; errors block generation, warnings do not.
-- `dependencies.ts`: other project files a project uses; their types/interfaces are copied into the project with `dependency` set. `idl.ts`: OMG IDL files read as projects.
+- Port of the editor's model, kept to what generation needs, working on the file format (qualified names, no ids): file format changes (schema, validation, IDL...) must be made in both repositories.
+- `text.rs`: YAML 1.2 core schema / JSON read into `serde_json::Value` with the line of each node (`Lines::of(data path)`, as the editor's `lineOfPath`); numbers and object key order as JavaScript has them.
+- `schema.rs`: structure check against `schema/scaffold.schema.json` (embedded) with zod's messages. The schema is generated by the Viewer (zod, `npm run schema` there): copy it here when the format changes.
+- `load.rs`: names, duplicates, unknown references (errors with lines) and the `Index` of types, interfaces, constants, modules, placed modules, links. `values.rs`: default values / constants against their type, YAML flow formatting. `validate.rs`: semantic errors, in the editor's order. `idl.rs`: OMG IDL files read as projects (self-contained).
+- Error messages are those of the editor: `tests/errors/<case>.expected` (cases written by `scripts/dev/make_error_cases.py`).
 
-### Code generation (`src/codegen/`, pure; `templates/`)
+### Code generation (`src/codegen/`, `templates/`)
 
-- `context.ts` turns the exported `FileProject` into the template context (every value present: Liquid runs with strict variables; links sorted into wiring per container / `system`). `generate.ts` renders a template set (`templateSet.ts`: `manifest.yaml` + Liquid files) with the context as Liquid globals and only language-neutral helpers (case filters in `filters.ts`, `doc_comment`, the `user` tag): target-language logic belongs in the templates (`templates/cpp17/_*.liquid` partials), so users can edit it. `sections.ts`: the `{% user %}` tag and merging of user sections. `run.ts` writes into an `OutputDir` (merge, conflicts, `.orphans`, `.scaffold-gen.json` record).
-- `scripts/generate.ts`: the command line (node fs `OutputDir`); `scripts/build-cli.ts` bundles it as CommonJS, no top-level await, with the templates embedded in place of `scripts/builtinTemplates.ts`, into a Node single executable.
-- Check template changes by building the output: `npm run generate -- tests/fixtures/plant.scaffold.yaml -o /tmp/gen/plant` then CMake with `-Wall -Wextra -Werror`.
-- Built-in template sets: `templates/<set>/`, one self-contained flat copy each (the CLI embedding is not recursive), listed in `src/model/templateSets.ts`; a project picks one with `generation.templates`. A fix to one C++ set usually applies to the others.
+- `context.rs` builds the template context (every value present; links sorted into wiring per container / `system`) over the arena of `node.rs`: entities are shared and filled after creation, recursive types make cycles; minijinja reads nodes lazily (`Object`), compared by identity.
+- `generate.rs` renders a template set (`template_set.rs`: `manifest.yaml` + Jinja files) with the context as globals and only language-neutral helpers (`filters.rs`: case filters, `doc_comment`, `uuid`, `json`, Liquid-like `escape` and `replace`; `sections.rs`: the `user` filter and merging of user sections): target-language logic belongs in the templates (`templates/cpp17/_*.j2` macros), so users can edit it. `run.rs` writes into an `OutputDir` (merge, conflicts, `.orphans`, `.scaffold-gen.json` record). `builtin.rs`: the sets embedded with `include_dir`.
+- Jinja environment: `trim_blocks` + `lstrip_blocks` (manifest `trimTagLines`), undefined values are errors except in `if` (SemiStrict), `none` prints nothing; partials are macros (`{% from '_x.j2' import x as _x %}`), sections `{% filter user('id') %}…{% endfilter %}`, Python string methods (pycompat, `rsplit`).
+- `src/main.rs`: the command line (`-o -t -d -f -p -n -v`; hidden `--dump-context`, `--context <json>`).
+- Check template changes by building the output: `cargo run --release -- tests/fixtures/plant.scaffold.yaml -o /tmp/gen/plant` then CMake with `-Wall -Wextra -Werror`, or `scripts/check_templates.sh <set>`.
+- Built-in template sets: `templates/<set>/`, one self-contained flat copy each, listed in `src/codegen/builtin.rs`; a project picks one with `generation.templates`. A fix to one C++ set usually applies to the others.
 - `templates/sca-cpp98`: SCA 2.2.2 over CORBA (omniORB), not derived from the C++ sets (CORBA C++ mapping in `_cx_*`, IDL in `_idl_*`); building it needs omniidl (`scripts/check_templates.sh sca-cpp98`, `OMNIORB_ROOT` for an omniORB elsewhere).
-- Links between binaries: `wire.hpp` / `transport.cpp` of every C++ set and `wire.py` / `transport.py` (Python peers under `python/<ns>/`, same template set) implement one protocol and must change together; `scripts/check_remote.sh -t <set>` checks them against each other. The `python` set reuses the C++ sets' `*.py.liquid` / `_py_*` files (only `data.py`, `constants.py`, `init.py`, `wire.py`'s docstring differ): keep them in step.
+- Links between binaries: `wire.hpp` / `transport.cpp` of every C++ set and `wire.py` / `transport.py` (Python peers under `python/<ns>/`, same template set) implement one protocol and must change together; `scripts/check_remote.sh -t <set>` checks them against each other. The `python` set reuses the C++ sets' `*.py.j2` / `_py_*` files (only `data.py`, `constants.py`, `init.py`, `wire.py`'s docstring differ): keep them in step.
+- `scripts/dev/liquid2jinja.py`: converts users' Liquid template sets (of earlier versions) to Jinja.
 
 ## Conventions
 
 - Update `CHANGELOG.md` `[Unreleased]` (Keep a Changelog) and the user documentation (`README.md`, `docs/*.md`) for user-visible changes; update `examples/` and the schema when the file format changes. A release removes the `[Unreleased]` heading: add it back above the latest version (its compare link at the bottom stays).
-- Build scripts install with `npm ci` when `node_modules` is older than the lockfile.
+- Update `THIRD.md` when the shipped crates change (`cargo tree -e normal`).
 - Commit each finished feature or fix with the `commit-gpg` skill (GPG-signed commit, CHANGELOG checked).

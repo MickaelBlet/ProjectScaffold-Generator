@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Writes tests/errors/<case>.scaffold.yaml: broken variants of the fixtures, one problem each
-# (some several). Their expected messages come from the TypeScript generator (make_expected).
+# (some several). Their expected messages (<case>.expected) are checked by tests/cli.rs.
 import copy, os, sys, yaml
 
 class CoreLoader(yaml.SafeLoader):

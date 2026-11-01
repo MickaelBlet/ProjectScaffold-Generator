@@ -1,5 +1,5 @@
 # SCA 2.2.2 template set of ProjectScaffold (C++98, CORBA with omniORB 4):
-# `npm run generate -- <project file> -t sca-cpp98 -o <dir>`.
+# `scaffold-gen <project file> -t sca-cpp98 -o <dir>`.
 # Types, constants and interfaces become IDL (idl/<project>.idl); each concrete top-level module an
 # SCA component (CF::Resource: provides ports as servants of their interface, uses ports as
 # CF::Port, attributes as properties) with its descriptors (SPD, SCD, PRF); each binary an

@@ -1,6 +1,6 @@
-# C++20 template set of ProjectScaffold: `npm run generate -- <project file> -o <dir>`.
-# Everything C++ lives in these files: the `_*.liquid` partials spell types, values, names, paths
-# and includes; edit them freely. Paths, `each` and `when` are Liquid; templates see the generation
+# C++20 template set of ProjectScaffold: `scaffold-gen <project file> -o <dir>`.
+# Everything C++ lives in these files: the `_*.j2` macros spell types, values, names, paths
+# and includes; edit them freely. Paths, `each` and `when` are Jinja; templates see the generation
 # context (see README, "Writing templates").
 name: cpp20
 description: C++20 skeleton - types, interfaces, modules wired through their ports, CMake project; links between binaries over generated transports, with Python peers

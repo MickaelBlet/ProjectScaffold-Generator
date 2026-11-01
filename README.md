@@ -1,6 +1,6 @@
 # ProjectScaffold-Generator
 
-Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `.json`, OMG IDL), written with the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): modules, ports, typed interfaces and links become code from editable Liquid templates.
+Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `.json`, OMG IDL), written with the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): modules, ports, typed interfaces and links become code from editable Jinja templates.
 
 ## Features
 
@@ -8,14 +8,13 @@ Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `
 - **User sections**: hand-written code kept across generations; conflicts reported, nothing lost (`.orphans`).
 - **Links between binaries**: executables calling each other over tcp, udp, http, websocket or shared memory, C++ and Python alike.
 - **Dependencies**: projects using other project files generate together (`--deps`).
-- **Standalone**: one executable (`scaffold-gen`, Node embedded, templates included), or a single `.cjs` script.
+- **Standalone**: one static executable (`scaffold-gen`, written in Rust, templates included).
 
 ## Quick start
 
 ```sh
-npm install
-npm run generate -- examples/robot.scaffold.yaml -d    # C++17 code into examples/generated/
-scripts/build_cli.sh                                   # standalone dist-cli/scaffold-gen
+scripts/build_cli.sh                                   # dist-cli/scaffold-gen (needs Rust: rustup.rs)
+dist-cli/scaffold-gen examples/robot.scaffold.yaml -d  # C++17 code into examples/generated/
 ```
 
 [`examples/`](examples) holds sample projects.
@@ -35,10 +34,8 @@ The project file format: [ProjectScaffold-Viewer › File format](https://github
 ## Checks
 
 ```sh
-npm test                             # unit tests (model, serialization, validation, code generation)
-npm run lint
-npm run typecheck
-npm run schema                       # regenerate schema/*.schema.json from the model
+cargo test    # unit tests (reading, validation, IDL, code generation)
+cargo clippy
 scripts/check_templates.sh [set]...  # generate the examples with each built-in template set and build them
 scripts/check_remote.sh [-t <set>]   # calls between binaries: C++ and Python over every transport (cmake, python3)
 ```

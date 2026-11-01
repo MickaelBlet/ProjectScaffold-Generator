@@ -7,9 +7,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 target=${1:-x86_64-unknown-linux-musl}
-cargo build --release --manifest-path rust/Cargo.toml --target "$target"
+cargo build --release --target "$target"
 mkdir -p dist-cli
 exe=scaffold-gen
 case $target in *windows*) exe=scaffold-gen.exe ;; esac
-cp "rust/target/$target/release/$exe" "dist-cli/$exe"
+cp "target/$target/release/$exe" "dist-cli/$exe"
 ls -lh "dist-cli/$exe"

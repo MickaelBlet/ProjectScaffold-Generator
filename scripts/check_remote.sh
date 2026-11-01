@@ -7,10 +7,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The generator: SCAFFOLD_GEN, else built from rust/.
+# The generator: SCAFFOLD_GEN, else built here.
 if [ -z "${SCAFFOLD_GEN:-}" ]; then
-  cargo build --release --quiet --manifest-path rust/Cargo.toml
-  SCAFFOLD_GEN=rust/target/release/scaffold-gen
+  cargo build --release --quiet
+  SCAFFOLD_GEN=target/release/scaffold-gen
 fi
 
 set=cpp17

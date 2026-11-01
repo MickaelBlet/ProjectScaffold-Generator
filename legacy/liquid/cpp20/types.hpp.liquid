@@ -1,6 +1,0 @@
-{% include '_banner' %}
-#pragma once
-
-{% for t in types %}
-#include <{% render '_header', e: t %}>
-{% endfor %}

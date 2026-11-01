@@ -1,6 +1,6 @@
 # Code generation
 
-The code of a project is generated from [LiquidJS](https://liquidjs.com) templates. Hand-written code goes into user sections, kept when the code is generated again.
+The code of a project is generated from [Jinja](https://jinja.palletsprojects.com/templates/) templates, rendered by [MiniJinja](https://github.com/mitsuhiko/minijinja). Hand-written code goes into user sections, kept when the code is generated again.
 
 - [Built-in template sets](#built-in-template-sets)
 - [User sections](#user-sections)
@@ -44,7 +44,7 @@ Write hand-written code between the markers; everything else is rewritten by the
 ## Command line
 
 ```sh
-npm run generate -- <project file> [-o <dir>] [-t <template set or dir>] [--deps] [--force] [--prune] [--dry-run]
+scaffold-gen <project file> [-o <dir>] [-t <template set or dir>] [--deps] [--force] [--prune] [--dry-run]
 ```
 
 | Option         | Effect                                                                                                            |
@@ -59,14 +59,11 @@ npm run generate -- <project file> [-o <dir>] [-t <template set or dir>] [--deps
 
 The exit code is not 0 on errors or conflicts.
 
-### Standalone generator
+The project file is a ProjectScaffold file (YAML or JSON), or an OMG IDL file: its definitions, the files it includes as dependencies.
 
-`scripts/build_cli.sh` (or `npm run cli`) builds the same command:
+### Building the generator
 
-- `dist-cli/scaffold-gen`: a standalone executable, Node embedded, built-in templates included: `scaffold-gen <project file> [options]`;
-- `dist-cli/scaffold-gen.cjs`: a single-file script, run with Node 22+.
-
-An argument names another Node binary of the same version to embed, such as its Windows `node.exe` (→ `scaffold-gen.exe`).
+`scripts/build_cli.sh` builds `dist-cli/scaffold-gen`: one static executable (Rust, nothing to install), built-in templates included. An argument names another Rust target, such as `aarch64-unknown-linux-musl` or `x86_64-pc-windows-gnu` (→ `scaffold-gen.exe`, with a MinGW linker). From the sources: `cargo run --release -- <project file> [options]`.
 
 ## Generating again
 
@@ -103,7 +100,7 @@ scripts/check_remote.sh -t <set>      # calls between binaries of a C++ set agai
 [`examples/rover.scaffold.yaml`](../examples/rover.scaffold.yaml) is made of modules with ports only (no attributes nor methods): frames, detections, drive commands, lifecycle and health calls between a camera, a perception container (with its content wired through its ports), a planner, motors, a recorder and a supervisor. It is split into two binaries, `Onboard` (the rover) and `Ground` (the supervisor), linked over TCP.
 
 ```sh
-npm run generate -- examples/rover.scaffold.yaml   # -> examples/generated/rover
+scaffold-gen examples/rover.scaffold.yaml   # -> examples/generated/rover
 ```
 
 It builds the executables `rover_onboard` and `rover_ground`.
