@@ -16,6 +16,8 @@ export interface Renames {
   consts: Map<string, string>
   /** Types of modules, renamed or in a renamed or moved module: old `Path.Name` → new one. */
   moduleTypes: Map<string, string>
+  /** Constants of modules, likewise. */
+  moduleConsts: Map<string, string>
 }
 
 /** Last component of a file path: dependencies name files relative to the project, tabs by their name. */
@@ -91,7 +93,8 @@ export function diffRenames(prev: Project, next: Project): Renames | null {
     interfaces: new Map(),
     types: new Map(),
     consts: new Map(),
-    moduleTypes: new Map()
+    moduleTypes: new Map(),
+    moduleConsts: new Map()
   }
   if (prev.modules !== next.modules) {
     const before = paths(prev)
@@ -123,29 +126,38 @@ export function diffRenames(prev: Project, next: Project): Renames | null {
       if (was && was.name !== t.name && !t.dependency && !t.module && !was.module)
         r.types.set(was.name, t.name)
     }
-  if (prev.types !== next.types || prev.modules !== next.modules) {
-    const before = paths(prev)
-    const after = paths(next)
-    const prevTypes = new Map(prev.types.map((t) => [t.id, t]))
-    for (const t of next.types) {
-      const was = prevTypes.get(t.id)
-      if (!t.module || !was?.module) continue
-      const from = `${before.get(was.module)}.${was.name}`
-      const to = `${after.get(t.module)}.${t.name}`
-      if (from !== to) r.moduleTypes.set(from, to)
+  const scoped = <E extends { id: Id; name: string; module?: Id }>(
+    before: E[],
+    after: E[],
+    into: Map<string, string>
+  ): void => {
+    if (before === after && prev.modules === next.modules) return
+    const pathsBefore = paths(prev)
+    const pathsAfter = paths(next)
+    const was = new Map(before.map((e) => [e.id, e]))
+    for (const e of after) {
+      const old = was.get(e.id)
+      if (!e.module || !old?.module) continue
+      const from = `${pathsBefore.get(old.module)}.${old.name}`
+      const to = `${pathsAfter.get(e.module)}.${e.name}`
+      if (from !== to) into.set(from, to)
     }
   }
+  scoped(prev.types, next.types, r.moduleTypes)
+  scoped(prev.consts, next.consts, r.moduleConsts)
   if (prev.consts !== next.consts)
     for (const c of next.consts) {
       const was = prev.consts.find((x) => x.id === c.id)
-      if (was && was.name !== c.name && !c.dependency) r.consts.set(was.name, c.name)
+      if (was && was.name !== c.name && !c.dependency && !c.module && !was.module)
+        r.consts.set(was.name, c.name)
     }
   return r.modules.size ||
     r.ports.size ||
     r.interfaces.size ||
     r.types.size ||
     r.consts.size ||
-    r.moduleTypes.size
+    r.moduleTypes.size ||
+    r.moduleConsts.size
     ? r
     : null
 }

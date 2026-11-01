@@ -3,11 +3,14 @@ import YAML, { LineCounter, YAMLParseError, isMap, isScalar, isSeq, type Node as
 import {
   FileProjectSchema,
   SCHEMA_VERSION,
+  type FileAttribute,
   type FileConstant,
   type FileEditor,
   type FileInterface,
   type FileMessage,
+  type FileMethod,
   type FileModule,
+  type FileModuleConstant,
   type FileModuleTypeDef,
   type FileProject,
   type FileTypeDef
@@ -17,6 +20,7 @@ import { pair } from './reuse'
 import {
   childModules,
   compartmentsHeight,
+  constNames,
   findImported,
   isModuleType,
   IMPORTED_PREFIX,
@@ -24,6 +28,7 @@ import {
   MODULE_WIDTH,
   modulePath,
   modulePaths,
+  moduleConsts,
   moduleTypes,
   newId,
   portRows,
@@ -259,32 +264,50 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     description: opt(i.description),
     messages: i.messages.map(message)
   })
+  const constant = (c: ConstDef) => ({
+    name: c.name,
+    description: opt(c.description),
+    type: ref(c.type),
+    value: c.value
+  })
+  /** A constant of a module, with its access. */
+  const moduleConstant = (c: ConstDef): FileModuleConstant => {
+    const { name, ...rest } = constant(c)
+    return { name, ...access(c), ...rest }
+  }
   const owned = (dependency: Id | undefined) => {
-    const consts = p.consts.filter((c) => c.dependency === dependency)
+    const consts = p.consts.filter((c) => c.dependency === dependency && !isModuleType(c))
     return {
       types: p.types.filter((t) => t.dependency === dependency && !isModuleType(t)).map(typeDef),
       interfaces: p.interfaces.filter((i) => i.dependency === dependency).map(iface),
-      constants: consts.length
-        ? consts.map((c) => ({
-            name: c.name,
-            description: opt(c.description),
-            type: ref(c.type),
-            value: c.value
-          }))
-        : undefined
+      constants: consts.length ? consts.map(constant) : undefined
     }
   }
 
-  /** Types of the modules of a dependency, by module path in the order of the types. */
-  const dependencyModuleTypes = (dependency: Id) => {
-    const byModule = new Map<string, FileModuleTypeDef[]>()
-    for (const t of p.types)
-      if (t.dependency === dependency && t.modulePath) {
-        const list = byModule.get(t.modulePath) ?? []
-        if (!list.length) byModule.set(t.modulePath, list)
-        list.push(moduleTypeDef(t))
+  /** Entities of the modules of a dependency, by module path in the order of the entities. */
+  const byModulePath = <E extends { dependency?: Id; modulePath?: string }, F>(
+    list: E[],
+    dependency: Id,
+    write: (e: E) => F
+  ): [string, F[]][] => {
+    const byModule = new Map<string, F[]>()
+    for (const e of list)
+      if (e.dependency === dependency && e.modulePath) {
+        const of = byModule.get(e.modulePath) ?? []
+        if (!of.length) byModule.set(e.modulePath, of)
+        of.push(write(e))
       }
-    return byModule.size ? [...byModule].map(([module, types]) => ({ module, types })) : undefined
+    return [...byModule]
+  }
+  /** Types of the modules of a dependency, by module path. */
+  const dependencyModuleTypes = (dependency: Id) => {
+    const groups = byModulePath(p.types, dependency, moduleTypeDef)
+    return groups.length ? groups.map(([module, types]) => ({ module, types })) : undefined
+  }
+  /** Constants of the modules of a dependency, by module path. */
+  const dependencyModuleConstants = (dependency: Id) => {
+    const groups = byModulePath(p.consts, dependency, moduleConstant)
+    return groups.length ? groups.map(([module, constants]) => ({ module, constants })) : undefined
   }
 
   const binaryName = new Map(p.binaries.map((b) => [b.id, b.name]))
@@ -292,6 +315,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
     childModules(p, parentId).map((m) => {
       const children = moduleTree(m.id)
       const types = moduleTypes(p, m.id)
+      const consts = moduleConsts(p, m.id)
       return {
         name: m.name,
         description: opt(m.description),
@@ -301,6 +325,7 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
         color: m.color,
         binary: m.binaryId ? binaryName.get(m.binaryId) : undefined,
         types: types.length ? types.map(moduleTypeDef) : undefined,
+        constants: consts.length ? consts.map(moduleConstant) : undefined,
         attributes: m.attributes.length ? m.attributes.map(attribute) : undefined,
         methods: m.methods.length ? m.methods.map(method) : undefined,
         ports: m.ports.map((pt) => ({
@@ -355,9 +380,12 @@ export function toFile(p: Project, options: { editor: boolean }): FileProject {
           shared: x.shared.length ? [...x.shared] : undefined,
           ...owned(x.id),
           moduleTypes: dependencyModuleTypes(x.id),
+          moduleConstants: dependencyModuleConstants(x.id),
           modules: x.modules.length
             ? x.modules.map((m) => ({
                 module: m.path,
+                attributes: m.attributes?.length ? m.attributes.map(attribute) : undefined,
+                methods: m.methods?.length ? m.methods.map(method) : undefined,
                 ports: m.ports.map((pt) => ({
                   name: pt.name,
                   role: pt.role,
@@ -558,27 +586,58 @@ export function fromFile(data: unknown, prev?: Project): Project {
     declare(x.e.name, 'interface', prevInterfaces[i], [...x.at, 'name'])
   )
   const interfaceNames = new Set(interfaceEntries.map((x) => x.e.name))
-  // Constants share the namespace too.
-  const constEntries: Entry<FileConstant>[] = [
-    ...(f.constants ?? []).map((e, i) => ({ e, at: ['constants', i] })),
-    ...fileDependencies.flatMap((x, xi) =>
-      (x.constants ?? []).map((e, i) => ({
+  // Constants share the namespace too (those of modules, their module's).
+  interface ConstEntry extends Entry<FileConstant | FileModuleConstant> {
+    key: string
+    module?: string
+    modulePath?: string
+  }
+  const ownModuleConsts = (list: FileModule[], parentPath: string, at: DataPath): ConstEntry[] =>
+    list.flatMap((fm, i) => {
+      const path = parentPath ? `${parentPath}.${fm.name}` : fm.name
+      return [
+        ...(fm.constants ?? []).map((e, j) => ({
+          e,
+          at: [...at, i, 'constants', j],
+          key: `${path}.${e.name}`,
+          module: path
+        })),
+        ...ownModuleConsts(fm.modules ?? [], path, [...at, i, 'modules'])
+      ]
+    })
+  const constEntries: ConstEntry[] = [
+    ...(f.constants ?? []).map((e, i) => ({ e, at: ['constants', i], key: e.name })),
+    ...ownModuleConsts(f.modules, '', ['modules']),
+    ...fileDependencies.flatMap((x, xi) => [
+      ...(x.constants ?? []).map((e, i) => ({
         e,
         at: ['dependencies', xi, 'constants', i],
+        key: e.name,
         dependency: dependencyIds[xi]!
-      }))
-    )
+      })),
+      ...(x.moduleConstants ?? []).flatMap((g, gi) =>
+        g.constants.map((e, i) => ({
+          e,
+          at: ['dependencies', xi, 'moduleConstants', gi, 'constants', i],
+          key: `${x.name}/${g.module}.${e.name}`,
+          dependency: dependencyIds[xi]!,
+          modulePath: g.module
+        }))
+      )
+    ])
   ]
-  const prevConsts = named(
-    prev?.consts,
-    constEntries.map((x) => x.e)
+  const prevConstNames = prev ? constNames(prev) : new Map<Id, string>()
+  const prevConsts = pair(
+    prev?.consts ?? [],
+    (c) => prevConstNames.get(c.id)!,
+    constEntries.map((x) => x.key)
   )
-  const constNames = new Set<string>()
+  const constKeys = new Set<string>()
   const constIds = constEntries.map((x, i) => {
-    if (typeIds.has(x.e.name) || constNames.has(x.e.name))
-      report(`Duplicate constant name '${x.e.name}'`, [...x.at, 'name'])
-    constNames.add(x.e.name)
-    return idOf(prevConsts[i], () => `const:${x.e.name}`)
+    if (typeIds.has(x.key) || constKeys.has(x.key))
+      report(`Duplicate constant name '${x.key}'`, [...x.at, 'name'])
+    constKeys.add(x.key)
+    return idOf(prevConsts[i], () => `const:${x.key}`)
   })
 
   const ref = (t: FileTypeRef, where: string, at: DataPath): TypeRef =>
@@ -707,12 +766,14 @@ export function fromFile(data: unknown, prev?: Project): Project {
     }
   })
 
-  const consts: ConstDef[] = constEntries.map(({ e: c, at, dependency }, i) => ({
+  const consts: ConstDef[] = constEntries.map(({ e: c, at, key, dependency, modulePath }, i) => ({
     id: constIds[i]!,
     name: c.name,
     description: c.description ?? '',
     ...owner(dependency),
-    type: ref(c.type, c.name, [...at, 'type']),
+    ...(modulePath && { modulePath }),
+    ...('access' in c && access(c)),
+    type: ref(c.type, key, [...at, 'type']),
     value: c.value
   }))
 
@@ -723,6 +784,37 @@ export function fromFile(data: unknown, prev?: Project): Project {
     ...owner(dependency),
     messages: messages(i.messages, i.name, prevInterfaces[idx]?.messages, [...at, 'messages'])
   }))
+
+  /** Attributes of a module (`path`) or placed module, at `at` in the file data. */
+  const attributesOf = (
+    list: readonly FileAttribute[],
+    path: string,
+    before: readonly Attribute[] | undefined,
+    at: DataPath
+  ): Attribute[] => {
+    const was = named(before, list)
+    return list.map((a, j) => ({
+      ...valueField(a, path, was[j], [...at, j]),
+      ...access(a),
+      ...qualifiers(a)
+    }))
+  }
+  /** Methods of a module (`path`) or placed module, at `at` in the file data. */
+  const methodsOf = (
+    list: readonly FileMethod[],
+    path: string,
+    before: readonly Method[] | undefined,
+    at: DataPath
+  ): Method[] =>
+    messages(list, path, before, at).map((x, j): Method => {
+      const fx = list[j]!
+      return {
+        ...x,
+        ...access(fx),
+        ...qualifiers(fx),
+        params: x.params.map((prm, k) => ({ ...prm, ...qualifiers(fx.params[k]!) }))
+      }
+    })
 
   const layout = f.editor?.layout ?? {}
   const modules: Module[] = []
@@ -762,7 +854,6 @@ export function fromFile(data: unknown, prev?: Project): Project {
       const was = before[i]
       const renamed = !!was && prevPaths.get(was.id) !== path
       const ports = named(was?.ports, fm.ports)
-      const attributes = named(was?.attributes, fm.attributes ?? [])
       const height = leafHeight(portRows(fm)) + compartmentsHeight(fm)
       const portNames = new Set<string>()
       const mod: Module = {
@@ -772,20 +863,8 @@ export function fromFile(data: unknown, prev?: Project): Project {
         parentId,
         ...(fm.kind && fm.kind !== 'class' && { kind: fm.kind }),
         metadata: { ...(fm.metadata ?? {}) },
-        attributes: (fm.attributes ?? []).map((a, j) => ({
-          ...valueField(a, path, attributes[j], [...at, i, 'attributes', j]),
-          ...access(a),
-          ...qualifiers(a)
-        })),
-        methods: messages(fm.methods ?? [], path, was?.methods, [...at, i, 'methods']).map((x, j): Method => {
-          const fx = fm.methods![j]!
-          return {
-            ...x,
-            ...access(fx),
-            ...qualifiers(fx),
-            params: x.params.map((prm, k) => ({ ...prm, ...qualifiers(fx.params[k]!) }))
-          }
-        }),
+        attributes: attributesOf(fm.attributes ?? [], path, was?.attributes, [...at, i, 'attributes']),
+        methods: methodsOf(fm.methods ?? [], path, was?.methods, [...at, i, 'methods']),
         ports: fm.ports.map((pt, j) => {
           if (portNames.has(pt.name))
             report(`Duplicate port '${path}:${pt.name}'`, [...at, i, 'ports', j, 'name'])
@@ -860,6 +939,10 @@ export function fromFile(data: unknown, prev?: Project): Project {
     const mod = x.module === undefined ? undefined : moduleByPath.get(x.module)
     if (mod) types[i]!.module = mod.id
   })
+  constEntries.forEach((x, i) => {
+    const mod = x.module === undefined ? undefined : moduleByPath.get(x.module)
+    if (mod) consts[i]!.module = mod.id
+  })
   for (const { mod, path, bases, at } of derived)
     mod.bases = bases.flatMap((b, j) => {
       const base = moduleByPath.get(b)
@@ -897,7 +980,11 @@ export function fromFile(data: unknown, prev?: Project): Project {
         const saved = f.editor?.dependencies?.[i.name]?.[m.module]
         const at = saved ?? was?.position
         const position = at ? { x: at.x, y: at.y } : { x: importX, y: importY }
-        if (!at) importY += leafHeight(portRows(m)) + GAP_Y
+        if (!at) importY += leafHeight(portRows(m)) + compartmentsHeight(m) + GAP_Y
+        const placed = `${i.name}/${m.module}`
+        const data: DataPath = ['dependencies', idx, 'modules', j]
+        const attributes = attributesOf(m.attributes ?? [], placed, was?.attributes, [...data, 'attributes'])
+        const methods = methodsOf(m.methods ?? [], placed, was?.methods, [...data, 'methods'])
         const size = saved
           ? saved.width !== undefined && saved.height !== undefined
             ? { width: saved.width, height: saved.height }
@@ -908,6 +995,8 @@ export function fromFile(data: unknown, prev?: Project): Project {
           path: m.module,
           position,
           ...(size && { size }),
+          ...(attributes.length && { attributes }),
+          ...(methods.length && { methods }),
           ports: m.ports.map((pt, k) => {
             if (portNames.has(pt.name))
               report(`${where}: duplicate port '${pt.name}'`, [

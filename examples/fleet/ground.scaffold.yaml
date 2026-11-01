@@ -560,6 +560,45 @@ dependencies:
             returns: null
     modules:
       - module: Radio
+        attributes:
+          - name: callsign
+            type:
+              kind: primitive
+              name: string
+            default: DRN-01
+          - name: frequencyMHz
+            type:
+              kind: primitive
+              name: float32
+            default: 2437.5
+          - name: maxPeers
+            static: true
+            const: true
+            type:
+              kind: primitive
+              name: uint8
+            default: 8
+          - name: bootTime
+            type:
+              kind: ref
+              name: Timestamp
+            description: Custom primitive
+            default: "{}"
+          - name: rallyPoints
+            type:
+              kind: ref
+              name: Route
+            description: Fallback landing spots
+            default:
+              - point:
+                  lat: 48.86
+                  lon: 2.29
+              - point:
+                  lat: 48.85
+                  lon: 2.3
+                  alt: 35
+                speedMps: 3
+                holdS: 10
         ports:
           - name: uplink
             role: in
@@ -645,6 +684,12 @@ dependencies:
             returns: null
     modules:
       - module: WeatherService
+        attributes:
+          - name: refreshS
+            type:
+              kind: primitive
+              name: uint32
+            default: 600
         ports:
           - name: feed
             role: out

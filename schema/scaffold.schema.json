@@ -331,7 +331,7 @@
                 }
               },
               "moduleTypes": {
-                "description": "types of its modules, as last read from it, by module path: its public ones are used by the modules of this project as Dependency/Module.Path.Name",
+                "description": "types of its modules, as last read from it, by module path: its public ones are used by this project as Dependency/Module.Path.Name",
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -353,8 +353,8 @@
                   ]
                 }
               },
-              "modules": {
-                "description": "its modules placed on this canvas so that links reach them, with their ports as last read: top-level modules, each with all the modules inside it",
+              "moduleConstants": {
+                "description": "constants of its modules, as last read from it, by module path",
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -362,6 +362,174 @@
                     "module": {
                       "type": "string",
                       "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "constants": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/ModuleConstant"
+                      }
+                    }
+                  },
+                  "required": [
+                    "module",
+                    "constants"
+                  ]
+                }
+              },
+              "modules": {
+                "description": "its modules placed on this canvas so that links reach them, with their attributes, methods and ports as last read (types named as in this project): top-level modules, each with all the modules inside it",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "module": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "attributes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "type": {
+                            "$ref": "#/$defs/TypeRef"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "default": {
+                            "description": "default value: a mapping for a struct or map, a list for an array, vector, list or set, null for an empty optional, an enum value name, a list of bitmask flag names, a one-entry mapping `case: value` for a union; any value for a custom primitive",
+                            "$ref": "#/$defs/__schema0"
+                          },
+                          "access": {
+                            "description": "public (default): public accessors; protected: accessors for derived modules; private: no accessors",
+                            "type": "string",
+                            "enum": [
+                              "public",
+                              "protected",
+                              "private"
+                            ]
+                          },
+                          "static": {
+                            "description": "shared by all instances of the module",
+                            "type": "boolean"
+                          },
+                          "const": {
+                            "description": "not changed after initialization",
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ]
+                      }
+                    },
+                    "methods": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "params": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                                },
+                                "type": {
+                                  "$ref": "#/$defs/TypeRef"
+                                },
+                                "description": {
+                                  "type": "string"
+                                },
+                                "direction": {
+                                  "description": "in (default): caller → callee; out: callee → caller; inout: both ways",
+                                  "type": "string",
+                                  "enum": [
+                                    "in",
+                                    "out",
+                                    "inout"
+                                  ]
+                                },
+                                "const": {
+                                  "description": "not changed by the method (in parameters only)",
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "type"
+                              ]
+                            }
+                          },
+                          "returns": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/TypeRef"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "raises": {
+                            "description": "exceptions it may raise (names of exception types)",
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\/)?[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                            }
+                          },
+                          "access": {
+                            "description": "public (default): called by anyone; protected: by the module and derived modules; private: by the module",
+                            "type": "string",
+                            "enum": [
+                              "public",
+                              "protected",
+                              "private"
+                            ]
+                          },
+                          "static": {
+                            "description": "called without a module instance",
+                            "type": "boolean"
+                          },
+                          "const": {
+                            "description": "leaves the module's state unchanged",
+                            "type": "boolean"
+                          },
+                          "virtual": {
+                            "description": "can be overridden by derived modules",
+                            "type": "boolean"
+                          },
+                          "pure": {
+                            "description": "pure virtual (`= 0`): not implemented by this module (virtual only)",
+                            "type": "boolean"
+                          },
+                          "override": {
+                            "description": "overrides a virtual method of a base module (virtual only)",
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "params",
+                          "returns"
+                        ]
+                      }
                     },
                     "ports": {
                       "type": "array",
@@ -1634,10 +1802,17 @@
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
         },
         "types": {
-          "description": "types of the module, like types nested in a class: used by modules only (attributes, methods, types of modules), named Module.Path.Name",
+          "description": "types of the module, like types nested in a class (or in an IDL module), named Module.Path.Name",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ModuleTypeDef"
+          }
+        },
+        "constants": {
+          "description": "constants of the module, like constants nested in a class, named Module.Path.Name",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModuleConstant"
           }
         },
         "attributes": {
@@ -1848,7 +2023,7 @@
               "const": "struct"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -1904,7 +2079,7 @@
               "const": "enum"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -1969,7 +2144,7 @@
               "const": "exception"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -2026,7 +2201,7 @@
               "const": "bitmask"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -2089,7 +2264,7 @@
               "const": "union"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -2170,7 +2345,7 @@
               "const": "alias"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -2203,7 +2378,7 @@
               "const": "primitive"
             },
             "access": {
-              "description": "public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module",
+              "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
               "type": "string",
               "enum": [
                 "public",
@@ -2225,6 +2400,39 @@
           ],
           "description": "custom primitive: an opaque type that generators map to a native type"
         }
+      ]
+    },
+    "ModuleConstant": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeRef"
+        },
+        "value": {
+          "description": "checked against the type, as default values are",
+          "$ref": "#/$defs/__schema1"
+        },
+        "access": {
+          "description": "public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module",
+          "type": "string",
+          "enum": [
+            "public",
+            "protected",
+            "private"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "value"
       ]
     },
     "TransportSettings": {

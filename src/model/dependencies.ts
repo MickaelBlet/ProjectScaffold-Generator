@@ -19,12 +19,15 @@ import { pair } from './reuse'
 import { normalizeFile, resolveRelative, sameFile, type Renames } from './sync'
 import { mapTypeRef } from './typeExpr'
 import type {
+  Attribute,
   ConstDef,
   Dependency,
   Id,
   ImportedModule,
   ImportedPort,
   Interface,
+  Message,
+  Method,
   Module,
   Project,
   TypeDef,
@@ -39,10 +42,10 @@ const entities = (p: Pick<Project, Kind>): Entity[] => [...p.types, ...p.interfa
 const isInterface = (e: Entity): e is Interface => 'messages' in e
 const isConst = (e: Entity): e is ConstDef => 'value' in e
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
-/** Whether an entity is a type of a module (never shared between dependencies, never conflicting). */
-const scoped = (e: Entity): e is TypeDef => !isInterface(e) && !isConst(e) && isModuleType(e)
+/** Whether an entity is a type or constant of a module (never shared between dependencies, never conflicting). */
+const scoped = (e: Entity): e is TypeDef | ConstDef => !isInterface(e) && isModuleType(e)
 
-/** Name of an entity in its project: `Path.Name` for a type of a module. */
+/** Name of an entity in its project: `Path.Name` for a type or constant of a module. */
 function keyer(p: Pick<Project, 'modules' | 'dependencies'>): (e: Entity) => string {
   const paths = modulePaths(p)
   return (e) => {
@@ -91,6 +94,16 @@ function portsOf(source: Project, m: Module, previous: ImportedPort[] = []): Imp
   })
 }
 
+/** Copies of the attributes or methods (`list`) of a module, keeping the ids `previous` has by name. */
+function membersOf<T extends Attribute | Method>(list: readonly T[], previous: readonly T[] = []): T[] {
+  return list.map((x) => {
+    const was = previous.find((y) => y.name === x.name)
+    const copy = { ...structuredClone(x), id: was?.id ?? newId() }
+    if ('params' in copy && was && 'params' in was) copy.params = membersOf(copy.params, was.params)
+    return copy
+  })
+}
+
 /** Top-level module of `source` holding `m` (`m` itself at the top level). */
 function rootOf(source: Project, m: Module): Module {
   let root = m
@@ -105,15 +118,17 @@ function rootOf(source: Project, m: Module): Module {
 /**
  * Top-level module `root` of `source` placed at `position`, with its content (parents first, each
  * at its place in its parent, as in `source`). Modules `previous` has at the same path keep their
- * id, ports (by name), size and, for the content, their place in their parent (unless drawn at the
- * top level before, `alone`).
+ * id, ports, attributes and methods (by name), size and, for the content, their place in their
+ * parent (unless drawn at the top level before, `alone`). Types of attributes and methods are
+ * those here: `idOf` the id of each type of `source`.
  */
 function placedTree(
   source: Project,
   root: Module,
   position: { x: number; y: number },
   previous: ReadonlyMap<string, ImportedModule>,
-  alone: ReadonlySet<Id>
+  alone: ReadonlySet<Id>,
+  idOf: (id: Id) => Id
 ): ImportedModule[] {
   const out: ImportedModule[] = []
   const visit = (m: Module, top: boolean): void => {
@@ -124,13 +139,19 @@ function placedTree(
     // A module with content is as large as in its project (unless resized here), its content too.
     const size = was?.size ?? (top && !children.length ? undefined : { width, height })
     const kept = !top && was && !alone.has(was.id) ? was.position : undefined
-    out.push({
+    const attributes = membersOf(m.attributes, was?.attributes)
+    const methods = membersOf(m.methods, was?.methods)
+    const placed: ImportedModule = {
       id: was?.id ?? `${IMPORTED_PREFIX}${newId()}`,
       path,
-      ports: portsOf(source, m, was?.ports),
       position: top ? position : (kept ?? { x, y }),
-      ...(size && { size })
-    })
+      ...(size && { size }),
+      ...(attributes.length && { attributes }),
+      ...(methods.length && { methods }),
+      ports: portsOf(source, m, was?.ports)
+    }
+    rebindMembers(placed, idOf)
+    out.push(placed)
     for (const c of children) visit(c, false)
   }
   visit(root, true)
@@ -152,14 +173,27 @@ function shaper(p: Project): (e: Entity) => string {
     })
 }
 
+/** `t` referencing the types `idOf` maps the ids of. */
+const refOf = (t: TypeRef, idOf: (id: Id) => Id): TypeRef =>
+  mapTypeRef(t, (r) => ({ kind: 'ref', id: idOf(r.id) }))
+
+function rebindMessages(list: Message[], idOf: (id: Id) => Id): void {
+  for (const m of list) {
+    for (const prm of m.params) prm.type = refOf(prm.type, idOf)
+    if (m.returns) m.returns = refOf(m.returns, idOf)
+    if (m.raises) m.raises = m.raises.map(idOf)
+  }
+}
+
+/** Make the attributes and methods of a placed module reference the types `idOf` maps the ids of. */
+function rebindMembers(m: ImportedModule, idOf: (id: Id) => Id): void {
+  for (const a of m.attributes ?? []) a.type = refOf(a.type, idOf)
+  rebindMessages(m.methods ?? [], idOf)
+}
+
 function rebind(e: Entity, idOf: (id: Id) => Id): void {
-  const ref = (t: TypeRef): TypeRef => mapTypeRef(t, (r) => ({ kind: 'ref', id: idOf(r.id) }))
-  if (isInterface(e))
-    for (const m of e.messages) {
-      for (const prm of m.params) prm.type = ref(prm.type)
-      if (m.returns) m.returns = ref(m.returns)
-      if (m.raises) m.raises = m.raises.map(idOf)
-    }
+  const ref = (t: TypeRef): TypeRef => refOf(t, idOf)
+  if (isInterface(e)) rebindMessages(e.messages, idOf)
   else if (isConst(e)) e.type = ref(e.type)
   else if (e.kind === 'struct' || e.kind === 'exception') for (const f of e.fields) f.type = ref(f.type)
   else if (e.kind === 'union') {
@@ -170,7 +204,7 @@ function rebind(e: Entity, idOf: (id: Id) => Id): void {
 
 /**
  * Names binding the references of the entities of `source` (saved as `file`) once copied: their
- * names, a type of a module by the file of its project and its `Path.Name`.
+ * names, a type or constant of a module by the file of its project and its `Path.Name`.
  */
 function refNames(source: Project, file: string): Map<Id, string> {
   const paths = modulePaths(source)
@@ -182,6 +216,24 @@ function refNames(source: Project, file: string): Map<Id, string> {
       return [e.id, `${files.get(e.dependency!)}|${e.modulePath}.${e.name}`]
     })
   )
+}
+
+/**
+ * Binding of the references of entities copied into `d`: the id here of each entity named in
+ * `names` (see `refNames`), a new one (dangling) for those not here.
+ */
+function binder(d: Project): (names: ReadonlyMap<Id, string>) => (id: Id) => Id {
+  const files = new Map(d.dependencies.map((x) => [x.id, normalizeFile(x.file)]))
+  const ids = new Map(
+    entities(d).flatMap((e) =>
+      !scoped(e)
+        ? [[e.name, e.id] as const]
+        : e.modulePath
+          ? [[`${files.get(e.dependency!)}|${e.modulePath}.${e.name}`, e.id] as const]
+          : []
+    )
+  )
+  return (names) => (id) => ids.get(names.get(id) ?? '') ?? newId()
 }
 
 /** Whether something outside `inside` (ids) uses a type or interface (nothing refers to constants). */
@@ -270,7 +322,7 @@ class Sync {
 
   /**
    * Make the entities of `dep` those of `source` (saved as `file`) owned by `owner` (its own ones
-   * when undefined). Types of modules come with the path of their module.
+   * when undefined). Types and constants of modules come with the path of their module.
    */
   entities(dep: Dependency, source: Project, owner: Id | undefined, file: string): void {
     const names = refNames(source, file)
@@ -306,7 +358,7 @@ class Sync {
         }
         if (target) {
           kept.add(target)
-          // A type of a module in a renamed module is not renamed itself.
+          // A type or constant of a module in a renamed module is not renamed itself.
           if (target.name !== e.name) this.result.renamed.push(`${hereKey(target)} → ${sourceKey(e)}`)
           else if (hereKey(target) === sourceKey(e) && here(target) === sourceShape(e)) continue
         }
@@ -426,8 +478,9 @@ class Sync {
       if (!roots.has(path)) roots.set(path, { root, at: absolute.get((previous.get(path) ?? im).id)! })
     }
     const alone = new Set(dep.modules.filter((m) => !parentOf.get(m.id)).map((m) => m.id))
+    const idOf = binder(this.d)(refNames(source, dep.file))
     const placed = [
-      ...[...roots.values()].flatMap(({ root, at }) => placedTree(source, root, at, previous, alone)),
+      ...[...roots.values()].flatMap(({ root, at }) => placedTree(source, root, at, previous, alone, idOf)),
       // Modules no longer found stay as they were, but in the content of a module placed here.
       ...dep.modules.filter(
         (m) => !byPath.has(m.path) && ![...roots.keys()].some((r) => m.path.startsWith(`${r}.`))
@@ -448,27 +501,19 @@ class Sync {
     if (kept.length !== this.d.links.length) this.d.links = kept
   }
 
-  /** Bring `dep` up to date from its project `source`. */
+  /**
+   * Bring the entities of `dep` up to date from its project `source`; its placed modules next
+   * (`modules`), once the entities of the dependencies `source` uses are here too.
+   */
   take(dep: Dependency, source: Project): void {
     this.fresh.add(dep.id)
     this.entities(dep, source, undefined, dep.file)
-    this.modules(dep, source)
   }
 
   finish(): DependencyResult {
     const d = this.d
-    const files = new Map(d.dependencies.map((x) => [x.id, normalizeFile(x.file)]))
-    const ids = new Map(
-      entities(d).flatMap((e) =>
-        !scoped(e)
-          ? [[e.name, e.id] as const]
-          : e.modulePath
-            ? [[`${files.get(e.dependency!)}|${e.modulePath}.${e.name}`, e.id] as const]
-            : []
-      )
-    )
-    for (const { entity, names } of this.copied)
-      rebind(entity, (id) => ids.get(names.get(id) ?? '') ?? newId())
+    const idOf = binder(d)
+    for (const { entity, names } of this.copied) rebind(entity, idOf(names))
     const gone = new Set<Entity>()
     for (const e of this.removed) {
       const dep = d.dependencies.find((x) => x.id === e.dependency)
@@ -561,6 +606,7 @@ export function addDependencies(
     taken.push([dep, s.project])
   }
   for (const [dep, source] of taken) sync.nested(dep, source, dep.file)
+  for (const [dep, source] of taken) sync.modules(dep, source)
   return sync.finish()
 }
 
@@ -613,7 +659,8 @@ export function placeModule(
     root,
     { x: Math.round(position.x), y: Math.round(position.y) },
     new Map(alone.map((x) => [x.path, x])),
-    new Set(alone.map((x) => x.id))
+    new Set(alone.map((x) => x.id)),
+    binder(d)(refNames(source, file))
   )
   dep.modules = [...dep.modules.filter((x) => !inside(x)), ...placed]
   return { id: placed[0]!.id, result }
@@ -629,6 +676,7 @@ export function refreshDependencies(
   const deps = d.dependencies.filter((x) => sources.has(x.id))
   for (const x of deps) sync.take(x, sources.get(x.id)!)
   for (const x of deps) sync.nested(x, sources.get(x.id)!, x.file)
+  for (const x of deps) sync.modules(x, sources.get(x.id)!)
   return sync.finish()
 }
 
@@ -713,14 +761,18 @@ export function applyDependencyRenames(d: Project, file: string, r: Renames): vo
         if (to && !entities(d).some((x) => !scoped(x) && x.name === to)) e.name = to
       }
     }
-    for (const t of d.types) {
-      const to =
-        t.dependency === dep.id && t.modulePath ? r.moduleTypes.get(`${t.modulePath}.${t.name}`) : undefined
-      if (!to) continue
-      const at = to.lastIndexOf('.')
-      t.modulePath = to.slice(0, at)
-      t.name = to.slice(at + 1)
+    const renameScoped = (list: (TypeDef | ConstDef)[], renames: Map<string, string>): void => {
+      for (const e of list) {
+        const to =
+          e.dependency === dep.id && e.modulePath ? renames.get(`${e.modulePath}.${e.name}`) : undefined
+        if (!to) continue
+        const at = to.lastIndexOf('.')
+        e.modulePath = to.slice(0, at)
+        e.name = to.slice(at + 1)
+      }
     }
+    renameScoped(d.types, r.moduleTypes)
+    renameScoped(d.consts, r.moduleConsts)
     rename('types', r.types)
     rename('interfaces', r.interfaces)
     rename('consts', r.consts)

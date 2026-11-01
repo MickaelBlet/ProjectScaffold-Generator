@@ -160,14 +160,25 @@ const typeDefs = <E extends z.ZodRawShape>(extra: E) =>
 
 const TypeDef = typeDefs({}).meta({ id: 'TypeDef' })
 
-const ModuleTypeDef = typeDefs({
-  access: z
-    .enum(ACCESS_LEVELS)
-    .optional()
-    .describe(
-      'public (default): used by any module; protected: by the module and the modules deriving from it; private: by the module'
-    )
-}).meta({ id: 'ModuleTypeDef' })
+const ModuleAccess = z
+  .enum(ACCESS_LEVELS)
+  .optional()
+  .describe(
+    'public (default): used anywhere; protected: by the module and the modules deriving from it; private: by the module'
+  )
+
+const ModuleTypeDef = typeDefs({ access: ModuleAccess }).meta({ id: 'ModuleTypeDef' })
+
+const Constant = z
+  .object({
+    name: Identifier,
+    description: Description,
+    type: FileTypeRefSchema,
+    value: z.json().describe('checked against the type, as default values are')
+  })
+  .meta({ id: 'Constant' })
+
+const ModuleConstant = Constant.extend({ access: ModuleAccess }).meta({ id: 'ModuleConstant' })
 
 const Param = Field.extend({
   direction: z
@@ -237,6 +248,7 @@ export interface FileModule {
   color?: string
   binary?: string
   types?: z.infer<typeof ModuleTypeDef>[]
+  constants?: z.infer<typeof ModuleConstant>[]
   attributes?: z.infer<typeof Attribute>[]
   methods?: FileMethod[]
   ports: z.infer<typeof Port>[]
@@ -267,8 +279,12 @@ const Module: z.ZodType<FileModule> = z
         .array(ModuleTypeDef)
         .optional()
         .describe(
-          'types of the module, like types nested in a class: used by modules only (attributes, methods, types of modules), named Module.Path.Name'
+          'types of the module, like types nested in a class (or in an IDL module), named Module.Path.Name'
         ),
+      constants: z
+        .array(ModuleConstant)
+        .optional()
+        .describe('constants of the module, like constants nested in a class, named Module.Path.Name'),
       attributes: z.array(Attribute).optional().describe('typed properties of the module'),
       methods: z.array(Method).optional().describe('method prototypes of the module'),
       ports: z.array(Port),
@@ -290,15 +306,6 @@ const Endpoint = z.object({
   module: QualifiedName,
   port: Identifier
 })
-
-const Constant = z
-  .object({
-    name: Identifier,
-    description: Description,
-    type: FileTypeRefSchema,
-    value: z.json().describe('checked against the type, as default values are')
-  })
-  .meta({ id: 'Constant' })
 
 const Dependency = z
   .object({
@@ -322,13 +329,24 @@ const Dependency = z
       .array(z.object({ module: QualifiedName, types: z.array(ModuleTypeDef) }))
       .optional()
       .describe(
-        'types of its modules, as last read from it, by module path: its public ones are used by the modules of this project as Dependency/Module.Path.Name'
+        'types of its modules, as last read from it, by module path: its public ones are used by this project as Dependency/Module.Path.Name'
       ),
+    moduleConstants: z
+      .array(z.object({ module: QualifiedName, constants: z.array(ModuleConstant) }))
+      .optional()
+      .describe('constants of its modules, as last read from it, by module path'),
     modules: z
-      .array(z.object({ module: QualifiedName, ports: z.array(Port) }))
+      .array(
+        z.object({
+          module: QualifiedName,
+          attributes: z.array(Attribute).optional(),
+          methods: z.array(Method).optional(),
+          ports: z.array(Port)
+        })
+      )
       .optional()
       .describe(
-        'its modules placed on this canvas so that links reach them, with their ports as last read: top-level modules, each with all the modules inside it'
+        'its modules placed on this canvas so that links reach them, with their attributes, methods and ports as last read (types named as in this project): top-level modules, each with all the modules inside it'
       )
   })
   .describe(
@@ -553,7 +571,9 @@ export type FileModuleTypeDef = z.infer<typeof ModuleTypeDef>
 export type FileMessage = z.infer<typeof Message>
 export type FileInterface = z.infer<typeof Interface>
 export type FileMethod = z.infer<typeof Method>
+export type FileAttribute = z.infer<typeof Attribute>
 export type FileLink = z.infer<typeof Link>
 export type FileEditor = z.infer<typeof Editor>
 export type FileDependency = z.infer<typeof Dependency>
 export type FileConstant = z.infer<typeof Constant>
+export type FileModuleConstant = z.infer<typeof ModuleConstant>
