@@ -21,7 +21,7 @@
 {% elif type_reference.kind == 'primitive' %}
   {{ _primitive(name=type_reference.name) }}
 {% elif type_reference.kind == 'ref' %}
-  ::{{ (type_reference.dependency or project.name|underscore_normalize)|snake }}
+  ::{{ (type_reference.dependency or project.name|as_identifier)|snake }}
   {% for part in type_reference.scope %}::{{ part|snake }}{% endfor %}
   ::{{ _identifier(name=type_reference.name) }}
 {% elif type_reference.kind == 'array' %}

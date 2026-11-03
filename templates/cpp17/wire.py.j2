@@ -6,7 +6,7 @@
   Also reads: project.name.
 #}
 {% include '_py_banner.j2' %}
-"""Wire format of the calls between binaries, as include/{{ project.name|underscore_normalize|snake }}/remote/wire.hpp.
+"""Wire format of the calls between binaries, as include/{{ project.name|as_identifier|snake }}/remote/wire.hpp.
 
 Little-endian; bool and char: 1 byte; string, bytes: u32 length + bytes; vector, list, set:
 u32 count + items; array: its items; optional: u8 flag + value; map: u32 count + key, value;

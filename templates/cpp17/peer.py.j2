@@ -15,7 +15,7 @@
 #}
 {% from '_py_identifier.j2' import py_identifier as _py_identifier %}
 {% include '_py_banner.j2' %}
-{% set module_name = project.name|underscore_normalize|snake %}
+{% set module_name = project.name|as_identifier|snake %}
 {% set binary = system.binary.name %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
 {# Transports the Python peers implement; the others are left to the user. #}

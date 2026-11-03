@@ -38,7 +38,7 @@
 {% endfor %}
 {% set state.remote_headers = state.remote_headers|unique|list|sort %}
 {% for remote_link in state.remote_headers %}
-#include <{{ project.name|underscore_normalize|snake }}/remote/{{ remote_link }}.hpp>
+#include <{{ project.name|as_identifier|snake }}/remote/{{ remote_link }}.hpp>
 {% endfor %}
 {% filter user('includes') +%}
 {% endfilter +%}

@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-namespace {{ project.name|underscore_normalize|snake }}::remote {
+namespace {{ project.name|as_identifier|snake }}::remote {
 
 /// Failure of a remote call: transport, timeout, malformed frame, or error sent back by the peer.
 class Error : public std::runtime_error {
@@ -419,4 +419,4 @@ std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
     return std::nullopt;
 }
 
-} // namespace {{ project.name|underscore_normalize|snake }}::remote
+} // namespace {{ project.name|as_identifier|snake }}::remote

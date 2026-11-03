@@ -24,7 +24,7 @@ int main(int argc, char** argv)
     (void)argv;
 {% if system.stubs|length > 0 %}
     // Serves the calls of the other binaries until SIGINT / SIGTERM.
-    {{ project.name|underscore_normalize|snake }}::remote::waitForStop();
+    {{ project.name|as_identifier|snake }}::remote::waitForStop();
 {% endif %}
     (void)system;
     {%+ endfilter +%}

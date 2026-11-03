@@ -12,7 +12,7 @@
     entity: {entity: type, name: Mode, dependency: null, scope: [Core, Sensor]} -> robot/core/sensor/Mode.hpp
     entity: {entity: module, name: Sensor, namespace: [Core]}             -> robot/core/Sensor.hpp
 #}
-{% set project_directory = project.name|underscore_normalize|snake %}
+{% set project_directory = project.name|as_identifier|snake %}
 {% filter inline %}
 {% if entity.entity == 'type' or entity.entity == 'interface' %}
   {{ entity.dependency|snake if entity.dependency else project_directory }}

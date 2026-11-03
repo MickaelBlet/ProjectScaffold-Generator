@@ -10,7 +10,7 @@
     entity: {entity: module, name: Sensor, namespace: [Core]}             -> robot::core
     entity: {entity: type, name: Mode, dependency: null, scope: [Core, Sensor]} -> robot::core::sensor
 #}
-{% set project_namespace = project.name|underscore_normalize|snake %}
+{% set project_namespace = project.name|as_identifier|snake %}
 {% filter inline %}
 {% if entity.entity == 'type' or entity.entity == 'interface' %}
   {{ entity.dependency|snake if entity.dependency else project_namespace }}

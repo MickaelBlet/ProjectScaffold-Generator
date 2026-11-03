@@ -112,7 +112,7 @@ pub fn register(env: &mut minijinja::Environment<'_>) {
     env.add_filter("lcfirst", case(lcfirst));
     env.add_filter("uuid", case(uuid));
     // A project name as an identifier, as dependencies name the project: `Plant Demo` -> `Plant_Demo`.
-    env.add_filter("underscore_normalize", case(super::context::dependency_name));
+    env.add_filter("as_identifier", case(super::context::dependency_name));
     env.add_filter("doc_comment", |v: Value, prefix: Option<Value>| {
         doc_comment(&text(&v), prefix.as_ref().map(text).as_deref())
     });

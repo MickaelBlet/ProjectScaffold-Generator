@@ -16,7 +16,7 @@
     -> #include <cstdint>  #include <map>  #include <string>  #include <plant_demo/types/State.hpp>
        (one per line)
 #}
-{% set project_directory = project.name|underscore_normalize|snake %}
+{% set project_directory = project.name|as_identifier|snake %}
 {% set state.standard_headers = [] %}
 {% set state.project_headers = [] %}
 {% for builtin in entity.uses.builtins %}

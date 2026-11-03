@@ -23,7 +23,7 @@
 {%- filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.name|underscore_normalize|snake }} {
+namespace {{ project.name|as_identifier|snake }} {
 {% for constant in constants %}
 {% set scalar = _scalar(type_reference=constant.type) %}
 {# Numbers, enums and bitmasks are constexpr. #}
@@ -32,4 +32,4 @@ namespace {{ project.name|underscore_normalize|snake }} {
 inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(type_reference=constant.type) }} {{ _identifier(name=constant.name) }} = {{ _value(model_value=constant.value, type_reference=constant.type) }};
 {% endfor %}
 
-} // namespace {{ project.name|underscore_normalize|snake }}
+} // namespace {{ project.name|as_identifier|snake }}

@@ -94,7 +94,7 @@ namespace {{ _cpp_namespace(entity=system) }} {
 {% endfor %}
 {# Links to another project: only a comment and a user section, no transport is known. #}
 {% for external in system.external %}
-    // {{ external.link.name }}: {{ external.link.from.project|default(project.name|underscore_normalize, true) }}.{{ external.link.from.module }}:{{ external.link.from.port }} -> {{ external.link.to.project|default(project.name|underscore_normalize, true) }}.{{ external.link.to.module }}:{{ external.link.to.port }}
+    // {{ external.link.name }}: {{ external.link.from.project|default(project.name|as_identifier, true) }}.{{ external.link.from.module }}:{{ external.link.from.port }} -> {{ external.link.to.project|default(project.name|as_identifier, true) }}.{{ external.link.to.module }}:{{ external.link.to.port }}
     {%+ filter user('external.' ~ external.link.name) +%}
     // Other project: connect {{ _endpoint(link_end=external.local) }} through a transport{% if external.link.constraints.remote.transport is not none %} ({{ external.link.constraints.remote.transport }}){% endif %}.
     {%+ endfilter +%}

@@ -5,4 +5,4 @@
   Also reads: project.name.
 #}
 {% include '_py_banner.j2' %}
-"""One peer per binary, standing in for it: `python -m {{ project.name|underscore_normalize|snake }}.peers.<binary>`."""
+"""One peer per binary, standing in for it: `python -m {{ project.name|as_identifier|snake }}.peers.<binary>`."""

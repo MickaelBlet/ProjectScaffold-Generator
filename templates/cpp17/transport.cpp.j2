@@ -6,7 +6,7 @@
   Also reads: project.name.
 #}
 {% include '_banner.j2' %}
-#include <{{ project.name|underscore_normalize|snake }}/remote/transport.hpp>
+#include <{{ project.name|as_identifier|snake }}/remote/transport.hpp>
 
 #include <fcntl.h>
 #include <netdb.h>
@@ -33,7 +33,7 @@
 #include <utility>
 #include <vector>
 
-namespace {{ project.name|underscore_normalize|snake }}::remote {
+namespace {{ project.name|as_identifier|snake }}::remote {
 
 namespace {
 
@@ -1011,4 +1011,4 @@ void waitForStop()
     std::signal(SIGTERM, previousTerm);
 }
 
-} // namespace {{ project.name|underscore_normalize|snake }}::remote
+} // namespace {{ project.name|as_identifier|snake }}::remote

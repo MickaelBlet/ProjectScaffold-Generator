@@ -19,12 +19,12 @@
 #pragma once
 
 #include <{{ _header(entity=item) }}>
-#include <{{ project.name|underscore_normalize|snake }}/remote/codec.hpp>
-#include <{{ project.name|underscore_normalize|snake }}/remote/transport.hpp>
+#include <{{ project.name|as_identifier|snake }}/remote/codec.hpp>
+#include <{{ project.name|as_identifier|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.name|underscore_normalize|snake }}::remote {
+namespace {{ project.name|as_identifier|snake }}::remote {
 
 /// Receives the calls of {{ _name(entity=item) }} from another binary and makes them on the
 /// port bound. The calls come on the threads of the transport: several at once over tcp, http and
@@ -121,4 +121,4 @@ private:
     {%+ endfilter +%}
 };
 
-} // namespace {{ project.name|underscore_normalize|snake }}::remote
+} // namespace {{ project.name|as_identifier|snake }}::remote
