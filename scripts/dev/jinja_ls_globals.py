@@ -152,7 +152,7 @@ def documented_variables():
     text = (ROOT / "docs/templates.md").read_text()
     section = text.split("## Variables", 1)[1].split("\n## ", 1)[0]
     for line in section.splitlines():
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
         if len(cells) == 2 and cells[0].startswith("`"):
             for name in re.findall(r"`(\w+)`", cells[0]):
                 docs[name] = cells[1]
@@ -181,10 +181,13 @@ def main():
             inferrer.add(top.setdefault(k, Slot()), v, k, "")
 
     docs = documented_variables()
-    for k in ("allTypes", "allInterfaces"):
-        docs.setdefault(k, docs.get("types"))
     globals_ = {k: type_info(slot, [], docs.get(k)) for k, slot in sorted(top.items())}
     globals_["files"] = {"name": "list[str]", "elementType": "str", "documentation": docs.get("files")}
+    globals_["generator"] = {
+        "name": "Generator",
+        "properties": {"name": "str", "reserved": {"name": "list[str]", "elementType": "str"}},
+        "documentation": docs.get("generator"),
+    }
     filters = {k: {"name": k, "signature": {"documentation": d, "return": "str"}} for k, d in FILTERS.items()}
     for k, (d, params) in FILTER_ARGS.items():
         filters[k] = {
