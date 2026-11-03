@@ -1,1 +1,3 @@
-tests/errors/load-unknown-link-port.scaffold.yaml: error: Line 217: Link 'sensor_to_store' to: unknown port 'Plant.Store:nope'
+tests/errors/load-unknown-link-port.scaffold.yaml:217:5: error: Link 'sensor_to_store' to: unknown port 'Plant.Store:nope'
+ 217 |     port: nope
+     |     ^~~~~~~~~~

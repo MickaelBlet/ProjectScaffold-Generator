@@ -1,1 +1,3 @@
-tests/errors/schema-base-port.scaffold.yaml: error: Line 695: remoteDefaults.basePort: Too big: expected number to be <=65535
+tests/errors/schema-base-port.scaffold.yaml:695:3: error: remoteDefaults.basePort: Too big: expected number to be <=65535
+ 695 |   basePort: 70000
+     |   ^~~~~~~~~~~~~~~

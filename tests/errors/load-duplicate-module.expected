@@ -1,1 +1,3 @@
-tests/errors/load-duplicate-module.scaffold.yaml: error: Line 210: Duplicate module 'Client'
+tests/errors/load-duplicate-module.scaffold.yaml:210:1: error: Duplicate module 'Client'
+ 210 | - name: Client
+     | ^~~~~~~~~~~~~~

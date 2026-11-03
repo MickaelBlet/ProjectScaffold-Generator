@@ -11,10 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use super::generate::generate;
 use super::sections::{
-    Section, changes, extract_sections, format_changes, format_orphans, hash, merge_sections, section_hash,
-    skeleton,
+    Change, Section, changes, extract_sections, format_orphans, hash, merge_sections, section_hash, skeleton,
 };
 use super::template_set::{MANIFEST, TemplateSet, load_template_set};
+use crate::diagnostic::{Diagnostic, Level, content_span};
+use crate::style::Style;
 
 pub const RECORD: &str = ".scaffold-gen.json";
 /// Template set of an output directory, used instead of the built-in one.
@@ -88,18 +89,48 @@ pub struct RunOptions {
     pub dry_run: bool,
 }
 
+pub struct Conflict {
+    pub path: String,
+    pub why: String,
+    /// Line of the file the reason is about.
+    pub line: Option<usize>,
+    /// Where the file differs from the generated one.
+    pub changes: Vec<Change>,
+    /// Said of each change (`(compared with this generation)`), or empty.
+    pub qualifier: String,
+    /// The file as it is.
+    pub text: Option<String>,
+}
+
+static LINE_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^line (\d+): (.*)$").unwrap());
+
+impl Conflict {
+    /// A `line N: …` reason points at that line.
+    fn new(path: &str, why: impl Into<String>) -> Conflict {
+        let why = why.into();
+        let (line, why) = match LINE_PREFIX.captures(&why) {
+            Some(m) => (m[1].parse().ok(), m[2].to_string()),
+            None => (None, why),
+        };
+        Conflict { path: path.to_string(), why, line, changes: vec![], qualifier: String::new(), text: None }
+    }
+}
+
 #[derive(Default)]
 pub struct GenerationReport {
     pub written: Vec<String>,
     pub unchanged: Vec<String>,
-    /// Files changed outside their user sections, left as they are: (path, reason).
-    pub conflicts: Vec<(String, String)>,
+    /// Files changed outside their user sections, left as they are.
+    pub conflicts: Vec<Conflict>,
     /// User sections with no place in the new file, saved to `<path>.orphans`: (path, ids).
     pub orphans: Vec<(String, Vec<String>)>,
     /// Files generated before and no longer.
     pub stale: Vec<String>,
     pub removed: Vec<String>,
     pub warnings: Vec<String>,
+    /// User sections whose content was carried over from the file there: (path, sections of
+    /// the new file).
+    pub kept: Vec<(String, Vec<Section>)>,
 }
 
 /// The output directory's own template set if it has one, else `fallback`.
@@ -183,13 +214,13 @@ pub fn generate_into(
             Ok(m) => m,
             Err(e) => {
                 if !options.force {
-                    report.conflicts.push((f.path.clone(), e));
+                    report.conflicts.push(Conflict { text: Some(previous), ..Conflict::new(&f.path, e) });
                     if let Some(entry) = entry {
                         record.files.insert(f.path.clone(), entry);
                     }
                     continue;
                 }
-                super::sections::MergeResult { text: f.text.clone(), orphans: vec![] }
+                super::sections::MergeResult { text: f.text.clone(), orphans: vec![], kept: vec![] }
             }
         };
         // Against the last generation when recorded, else against this one.
@@ -198,25 +229,32 @@ pub fn generate_into(
             None => skeleton(&previous, &f.comment)? != skeleton(&f.text, &f.comment)?,
         };
         if hand_edited && !options.force {
-            let mut why = match &entry {
-                Some(_) => "changed outside its user sections".to_string(),
-                None => "differs outside its user sections (no generation record)".to_string(),
-            };
+            let mut conflict = Conflict::new(
+                &f.path,
+                match &entry {
+                    Some(_) => "changed outside its user sections",
+                    None => "differs outside its user sections (no generation record)",
+                },
+            );
             // Lines against this generation: also template changes when it differs from the last.
             let changed = changes(&previous, &f.text, &f.comment)?;
-            if !changed.is_empty() {
-                why += &format!(", {}", format_changes(&changed));
-                if entry.as_ref().is_some_and(|e| e.hash != next.hash) {
-                    why += " (compared with this generation)";
-                }
-            }
-            report.conflicts.push((f.path.clone(), why));
+            conflict.qualifier = match &entry {
+                Some(e) if e.hash != next.hash => " (compared with this generation)".into(),
+                Some(_) => String::new(),
+                None => " (no generation record)".into(),
+            };
+            conflict.changes = changed;
+            conflict.text = Some(previous);
+            report.conflicts.push(conflict);
             if let Some(entry) = entry {
                 record.files.insert(f.path.clone(), entry);
             }
             continue;
         }
         save_orphans(&mut report, &f.path, edited(merged.orphans, entry.as_ref()), &f.comment)?;
+        if !merged.kept.is_empty() {
+            report.kept.push((f.path.clone(), merged.kept));
+        }
         if previous == merged.text {
             report.unchanged.push(f.path.clone());
         } else {
@@ -242,10 +280,9 @@ pub fn generate_into(
             }
             let comment = comment_of(&previous, &set.manifest.comment);
             if hash(&skeleton(&previous, &comment)?) != entry.hash && !options.force {
-                report.conflicts.push((
-                    path.clone(),
-                    "no longer generated, and changed outside its user sections".into(),
-                ));
+                report
+                    .conflicts
+                    .push(Conflict::new(path, "no longer generated, and changed outside its user sections"));
                 record.files.insert(path.clone(), entry.clone());
                 continue;
             }
@@ -281,34 +318,123 @@ pub fn comment_of(text: &str, fallback: &str) -> String {
     FIRST_MARKER.captures(text).map(|m| m[1].to_string()).unwrap_or_else(|| fallback.to_string())
 }
 
-/// One line per file and problem (`written`: list the files written).
-pub fn format_report(r: &GenerationReport, dir: &str, written: bool) -> String {
+/// Diagnostics of a conflict, its path prefixed with `out` (the output directory).
+fn conflict_diagnostics(c: &Conflict, out: &str) -> Vec<Diagnostic> {
+    let path = prefixed(out, &c.path);
+    let text = c.text.as_deref();
+    if let Some(l) = c.line {
+        return vec![Diagnostic::new(&path, Level::Error, &c.why).at_line(l, text)];
+    }
+    if c.changes.is_empty() {
+        return vec![Diagnostic::new(&path, Level::Error, &c.why)];
+    }
+    c.changes
+        .iter()
+        .map(|ch| {
+            let (what, line) = match (ch.lines.is_empty(), ch.generated.is_empty()) {
+                (true, _) if ch.after == 0 => ("generated lines missing before this line", 1),
+                (true, _) => ("generated lines missing after this line", ch.after),
+                (false, true) => ("added outside its user sections", ch.lines[0].0),
+                (false, false) => ("changed outside its user sections", ch.lines[0].0),
+            };
+            let mut d =
+                Diagnostic::new(&path, Level::Error, &format!("{what}{}", c.qualifier)).at_line(line, text);
+            if ch.lines.is_empty() {
+                // A single mark past the end of the line (at its start: before it).
+                if let Some((_, src)) = d.excerpt.first() {
+                    d.col = Some(if ch.after == 0 { 1 } else { src.trim_end().chars().count() + 1 });
+                    d.mark = Some(0);
+                }
+            } else {
+                d.excerpt = ch.lines.clone();
+                if let ([(_, mine)], [theirs]) = (ch.lines.as_slice(), ch.generated.as_slice()) {
+                    // From the first character that differs.
+                    let same = mine.chars().zip(theirs.chars()).take_while(|(a, b)| a == b).count();
+                    let (start, len) = content_span(mine);
+                    let col = (same + 1).max(start);
+                    d.col = Some(col);
+                    d.mark = Some((start + len).saturating_sub(col + 1));
+                }
+            }
+            d.generated = ch.generated.clone();
+            d
+        })
+        .collect()
+}
+
+fn prefixed(out: &str, path: &str) -> String {
+    if out == "." || out.is_empty() { path.to_string() } else { format!("{out}/{path}") }
+}
+
+/// What to list in a report besides the problems.
+#[derive(Default, Clone, Copy)]
+pub struct ReportOptions {
+    /// The files written.
+    pub written: bool,
+    /// The user sections carried over, with their content.
+    pub kept: bool,
+}
+
+/// One line per file and problem, then the kept sections (notes) and the conflicts as
+/// diagnostics, their paths prefixed with `out`.
+pub fn format_report(r: &GenerationReport, dir: &str, out: &str, show: ReportOptions, st: Style) -> String {
     let mut lines: Vec<String> = Vec::new();
-    let mut list = |title: &str, items: Vec<String>| {
+    let mut list = |title: String, items: Vec<String>| {
         if !items.is_empty() {
             lines.push(format!("{title} ({}):", items.len()));
             lines.extend(items.into_iter().map(|i| format!("  {i}")));
         }
     };
-    if written {
-        list("Written", r.written.clone());
+    let paths = |v: &[String], paint: fn(Style, &str) -> String| v.iter().map(|p| paint(st, p)).collect();
+    if show.written {
+        list(st.green("Written"), paths(&r.written, Style::green));
     }
-    list("Removed", r.removed.clone());
+    list(st.yellow("Removed"), paths(&r.removed, Style::yellow));
     list(
-        "Conflicts, left as they are (force to overwrite)",
-        r.conflicts.iter().map(|(p, why)| format!("{p}: {why}")).collect(),
+        st.yellow("User sections with no place left, saved to .orphans files"),
+        r.orphans.iter().map(|(p, ids)| format!("{}: {}", st.bold(p), st.cyan(&ids.join(", ")))).collect(),
     );
-    list(
-        "User sections with no place left, saved to .orphans files",
-        r.orphans.iter().map(|(p, ids)| format!("{p}: {}", ids.join(", "))).collect(),
-    );
-    list("No longer generated (prune to delete)", r.stale.clone());
-    list("Warnings", r.warnings.clone());
+    list(st.yellow("No longer generated (prune to delete)"), paths(&r.stale, Style::dim));
+    list(st.yellow("Warnings"), r.warnings.clone());
+    if show.kept {
+        for (path, sections) in &r.kept {
+            for s in sections {
+                let content: Vec<&str> = s.content.split('\n').collect();
+                let mut d = Diagnostic::new(
+                    &prefixed(out, path),
+                    Level::Note,
+                    &format!(
+                        "user section '{}' kept ({} line{})",
+                        s.id,
+                        content.len(),
+                        if content.len() > 1 { "s" } else { "" }
+                    ),
+                );
+                d.line = Some(s.start + 2);
+                d.col = Some(1);
+                d.excerpt =
+                    content.iter().enumerate().map(|(i, l)| (s.start + 2 + i, l.to_string())).collect();
+                d.max_lines = usize::MAX;
+                lines.push(d.render(st));
+            }
+        }
+    }
+    for c in &r.conflicts {
+        lines.extend(conflict_diagnostics(c, out).iter().map(|d| d.render(st)));
+    }
+    let count = |n: usize, what: &str, paint: fn(Style, &str) -> String| {
+        let s = format!("{n} {what}");
+        if n == 0 { st.dim(&s) } else { paint(st, &s) }
+    };
     lines.push(format!(
-        "{dir}: {} written, {} unchanged, {} conflicts",
-        r.written.len(),
-        r.unchanged.len(),
-        r.conflicts.len()
+        "{}: {}, {}, {}",
+        st.bold(dir),
+        count(r.written.len(), "written", Style::green),
+        count(r.unchanged.len(), "unchanged", |_, s| s.to_string()),
+        count(r.conflicts.len(), "conflicts", Style::red),
     ));
+    if !r.conflicts.is_empty() {
+        lines.last_mut().unwrap().push_str(" (--force to overwrite)");
+    }
     lines.join("\n")
 }

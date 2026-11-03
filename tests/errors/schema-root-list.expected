@@ -1,1 +1,3 @@
-tests/errors/schema-root-list.scaffold.yaml: error: Line 1: <root>: Invalid input: expected object, received array
+tests/errors/schema-root-list.scaffold.yaml:1:1: error: <root>: Invalid input: expected object, received array
+   1 | - 1
+     | ^~~

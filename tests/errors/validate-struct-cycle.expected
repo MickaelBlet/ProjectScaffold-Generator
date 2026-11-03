@@ -1,3 +1,2 @@
-tests/errors/validate-struct-cycle.scaffold.yaml: error: the project has 2 errors:
-  Struct 'S' contains itself by value (use vector, list, map or set to break the cycle)
-  Struct 'T' contains itself by value (use vector, list, map or set to break the cycle)
+tests/errors/validate-struct-cycle.scaffold.yaml: error: Struct 'S' contains itself by value (use vector, list, map or set to break the cycle)
+tests/errors/validate-struct-cycle.scaffold.yaml: error: Struct 'T' contains itself by value (use vector, list, map or set to break the cycle)

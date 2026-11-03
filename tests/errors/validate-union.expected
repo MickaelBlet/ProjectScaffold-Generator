@@ -1,5 +1,4 @@
-tests/errors/validate-union.scaffold.yaml: error: the project has 4 errors:
-  Union 'U': discriminator must be an integer, bool, char or enum
-  Union 'U': duplicate case 'x'
-  Union 'U': more than one default case
-  Union 'U': case 'y' has no label
+tests/errors/validate-union.scaffold.yaml: error: Union 'U': discriminator must be an integer, bool, char or enum
+tests/errors/validate-union.scaffold.yaml: error: Union 'U': duplicate case 'x'
+tests/errors/validate-union.scaffold.yaml: error: Union 'U': more than one default case
+tests/errors/validate-union.scaffold.yaml: error: Union 'U': case 'y' has no label

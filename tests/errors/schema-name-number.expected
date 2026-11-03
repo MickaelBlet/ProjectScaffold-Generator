@@ -1,1 +1,3 @@
-tests/errors/schema-name-number.scaffold.yaml: error: Line 3: project.name: Invalid input: expected string, received number
+tests/errors/schema-name-number.scaffold.yaml:3:3: error: project.name: Invalid input: expected string, received number
+   3 |   name: 3
+     |   ^~~~~~~

@@ -1,1 +1,3 @@
-tests/errors/load-unknown-type.scaffold.yaml: error: Line 18: Reading.value: unknown type 'Nope'
+tests/errors/load-unknown-type.scaffold.yaml:18:5: error: Reading.value: unknown type 'Nope'
+  18 |     type:
+     |     ^~~~~

@@ -1,1 +1,3 @@
-tests/errors/load-duplicate-port.scaffold.yaml: error: Line 141: Duplicate port 'Plant:feed'
+tests/errors/load-duplicate-port.scaffold.yaml:141:3: error: Duplicate port 'Plant:feed'
+ 141 |   - name: feed
+     |   ^~~~~~~~~~~~

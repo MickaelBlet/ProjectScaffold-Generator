@@ -1,3 +1,2 @@
-tests/errors/validate-dependency-cycle.scaffold.yaml: error: the project has 2 errors:
-  Dependency 'Common' uses itself through other dependencies
-  Dependency 'Other' uses itself through other dependencies
+tests/errors/validate-dependency-cycle.scaffold.yaml: error: Dependency 'Common' uses itself through other dependencies
+tests/errors/validate-dependency-cycle.scaffold.yaml: error: Dependency 'Other' uses itself through other dependencies

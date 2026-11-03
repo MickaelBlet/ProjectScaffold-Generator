@@ -1,2 +1,1 @@
-tests/errors/validate-duplicate-field.scaffold.yaml: error: the project has 1 error:
-  Struct 'Reading': duplicate field 'value'
+tests/errors/validate-duplicate-field.scaffold.yaml: error: Struct 'Reading': duplicate field 'value'

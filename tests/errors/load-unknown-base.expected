@@ -1,1 +1,3 @@
-tests/errors/load-unknown-base.scaffold.yaml: error: Line 211: Module 'Client': unknown base 'Nope'
+tests/errors/load-unknown-base.scaffold.yaml:211:3: error: Module 'Client': unknown base 'Nope'
+ 211 |   - Nope
+     |   ^~~~~~

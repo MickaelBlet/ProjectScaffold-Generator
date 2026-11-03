@@ -1,2 +1,1 @@
-tests/errors/validate-bounded-int.scaffold.yaml: error: the project has 1 error:
-  Reading.count: uint64 cannot be bounded
+tests/errors/validate-bounded-int.scaffold.yaml: error: Reading.count: uint64 cannot be bounded

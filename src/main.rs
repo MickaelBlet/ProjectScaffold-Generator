@@ -1,6 +1,8 @@
 // Code generation from a project file: scaffold-gen <project file> [options]
 mod codegen;
+mod diagnostic;
 mod model;
+mod style;
 
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
@@ -14,10 +16,14 @@ use codegen::builtin::{DEFAULT_TEMPLATE_SET, TEMPLATE_SETS, builtin, is_template
 use codegen::context::{build_context, dependency_name};
 use codegen::filters::snake;
 use codegen::node;
-use codegen::run::{FsDir, RunOptions, format_report, generate_into, read_or_none, template_set_for};
+use codegen::run::{
+    FsDir, ReportOptions, RunOptions, format_report, generate_into, read_or_none, template_set_for,
+};
 use codegen::template_set::{MANIFEST, TemplateSet, load_template_set};
+use diagnostic::{Diagnostic, Level};
 use model::load::{dl, ds, index_project, read_project};
 use model::text::format_from_path;
+use style::Style;
 
 #[derive(Parser)]
 #[command(
@@ -48,6 +54,9 @@ struct Args {
     /// Report only, write nothing.
     #[arg(short = 'n', long)]
     dry_run: bool,
+    /// Show the user sections carried over from the files already there, with their content.
+    #[arg(short = 'k', long)]
+    show_kept: bool,
     /// Print the version.
     #[arg(short = 'v', long)]
     version: bool,
@@ -92,6 +101,16 @@ fn relative(path: &Path) -> String {
 }
 
 /// A project file, checked: its data (editor data left in).
+/// `msg` as a diagnostic on stderr (`lines`: one for each of its lines, as the project's
+/// problems are), `Line N: …` ones with that line of `text`.
+fn print_diagnostics(path: &str, text: Option<&str>, level: Level, msg: &str, lines: bool) {
+    let st = Style::stderr();
+    let msgs: Vec<&str> = if lines { msg.lines().collect() } else { vec![msg] };
+    for m in msgs {
+        eprintln!("{}", Diagnostic::from_message(path, text, level, m).render(st));
+    }
+}
+
 fn load_project(file: &Path) -> Result<Json, String> {
     let path = file.to_string_lossy();
     let text = std::fs::read_to_string(file).map_err(|_| "cannot read the file".to_string())?;
@@ -101,7 +120,7 @@ fn load_project(file: &Path) -> Result<Json, String> {
         let files = model::idl::read_idl_includes(&path, &text, &read)?;
         let (value, warnings) = model::idl::idl_project(&path, &files)?;
         for w in warnings {
-            eprintln!("{}: warning: {w}", relative(file));
+            print_diagnostics(&relative(file), Some(&text), Level::Warning, &w, false);
         }
         model::text::Doc { value, lines: model::text::Lines::None }
     } else {
@@ -111,12 +130,7 @@ fn load_project(file: &Path) -> Result<Json, String> {
         let index = index_project(&doc.value, &doc.lines)?;
         let errors = model::validate::validate(&doc.value, &index);
         if !errors.is_empty() {
-            let n = errors.len();
-            return Err(format!(
-                "the project has {n} error{}:\n  {}",
-                if n > 1 { "s" } else { "" },
-                errors.join("\n  ")
-            ));
+            return Err(errors.join("\n"));
         }
     }
     Ok(doc.value)
@@ -144,8 +158,10 @@ struct Run<'a> {
 }
 
 impl Run<'_> {
-    fn fail(&mut self, file: &Path, e: &str) {
-        eprintln!("{}: error: {e}", relative(file));
+    /// `lines`: the project's problems, one per line.
+    fn fail(&mut self, file: &Path, e: &str, lines: bool) {
+        let text = std::fs::read_to_string(file).ok();
+        print_diagnostics(&relative(file), text.as_deref(), Level::Error, e, lines);
         self.failed = true;
     }
 
@@ -159,7 +175,16 @@ impl Run<'_> {
         let options =
             RunOptions { force: self.args.force, prune: self.args.prune, dry_run: self.args.dry_run };
         let report = generate_into(ctx, set, dir, &options)?;
-        println!("{}", format_report(&report, &format!("{label} -> {}", dir.label), true));
+        println!(
+            "{}",
+            format_report(
+                &report,
+                &format!("{label} -> {}", dir.label),
+                &dir.label,
+                ReportOptions { written: true, kept: self.args.show_kept },
+                Style::stdout()
+            )
+        );
         if !report.conflicts.is_empty() {
             self.failed = true;
         }
@@ -172,7 +197,7 @@ impl Run<'_> {
         }
         let project = match load_project(&file) {
             Ok(p) => p,
-            Err(e) => return self.fail(&file, &e),
+            Err(e) => return self.fail(&file, &e, true),
         };
         let parent = file.parent().map(Path::to_path_buf).unwrap_or_default();
         let name = ds(&project["project"], "name");
@@ -184,9 +209,10 @@ impl Run<'_> {
                 FsDir { root: out_dir.clone(), label: if label.is_empty() { ".".into() } else { label } };
             let chosen = ds(&project["generation"], "templates");
             if !chosen.is_empty() && !is_template_set(&chosen) {
+                let msg = format!("unknown template set '{chosen}', {DEFAULT_TEMPLATE_SET} used");
                 eprintln!(
-                    "{}: warning: unknown template set '{chosen}', {DEFAULT_TEMPLATE_SET} used",
-                    relative(&file)
+                    "{}",
+                    Diagnostic::new(&relative(&file), Level::Warning, &msg).render(Style::stderr())
                 );
             }
             let set = match &self.args.templates {
@@ -200,7 +226,7 @@ impl Run<'_> {
             self.generate(&ctx, &set, &dir, &relative(&file))
         })();
         if let Err(e) = r {
-            self.fail(&file, &e);
+            self.fail(&file, &e, false);
         }
         // Next to the project's directory, where its CMakeLists.txt looks for them.
         if self.args.deps {
@@ -237,7 +263,7 @@ fn main() -> ExitCode {
             Ok(true) => ExitCode::SUCCESS,
             Ok(false) => ExitCode::FAILURE,
             Err(e) => {
-                eprintln!("{c}: error: {e}");
+                print_diagnostics(c, None, Level::Error, &e, false);
                 ExitCode::FAILURE
             }
         };
@@ -254,7 +280,8 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(e) => {
-                eprintln!("{file}: error: {e}");
+                let text = std::fs::read_to_string(file).ok();
+                print_diagnostics(file, text.as_deref(), Level::Error, &e, true);
                 ExitCode::FAILURE
             }
         };

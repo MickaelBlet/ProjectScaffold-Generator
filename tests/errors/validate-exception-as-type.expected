@@ -1,4 +1,3 @@
-tests/errors/validate-exception-as-type.scaffold.yaml: error: the project has 3 errors:
-  Reading.value: exception 'Oops' can only be raised
-  Reading.value default: Expected a mapping of Oops fields, got number 1.5
-  Plant.Sensor.history default: [0].value: Expected a mapping of Oops fields, got number 2
+tests/errors/validate-exception-as-type.scaffold.yaml: error: Reading.value: exception 'Oops' can only be raised
+tests/errors/validate-exception-as-type.scaffold.yaml: error: Reading.value default: Expected a mapping of Oops fields, got number 1.5
+tests/errors/validate-exception-as-type.scaffold.yaml: error: Plant.Sensor.history default: [0].value: Expected a mapping of Oops fields, got number 2

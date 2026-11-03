@@ -1,3 +1,2 @@
-tests/errors/validate-map-key.scaffold.yaml: error: the project has 2 errors:
-  Reading.tags: map key must be a primitive, an enum or a bitmask
-  Reading.tags default: [a]: Expected a mapping of Reading fields, got text a
+tests/errors/validate-map-key.scaffold.yaml: error: Reading.tags: map key must be a primitive, an enum or a bitmask
+tests/errors/validate-map-key.scaffold.yaml: error: Reading.tags default: [a]: Expected a mapping of Reading fields, got text a

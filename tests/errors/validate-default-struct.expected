@@ -1,7 +1,6 @@
-tests/errors/validate-default-struct.scaffold.yaml: error: the project has 6 errors:
-  Pair.a default: Unknown field 'bogus' of Reading
-  Pair.b default: Expected 2 elements, got 3
-  Pair.b default: [0]: Expected one character, got text ab
-  Pair.c default: [2]: 300 does not fit in int8
-  Pair.c default: Duplicate element 1
-  Pair.d default: 6 bytes, more than the bound of 3
+tests/errors/validate-default-struct.scaffold.yaml: error: Pair.a default: Unknown field 'bogus' of Reading
+tests/errors/validate-default-struct.scaffold.yaml: error: Pair.b default: Expected 2 elements, got 3
+tests/errors/validate-default-struct.scaffold.yaml: error: Pair.b default: [0]: Expected one character, got text ab
+tests/errors/validate-default-struct.scaffold.yaml: error: Pair.c default: [2]: 300 does not fit in int8
+tests/errors/validate-default-struct.scaffold.yaml: error: Pair.c default: Duplicate element 1
+tests/errors/validate-default-struct.scaffold.yaml: error: Pair.d default: 6 bytes, more than the bound of 3

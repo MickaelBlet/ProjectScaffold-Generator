@@ -56,8 +56,9 @@ scaffold-gen <project file> [-o <dir>] [-t <template set or dir>] [--deps] [--fo
 | `--force`      | overwrite files changed outside their user sections                                                               |
 | `--prune`      | delete files no longer generated (their user sections go to `.orphans` files)                                     |
 | `--dry-run`    | report without writing                                                                                            |
+| `--show-kept`, `-k` | show the user sections carried over from the files already there, with their content                         |
 
-The exit code is not 0 on errors or conflicts.
+The exit code is not 0 on errors or conflicts. Errors are printed as clang prints them (`file:line:col: error: message`, then the line, marked), so editors can jump to them. The output is colored on a terminal: `NO_COLOR=1` turns colors off, `FORCE_COLOR=1` (or `CLICOLOR_FORCE=1`) forces them.
 
 The project file is a ProjectScaffold file (YAML or JSON), or an OMG IDL file: its definitions, the files it includes as dependencies.
 
@@ -71,7 +72,15 @@ Generating again rewrites only what changed:
 
 - the content of each user section is carried over by id; sections still holding what was generated in them take the new template's content;
 - sections with no place left (a renamed method, module or port) are appended to `<file>.orphans`, never lost;
-- a file changed **outside** its user sections is left as it is and reported as a conflict, with the lines that differ from the generated file (`--force` overwrites it);
+- a file changed **outside** its user sections is left as it is and reported as a conflict at each place it differs, with what is generated there (`--force` overwrites it):
+
+  ```
+  generated/demo/include/demo/Base.hpp:3:13: error: changed outside its user sections
+     3 | #pragma once // edit
+       |             ^~~~~~~~
+       + #pragma once
+  ```
+
 - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files);
 - `.scaffold-gen.json` in the output directory records what was generated: keep it with the code.
 

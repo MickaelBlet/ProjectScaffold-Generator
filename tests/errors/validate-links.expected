@@ -1,7 +1,6 @@
-tests/errors/validate-links.scaffold.yaml: error: the project has 6 errors:
-  Duplicate link name 'sensor_to_store'
-  Link 'sensor_to_store' is unidirectional but requires an ack
-  Link 'sensor_to_store' is unidirectional but requires an ack
-  Link 'back': source port 'in' must be an 'out' port
-  Link 'back': target port 'out' must be an 'in' port
-  Link 'back' is unidirectional but requires an ack
+tests/errors/validate-links.scaffold.yaml: error: Duplicate link name 'sensor_to_store'
+tests/errors/validate-links.scaffold.yaml: error: Link 'sensor_to_store' is unidirectional but requires an ack
+tests/errors/validate-links.scaffold.yaml: error: Link 'sensor_to_store' is unidirectional but requires an ack
+tests/errors/validate-links.scaffold.yaml: error: Link 'back': source port 'in' must be an 'out' port
+tests/errors/validate-links.scaffold.yaml: error: Link 'back': target port 'out' must be an 'in' port
+tests/errors/validate-links.scaffold.yaml: error: Link 'back' is unidirectional but requires an ack

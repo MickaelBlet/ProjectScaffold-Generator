@@ -1,1 +1,3 @@
-tests/errors/schema-editor-key.scaffold.yaml: error: Line 321: editor.layout.1a: Invalid key in record
+tests/errors/schema-editor-key.scaffold.yaml:321:5: error: editor.layout.1a: Invalid key in record
+ 321 |     1a:
+     |     ^~~

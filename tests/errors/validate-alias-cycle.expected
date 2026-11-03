@@ -1,3 +1,2 @@
-tests/errors/validate-alias-cycle.scaffold.yaml: error: the project has 2 errors:
-  Alias 'A' is cyclic
-  Alias 'B' is cyclic
+tests/errors/validate-alias-cycle.scaffold.yaml: error: Alias 'A' is cyclic
+tests/errors/validate-alias-cycle.scaffold.yaml: error: Alias 'B' is cyclic

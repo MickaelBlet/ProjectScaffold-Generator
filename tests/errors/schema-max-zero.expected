@@ -1,1 +1,3 @@
-tests/errors/schema-max-zero.scaffold.yaml: error: Line 49: types.1.fields.4.type.max: Too small: expected number to be >0
+tests/errors/schema-max-zero.scaffold.yaml:49:7: error: types.1.fields.4.type.max: Too small: expected number to be >0
+  49 |       max: 0
+     |       ^~~~~~

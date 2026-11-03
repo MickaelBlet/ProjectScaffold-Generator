@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Conflicts of files changed outside their user sections name the lines that differ from the generated file (`lines 3, after 13 (removed), 22-23`).
+- Diagnostics as clang prints them: `path:line:col: error: message`, the lines of the file with their numbers and a `^~~~` mark. Conflicts point at each change, the generated lines below (`+`); project errors at their line of the project file.
+- Option `--show-kept` (`-k`): the user sections carried over from the files already there, with their content (clang-style notes).
+- Colored command line output on a terminal (diagnostics, report); `NO_COLOR` turns it off, `FORCE_COLOR` / `CLICOLOR_FORCE` on.
 - Template filter `as_identifier`: a project name as an identifier (`Plant Demo` -> `Plant_Demo`, as `project.ident` and dependencies name it). `cpp17` spells `_project_identifier()` (below) instead of `project.ident|snake`.
 - Customizable toolbar: _Settings › Toolbar_ chooses the buttons right of the menus (any command, each with its icon, picked from a menu by category, separators, order). Default: undo, redo, previous / next selection.
 - Module views have their own layout: modules moved or resized in a module's own view (the module itself too, moved with its content or resized) keep their place in the _Project_ view, and the other way round. Stored in `editor.views[].layout`; _View › Reset view layout_ goes back to the _Project_ view's layout.

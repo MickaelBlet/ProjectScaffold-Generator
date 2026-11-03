@@ -1,1 +1,3 @@
-tests/errors/schema-module-kind.scaffold.yaml: error: Line 92: modules.0.kind: Invalid option: expected one of "class"|"abstract"|"interface"
+tests/errors/schema-module-kind.scaffold.yaml:92:3: error: modules.0.kind: Invalid option: expected one of "class"|"abstract"|"interface"
+  92 |   kind: thing
+     |   ^~~~~~~~~~~

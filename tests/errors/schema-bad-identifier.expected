@@ -1,1 +1,3 @@
-tests/errors/schema-bad-identifier.scaffold.yaml: error: Line 6: types.0.name: must be a valid identifier
+tests/errors/schema-bad-identifier.scaffold.yaml:6:3: error: types.0.name: must be a valid identifier
+   6 |   name: 1State
+     |   ^~~~~~~~~~~~

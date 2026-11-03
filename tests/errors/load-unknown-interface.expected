@@ -1,1 +1,3 @@
-tests/errors/load-unknown-interface.scaffold.yaml: error: Line 134: Port 'Plant:feed': unknown interface 'Nope'
+tests/errors/load-unknown-interface.scaffold.yaml:134:5: error: Port 'Plant:feed': unknown interface 'Nope'
+ 134 |     interface: Nope
+     |     ^~~~~~~~~~~~~~~

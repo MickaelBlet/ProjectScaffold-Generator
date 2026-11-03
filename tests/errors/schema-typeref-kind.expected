@@ -1,1 +1,3 @@
-tests/errors/schema-typeref-kind.scaffold.yaml: error: Line 57: types.2.type: Invalid input
+tests/errors/schema-typeref-kind.scaffold.yaml:57:3: error: types.2.type: Invalid input
+  57 |   type:
+     |   ^~~~~

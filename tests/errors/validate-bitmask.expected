@@ -1,4 +1,3 @@
-tests/errors/validate-bitmask.scaffold.yaml: error: the project has 3 errors:
-  Bitmask 'Flags': duplicate flag 'a'
-  Bitmask 'Flags': bit 0 used more than once
-  Bitmask 'Flags': b (bit 8) does not fit in uint8
+tests/errors/validate-bitmask.scaffold.yaml: error: Bitmask 'Flags': duplicate flag 'a'
+tests/errors/validate-bitmask.scaffold.yaml: error: Bitmask 'Flags': bit 0 used more than once
+tests/errors/validate-bitmask.scaffold.yaml: error: Bitmask 'Flags': b (bit 8) does not fit in uint8

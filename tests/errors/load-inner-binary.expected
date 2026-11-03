@@ -1,1 +1,3 @@
-tests/errors/load-inner-binary.scaffold.yaml: error: Line 534: Module 'Caller.Inner': only top-level modules name their binary
+tests/errors/load-inner-binary.scaffold.yaml:534:5: error: Module 'Caller.Inner': only top-level modules name their binary
+ 534 |     binary: Client
+     |     ^~~~~~~~~~~~~~

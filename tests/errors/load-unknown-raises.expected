@@ -1,1 +1,3 @@
-tests/errors/load-unknown-raises.scaffold.yaml: error: Line 75: Sink.push raises: unknown exception 'Nope'
+tests/errors/load-unknown-raises.scaffold.yaml:75:5: error: Sink.push raises: unknown exception 'Nope'
+  75 |     - Nope
+     |     ^~~~~~

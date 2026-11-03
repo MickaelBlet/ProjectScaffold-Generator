@@ -154,6 +154,8 @@ pub struct MergeResult {
     pub text: String,
     /// Sections of the previous file the new one has no place for.
     pub orphans: Vec<Section>,
+    /// Sections of the new text holding the previous file's content (not blank), in order.
+    pub kept: Vec<Section>,
 }
 
 /// Puts the user sections of the previous file into the newly generated one, by id; those still
@@ -169,13 +171,21 @@ pub fn merge_sections(
     let old = extract_sections(&previous.replace("\r\n", "\n"), comment)?;
     let order: Vec<String> = old.iter().map(|s| s.id.clone()).collect();
     let mut kept: HashMap<String, Section> = old.into_iter().map(|s| (s.id.clone(), s)).collect();
+    let mut carried = HashSet::new();
     let text = replace_sections(generated, comment, |s| match kept.remove(&s.id) {
-        Some(old) if !untouched(&old) => old.content,
+        Some(old) if !untouched(&old) => {
+            carried.insert(s.id.clone());
+            old.content
+        }
         _ => s.content.clone(),
     })?;
     let orphans = order.iter().filter_map(|id| kept.remove(id)).collect();
+    let kept = extract_sections(&text, comment)?
+        .into_iter()
+        .filter(|s| carried.contains(&s.id) && !s.content.trim().is_empty())
+        .collect();
     let text = if crlf { CRLF.replace_all(&text, "\r\n").into_owned() } else { text };
-    Ok(MergeResult { text, orphans })
+    Ok(MergeResult { text, orphans, kept })
 }
 
 static CRLF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\r?\n").unwrap());
@@ -204,11 +214,13 @@ fn outside_lines(text: &str, comment: &str) -> Result<Vec<(usize, String)>, Stri
 
 /// A difference of a file from what is generated, outside its user sections.
 #[derive(Debug, PartialEq)]
-pub enum Change {
-    /// Lines `first..=last` of the file (1-based) differ.
-    Lines(usize, usize),
-    /// Generated lines are missing after this line of the file (0: at its start).
-    RemovedAfter(usize),
+pub struct Change {
+    /// Lines of the file that differ (number from 1, text); none when generated lines are missing.
+    pub lines: Vec<(usize, String)>,
+    /// Line of the file the change comes after (0: at its start).
+    pub after: usize,
+    /// What is generated in their place.
+    pub generated: Vec<String>,
 }
 
 /// Where `text` differs from `generated` outside their user sections.
@@ -251,35 +263,16 @@ pub fn changes(text: &str, generated: &str, comment: &str) -> Result<Vec<Change>
     let mut out = Vec::new();
     let (mut i, mut j) = (0, 0);
     for (mi, mj) in matches {
-        if i < mi {
-            out.push(Change::Lines(a[prefix + i].0, a[prefix + mi - 1].0));
-        } else if j < mj {
-            out.push(Change::RemovedAfter(if prefix + i == 0 { 0 } else { a[prefix + i - 1].0 }));
+        if i < mi || j < mj {
+            out.push(Change {
+                lines: a[prefix + i..prefix + mi].to_vec(),
+                after: if prefix + i == 0 { 0 } else { a[prefix + i - 1].0 },
+                generated: b[prefix + j..prefix + mj].iter().map(|l| l.1.clone()).collect(),
+            });
         }
         (i, j) = (mi + 1, mj + 1);
     }
     Ok(out)
-}
-
-/// Changes as `lines 3-5, 9, after 12 (removed)`.
-pub fn format_changes(changes: &[Change]) -> String {
-    let items: Vec<String> = changes
-        .iter()
-        .map(|c| match c {
-            Change::Lines(f, l) if f == l => format!("{f}"),
-            Change::Lines(f, l) => format!("{f}-{l}"),
-            Change::RemovedAfter(l) => format!("after {l} (removed)"),
-        })
-        .collect();
-    format!(
-        "{} {}",
-        if items.len() == 1 && matches!(changes[0], Change::Lines(f, l) if f == l) {
-            "line"
-        } else {
-            "lines"
-        },
-        items.join(", ")
-    )
 }
 
 /// Short non-cryptographic hash (cyrb53) over UTF-16 code units, hex: the TypeScript generator's.
@@ -344,6 +337,7 @@ mod tests {
         let r = merge_sections(generated, prev, "//", |_| false).unwrap();
         assert_eq!(r.text, "a\r\n// <user:x>\r\nmine\r\n// </user:x>\r\nb");
         assert_eq!(r.orphans.len(), 1);
+        assert_eq!(r.kept.iter().map(|s| (s.id.as_str(), s.start)).collect::<Vec<_>>(), vec![("x", 1)]);
         assert_eq!(
             skeleton(prev, "//").unwrap(),
             "a\n// <user:x>\n// </user:x>\n// <user:y>\n// </user:y>\nb"
@@ -354,16 +348,14 @@ mod tests {
     fn changed_lines() {
         let generated = "a\n// <user:x>\ndefault\n// </user:x>\nb\nc\nd\ne";
         let edited = "a\r\n// <user:x>\r\nmine\r\nmore\r\n// </user:x>\r\nB\r\nc\r\ne\r\nf\r\ng";
-        assert_eq!(
-            changes(edited, generated, "//").unwrap(),
-            vec![Change::Lines(6, 6), Change::RemovedAfter(7), Change::Lines(9, 10)]
-        );
-        assert_eq!(
-            format_changes(&changes(edited, generated, "//").unwrap()),
-            "lines 6, after 7 (removed), 9-10"
-        );
-        assert_eq!(changes("x\na", "a", "//").unwrap(), vec![Change::Lines(1, 1)]);
-        assert_eq!(changes("a", "x\na", "//").unwrap(), vec![Change::RemovedAfter(0)]);
+        let lines =
+            |c: &[Change]| c.iter().map(|c| (c.after, c.lines.len(), c.generated.len())).collect::<Vec<_>>();
+        let found = changes(edited, generated, "//").unwrap();
+        assert_eq!(lines(&found), vec![(5, 1, 1), (7, 0, 1), (8, 2, 0)]);
+        assert_eq!(found[0].lines, vec![(6, "B".to_string())]);
+        assert_eq!(found[1].generated, vec!["d".to_string()]);
+        assert_eq!(lines(&changes("x\na", "a", "//").unwrap()), vec![(0, 1, 0)]);
+        assert_eq!(lines(&changes("a", "x\na", "//").unwrap()), vec![(0, 0, 1)]);
         assert!(changes(edited, edited, "//").unwrap().is_empty());
     }
 }

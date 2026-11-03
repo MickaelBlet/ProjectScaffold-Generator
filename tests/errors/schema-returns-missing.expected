@@ -1,1 +1,3 @@
-tests/errors/schema-returns-missing.scaffold.yaml: error: Line 67: interfaces.0.messages.0.returns: Invalid input
+tests/errors/schema-returns-missing.scaffold.yaml:67:3: error: interfaces.0.messages.0.returns: Invalid input
+  67 |   - name: push
+     |   ^~~~~~~~~~~~

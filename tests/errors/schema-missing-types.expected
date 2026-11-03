@@ -1,1 +1,3 @@
-tests/errors/schema-missing-types.scaffold.yaml: error: Line 1: types: Invalid input: expected array, received undefined
+tests/errors/schema-missing-types.scaffold.yaml:1:1: error: types: Invalid input: expected array, received undefined
+   1 | schemaVersion: 1
+     | ^~~~~~~~~~~~~~~~

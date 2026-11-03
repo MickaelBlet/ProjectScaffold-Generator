@@ -1,4 +1,12 @@
-tests/errors/schema-many.scaffold.yaml: error: Line 373: transports.0: Too small: expected string to have >=1 characters
-Line 10: types.0.values.0.value: Invalid input: expected int, received number
-Line 75: interfaces.0.messages.0.raises.0: must be a type name, with its module path for a type of a module (and its dependency name and a slash for a module of a dependency)
-Line 221: links.0.constraints.direction: Invalid option: expected one of "unidirectional"|"bidirectional"
+tests/errors/schema-many.scaffold.yaml:373:1: error: transports.0: Too small: expected string to have >=1 characters
+ 373 | - ''
+     | ^~~~
+tests/errors/schema-many.scaffold.yaml:10:5: error: types.0.values.0.value: Invalid input: expected int, received number
+  10 |     value: 1.5
+     |     ^~~~~~~~~~
+tests/errors/schema-many.scaffold.yaml:75:5: error: interfaces.0.messages.0.raises.0: must be a type name, with its module path for a type of a module (and its dependency name and a slash for a module of a dependency)
+  75 |     - 1x
+     |     ^~~~
+tests/errors/schema-many.scaffold.yaml:221:5: error: links.0.constraints.direction: Invalid option: expected one of "unidirectional"|"bidirectional"
+ 221 |     direction: sideways
+     |     ^~~~~~~~~~~~~~~~~~~

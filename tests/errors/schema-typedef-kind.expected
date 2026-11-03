@@ -1,1 +1,3 @@
-tests/errors/schema-typedef-kind.scaffold.yaml: error: Line 5: types.0.kind: Invalid discriminator value. Expected 'struct' | 'enum' | 'exception' | 'bitmask' | 'union' | 'alias' | 'primitive'
+tests/errors/schema-typedef-kind.scaffold.yaml:5:1: error: types.0.kind: Invalid discriminator value. Expected 'struct' | 'enum' | 'exception' | 'bitmask' | 'union' | 'alias' | 'primitive'
+   5 | - kind: blob
+     | ^~~~~~~~~~~~

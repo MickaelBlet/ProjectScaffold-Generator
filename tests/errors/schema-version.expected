@@ -1,1 +1,3 @@
-tests/errors/schema-version.scaffold.yaml: error: Line 1: schemaVersion: Invalid input: expected 1
+tests/errors/schema-version.scaffold.yaml:1:1: error: schemaVersion: Invalid input: expected 1
+   1 | schemaVersion: 2
+     | ^~~~~~~~~~~~~~~~
