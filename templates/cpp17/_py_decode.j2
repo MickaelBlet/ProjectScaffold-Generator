@@ -1,5 +1,3 @@
-{% macro py_decode(type_reference=none, reader=none, prefix=none) %}
-{% from '_py_decoder.j2' import py_decoder as _py_decoder %}
 {#
   Python expression decoding a value with a wire.py `Reader`; bounds passed last.
   Parameters:
@@ -14,6 +12,8 @@
     prefix: data.
     -> r.seq(data.decode_Vec3)
 #}
+{% macro py_decode(type_reference=none, reader=none, prefix=none) %}
+{% from '_py_decoder.j2' import py_decoder as _py_decoder %}
 {% filter inline %}
 {% if type_reference.kind == 'primitive' %}
   {{ reader }}.{{ type_reference.name }}({{ type_reference.max }})

@@ -1,4 +1,3 @@
-{% macro scalar(type_reference=none) %}
 {#
   `true` for a type cheap to copy, passed and returned by value: numbers, bool, char, enums, bitmasks,
   aliases of those; empty for the others.
@@ -11,6 +10,7 @@
     type_reference: {kind: primitive, name: string}  -> (empty)
     type_reference: {kind: ref, name: State, key: State, typeKind: enum} -> true
 #}
+{% macro scalar(type_reference=none) %}
 {% filter inline %}
 {% if type_reference.kind == 'primitive' %}
   {% if not (type_reference.name == 'string' or type_reference.name == 'bytes') %}true{% endif %}

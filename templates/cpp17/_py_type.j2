@@ -1,5 +1,3 @@
-{% macro py_type(type_reference=none, prefix=none) %}
-{% from '_py_reference.j2' import py_reference as _py_reference %}
 {#
   Python type hint of a type reference; aliases spelled as the type they stand for, custom primitives
   as `Any`; `None` for no type.
@@ -14,6 +12,8 @@
     prefix: data.
     -> Dict[str, List[data.Pose]]
 #}
+{% macro py_type(type_reference=none, prefix=none) %}
+{% from '_py_reference.j2' import py_reference as _py_reference %}
 {% filter inline %}
 {% if type_reference == none %}
   None

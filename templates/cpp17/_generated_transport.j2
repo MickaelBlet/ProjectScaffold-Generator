@@ -1,4 +1,3 @@
-{% macro generated_transport(transport=none) %}
 {#
   `true` for a transport implemented by transport.cpp / transport.py (tcp, udp, http, websocket, shm),
   empty for the others (written by the user).
@@ -8,6 +7,7 @@
     transport: tcp   -> true
     transport: mqtt  -> (empty)
 #}
+{% macro generated_transport(transport=none) %}
 {% filter inline %}
 {% if transport in ['tcp', 'udp', 'http', 'websocket', 'shm'] %}true{% endif %}
 {% endfilter %}

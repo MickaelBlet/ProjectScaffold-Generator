@@ -1,4 +1,3 @@
-{% macro accessor(name=none) %}
 {#
   Name of the accessor of a child module: its name in lower camel case, `Module` appended when that is a
   C++ keyword. Its data member is the accessor followed by `_`.
@@ -8,7 +7,9 @@
     name: Sensor   -> sensor
     name: Operator -> operatorModule
 #}
-{% set accessor_name = name|lcfirst %}
+{% macro accessor(name=none) %}
+{% from '_lcfirst.j2' import lcfirst as _lcfirst %}
+{% set accessor_name = _lcfirst(name=name) %}
 {% filter inline %}
 {{ accessor_name }}{% if accessor_name in generator.reserved %}Module{% endif %}
 {% endfilter %}

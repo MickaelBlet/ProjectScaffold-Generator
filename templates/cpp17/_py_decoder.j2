@@ -1,5 +1,3 @@
-{% macro py_decoder(type_reference=none, prefix=none) %}
-{% from '_py_decode.j2' import py_decode as _py_decode %}
 {#
   Python function `(reader) -> value` decoding a type: a `Reader` method, a `decode_<Type>` function of
   data.py, or a lambda for containers and bounded primitives.
@@ -13,6 +11,8 @@
     type_reference: {kind: ref, name: Pose}                     -> data.decode_Pose
     type_reference: {kind: primitive, name: string, max: 16}    -> lambda r: r.string(16)
 #}
+{% macro py_decoder(type_reference=none, prefix=none) %}
+{% from '_py_decode.j2' import py_decode as _py_decode %}
 {% filter inline %}
 {% if type_reference.kind == 'primitive' and type_reference.max is none %}
   Reader.{{ type_reference.name }}

@@ -1,7 +1,3 @@
-{% macro value(model_value=none, type_reference=none) %}
-{% from '_identifier.j2' import identifier as _identifier %}
-{% from '_type.j2' import type as _type %}
-{% set state = namespace() %}
 {#
   C++ literal of a value of the model (a default value or a constant, as written in the YAML file) of a
   given type: enums by enumerator, bitmasks as or-ed flags, unions through a lambda setting their case,
@@ -19,6 +15,10 @@
     model_value: {a: 1}, type_reference: {kind: map, key: {kind: primitive, name: string}, value: {kind: primitive, name: int32}}
       -> { {"a", 1} }
 #}
+{% macro value(model_value=none, type_reference=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
+{% from '_type.j2' import type as _type %}
+{% set state = namespace() %}
 {% filter inline %}
 {% if type_reference.kind == 'primitive' %}
   {% if type_reference.name == 'bool' %}

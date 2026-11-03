@@ -5,8 +5,9 @@
   Example input: none, the file is the same for every project but for its namespace.
   Also reads: project.name.
 #}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% include '_banner.j2' %}
-#include <{{ project.name|as_identifier|snake }}/remote/transport.hpp>
+#include <{{ _project_identifier() }}/remote/transport.hpp>
 
 #include <fcntl.h>
 #include <netdb.h>
@@ -33,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-namespace {{ project.name|as_identifier|snake }}::remote {
+namespace {{ _project_identifier() }}::remote {
 
 namespace {
 
@@ -1011,4 +1012,4 @@ void waitForStop()
     std::signal(SIGTERM, previousTerm);
 }
 
-} // namespace {{ project.name|as_identifier|snake }}::remote
+} // namespace {{ _project_identifier() }}::remote

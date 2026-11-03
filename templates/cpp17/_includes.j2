@@ -1,6 +1,3 @@
-{% macro includes(entity=none) %}
-{% from '_header.j2' import header as _header %}
-{% set state = namespace() %}
 {#
   `#include` lines of an entity: the standard headers of the primitives and containers it uses, then
   the headers of the user types, interfaces, base modules, child modules it uses, each once, sorted,
@@ -16,7 +13,11 @@
     -> #include <cstdint>  #include <map>  #include <string>  #include <plant_demo/types/State.hpp>
        (one per line)
 #}
-{% set project_directory = project.name|as_identifier|snake %}
+{% macro includes(entity=none) %}
+{% from '_header.j2' import header as _header %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
+{% set state = namespace() %}
+{% set project_directory = _project_identifier() %}
 {% set state.standard_headers = [] %}
 {% set state.project_headers = [] %}
 {% for builtin in entity.uses.builtins %}

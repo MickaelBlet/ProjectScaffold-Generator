@@ -1,0 +1,12 @@
+{#
+  A name with its first letter in upper case, the rest unchanged.
+  Parameters:
+    name: a name.
+  Examples:
+    name: rateHz -> RateHz
+#}
+{% macro ucfirst(name=none) %}
+{% filter inline %}
+{{ name[:1]|upper }}{{ name[1:] }}
+{% endfilter %}
+{% endmacro %}

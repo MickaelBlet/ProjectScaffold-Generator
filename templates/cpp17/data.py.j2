@@ -13,6 +13,7 @@
           - {name: number, type: {kind: primitive, name: int32, max: null}, labels: [1, 2], label: 1, isDefault: false}
           - {name: text, type: {kind: primitive, name: string, max: null}, labels: [], label: 0, isDefault: true}
 #}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_py_decode.j2' import py_decode as _py_decode %}
 {% from '_py_encode.j2' import py_encode as _py_encode %}
 {% from '_py_identifier.j2' import py_identifier as _py_identifier %}
@@ -38,7 +39,7 @@ from .wire import Reader, Writer, enum
 
 
 class {{ _py_identifier(name=type_definition.name) }}(IntEnum):
-{{ type_definition.description|doc_comment('    # ') }}
+{{ _doc_comment(text=type_definition.description, prefix='    # ') }}{##}
 {% for value in type_definition['values'] %}
     {{ _py_identifier(name=value.name) }} = {{ value.value }}
 {% else %}
@@ -48,7 +49,7 @@ class {{ _py_identifier(name=type_definition.name) }}(IntEnum):
 
 
 class {{ _py_identifier(name=type_definition.name) }}(IntFlag):
-{{ type_definition.description|doc_comment('    # ') }}
+{{ _doc_comment(text=type_definition.description, prefix='    # ') }}{##}
 {% for flag in type_definition.flags %}
     {{ _py_identifier(name=flag.name) }} = {{ flag.value }}
 {% else %}
@@ -59,7 +60,7 @@ class {{ _py_identifier(name=type_definition.name) }}(IntFlag):
 
 @dataclass
 class {{ _py_identifier(name=type_definition.name) }}:
-{{ type_definition.description|doc_comment('    # ') }}
+{{ _doc_comment(text=type_definition.description, prefix='    # ') }}{##}
     # `d`: the discriminator; `value`: the case it selects ({% for case in type_definition.cases %}{{ case.name }}{% if not loop.last %}, {% endif %}{% endfor %}), None for none.
 {% set first = type_definition.cases|first %}
 {% if first and first.label != none %}
@@ -74,9 +75,9 @@ class {{ _py_identifier(name=type_definition.name) }}:
 
 @dataclass
 class {{ _py_identifier(name=type_definition.name) }}{% if type_definition.kind == 'exception' %}(Exception){% endif %}:
-{{ type_definition.description|doc_comment('    # ') }}
+{{ _doc_comment(text=type_definition.description, prefix='    # ') }}{##}
 {% for field in type_definition.fields %}
-{{ field.description|doc_comment('    # ') }}
+{{ _doc_comment(text=field.description, prefix='    # ') }}{##}
     {{ _py_identifier(name=field.name) }}: {{ _py_type(type_reference=field.type, prefix='') }} = _field(default_factory=lambda: {% if field.hasDefault %}{{ _py_value(model_value=field.default, type_reference=field.type, prefix='') }}{% else %}{{ _py_zero(type_reference=field.type, prefix='') }}{% endif %})
 {% else %}
     pass

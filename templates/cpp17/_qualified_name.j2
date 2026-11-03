@@ -1,6 +1,3 @@
-{% macro qualified_name(entity=none) %}
-{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
-{% from '_name.j2' import name as _name %}
 {#
   Fully qualified C++ name of an entity: its namespace (_cpp_namespace.j2) and class name (_name.j2).
   Parameters:
@@ -8,6 +5,9 @@
   Example (project Robot):
     entity: {entity: module, name: Sensor, namespace: [Core]}  -> ::robot::core::Sensor
 #}
+{% macro qualified_name(entity=none) %}
+{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
+{% from '_name.j2' import name as _name %}
 {% filter inline %}
 ::{{ _cpp_namespace(entity=entity) }}::{{ _name(entity=entity) }}
 {% endfilter %}

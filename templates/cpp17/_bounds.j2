@@ -1,4 +1,3 @@
-{% macro bounds(type_reference=none, expression=none, depth=none) %}
 {#
   C++ statements, on one line, checking the bounds of a value (`string<16>`, `vector<T, 8>`, through
   aliases, optionals and the elements of containers; structs check their own fields): nothing when
@@ -15,6 +14,7 @@
     depth: 0
     -> checkBound(names, 8); for (const auto& x0_ : names) { checkBound(x0_, 16); }
 #}
+{% macro bounds(type_reference=none, expression=none, depth=none) %}
 {% set element_variable = 'x' ~ depth ~ '_' %}
 {% set next_depth = depth + 1 %}
 {% filter inline %}

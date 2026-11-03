@@ -15,6 +15,7 @@
           returns: null
           raises: []
 #}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_py_decode.j2' import py_decode as _py_decode %}
 {% from '_py_encode.j2' import py_encode as _py_encode %}
 {% from '_py_identifier.j2' import py_identifier as _py_identifier %}
@@ -44,7 +45,7 @@ _log = logging.getLogger(__name__)
 
 
 class {{ remote_interface.name }}Proxy:
-{{ remote_interface.description|doc_comment('    # ') }}
+{{ _doc_comment(text=remote_interface.description, prefix='    # ') }}{##}
     """{{ remote_interface.name }} of another binary: each call is encoded and sent over the channel, and waits for
     its reply when it has a result or the link acknowledges calls (else returns at once)."""
 
@@ -64,7 +65,7 @@ class {{ remote_interface.name }}Proxy:
 {# The decoders of its declared exceptions. #}
 
     def {{ _py_identifier(name=message.name) }}(self{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}: {{ _py_type(type_reference=parameter.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(message=message, what='hint', prefix='_data.') }}:
-{{ message.description|doc_comment('        # ') }}
+{{ _doc_comment(text=message.description, prefix='        # ') }}{##}
         _w = Writer()
 {% for parameter in message.inputs %}
 {% set state.expression = _py_identifier(name=parameter.name) %}
@@ -99,7 +100,7 @@ class {{ remote_interface.name }}Handler:
 {% for message in remote_interface.messages %}
 
     def {{ _py_identifier(name=message.name) }}(self{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}: {{ _py_type(type_reference=parameter.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(message=message, what='hint', prefix='_data.') }}:
-{{ message.description|doc_comment('        # ') }}
+{{ _doc_comment(text=message.description, prefix='        # ') }}{##}
         _log.info('{{ remote_interface.name }}.{{ message.name }}({% for parameter in message.inputs %}%r{% if not loop.last %}, {% endif %}{% endfor %})'{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}{% endfor %})
 {% if message.returns or message.outputs|length > 0 %}
         return {{ _py_results(message=message, what='zero', prefix='_data.') }}

@@ -20,6 +20,8 @@
 #}
 {% from '_address.j2' import address as _address %}
 {% from '_address_variable.j2' import address_variable as _address_variable %}
+{% from '_constant.j2' import constant as _constant %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_transport_settings.j2' import transport_settings as _transport_settings %}
 {% include '_py_banner.j2' %}
 """Links between the binaries of {{ project.name }}. The address of a link is the value of its environment
@@ -67,8 +69,8 @@ class Link(NamedTuple):
 {# One Link constant per remote link; `options` is the free settings as a dict literal. #}
 {% for remote_link in remoteLinks %}
 
-{{ remote_link.link.description|doc_comment('# ') }}
-{{ remote_link.link.name|constant }} = Link('{{ remote_link.link.name }}', {{ remote_link.index }}, '{{ remote_link.interface.name }}', '{{ remote_link.link.constraints.remote.transport }}', '{{ _address_variable(remote_link=remote_link, side='client') }}', '{{ _address(remote_link=remote_link, side='client') }}', '{{ _address_variable(remote_link=remote_link, side='server') }}', '{{ _address(remote_link=remote_link, side='server') }}', '{{ remote_link.settings.path|default('/', true) }}', {{ remote_link.settings.capacity|default(1048576, true) }}, '{{ _transport_settings(settings=remote_link.link.constraints.remote.settings) }}', { {%- for option in remote_link.settings.options %}'{{ option.name }}': '{{ option.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if remote_link.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(remote_link.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ remote_link.from.binary }}', '{{ remote_link.to.binary }}')
+{{ _doc_comment(text=remote_link.link.description, prefix='# ') }}{##}
+{{ _constant(name=remote_link.link.name) }} = Link('{{ remote_link.link.name }}', {{ remote_link.index }}, '{{ remote_link.interface.name }}', '{{ remote_link.link.constraints.remote.transport }}', '{{ _address_variable(remote_link=remote_link, side='client') }}', '{{ _address(remote_link=remote_link, side='client') }}', '{{ _address_variable(remote_link=remote_link, side='server') }}', '{{ _address(remote_link=remote_link, side='server') }}', '{{ remote_link.settings.path|default('/', true) }}', {{ remote_link.settings.capacity|default(1048576, true) }}, '{{ _transport_settings(settings=remote_link.link.constraints.remote.settings) }}', { {%- for option in remote_link.settings.options %}'{{ option.name }}': '{{ option.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if remote_link.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(remote_link.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ remote_link.from.binary }}', '{{ remote_link.to.binary }}')
 {% endfor %}
 
-LINKS: List[Link] = [{% for remote_link in remoteLinks %}{{ remote_link.link.name|constant }}{% if not loop.last %}, {% endif %}{% endfor %}]
+LINKS: List[Link] = [{% for remote_link in remoteLinks %}{{ _constant(name=remote_link.link.name) }}{% if not loop.last %}, {% endif %}{% endfor %}]

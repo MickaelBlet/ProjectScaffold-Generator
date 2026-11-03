@@ -4,5 +4,6 @@
   Example input: none beyond the banner (project.name: Relay).
   Also reads: project.name.
 #}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% include '_py_banner.j2' %}
-"""One peer per binary, standing in for it: `python -m {{ project.name|as_identifier|snake }}.peers.<binary>`."""
+"""One peer per binary, standing in for it: `python -m {{ _project_identifier() }}.peers.<binary>`."""

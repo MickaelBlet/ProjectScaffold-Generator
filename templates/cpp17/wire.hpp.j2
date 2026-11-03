@@ -6,6 +6,7 @@
   Example input: none, the file is the same for every project but for its namespace.
   Also reads: project.name.
 #}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% include '_banner.j2' %}
 #pragma once
 
@@ -36,7 +37,7 @@
 #include <utility>
 #include <vector>
 
-namespace {{ project.name|as_identifier|snake }}::remote {
+namespace {{ _project_identifier() }}::remote {
 
 /// Failure of a remote call: transport, timeout, malformed frame, or error sent back by the peer.
 class Error : public std::runtime_error {
@@ -419,4 +420,4 @@ std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
     return std::nullopt;
 }
 
-} // namespace {{ project.name|as_identifier|snake }}::remote
+} // namespace {{ _project_identifier() }}::remote

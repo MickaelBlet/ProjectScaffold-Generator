@@ -1,6 +1,3 @@
-{% macro py_zero(type_reference=none, prefix=none) %}
-{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
-{% from '_py_reference.j2' import py_reference as _py_reference %}
 {#
   Python expression of the default value of a type: what C++ value-initializes it to (an enum gets its
   first value, a struct its defaults, an array its size of elements); `None` for no type.
@@ -15,6 +12,9 @@
     type_reference: {kind: array, size: 3, of: {kind: primitive, name: int8}} -> [0 for _ in range(3)]
     type_reference: {kind: ref, name: Pose, key: Pose, flatName: Pose, scope: []} (a struct) -> data.Pose()
 #}
+{% macro py_zero(type_reference=none, prefix=none) %}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
+{% from '_py_reference.j2' import py_reference as _py_reference %}
 {% filter inline %}
 {% if type_reference == none %}
   None

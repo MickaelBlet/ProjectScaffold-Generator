@@ -13,9 +13,13 @@
       proxies: []
   Also reads: project.name.
 #}
+{% from '_constant.j2' import constant as _constant %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% from '_py_identifier.j2' import py_identifier as _py_identifier %}
+{% from '_snake.j2' import snake as _snake %}
 {% include '_py_banner.j2' %}
-{% set module_name = project.name|as_identifier|snake %}
+{% set module_name = _project_identifier() %}
 {% set binary = system.binary.name %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
 {# Transports the Python peers implement; the others are left to the user. #}
@@ -23,7 +27,7 @@
 """Stands in for binary {{ binary }} of {{ project.name }}, to test the other binaries: serves the calls
 {{ binary }} receives, makes those it sends.
 
-    python -m {{ module_name }}.peers.{{ binary|snake }}    # from the python/ directory; Ctrl-C stops
+    python -m {{ module_name }}.peers.{{ _snake(name=binary) }}    # from the python/ directory; Ctrl-C stops
 """
 from __future__ import annotations
 
@@ -34,14 +38,14 @@ from typing import List, Optional
 from .. import links
 from ..transport import Server
 {% for interface in faces %}
-from ..remote.{{ _py_identifier(name=interface.name|snake) }} import {{ interface.name }}Handler, {{ interface.name }}Proxy, {{ interface.name }}Stub
+from ..remote.{{ _py_identifier(name=_snake(name=interface.name)) }} import {{ interface.name }}Handler, {{ interface.name }}Proxy, {{ interface.name }}Stub
 {% endfor %}
 {% filter user('imports') +%}
 {% endfilter +%}
 
 
 class {{ binary }}Peer:
-{{ system.binary.description|doc_comment('    # ') }}
+{{ _doc_comment(text=system.binary.description, prefix='    # ') }}{##}
     """Binary {{ binary }}: one handler per link it receives (default: logging ones), one proxy per link it
     calls (connecting on the first call). serve() starts receiving, close() stops."""
 
@@ -59,7 +63,7 @@ class {{ binary }}Peer:
 {% for remote_link in system.proxies %}
         # {{ remote_link.link.name }}: {{ remote_link.local.module }}:{{ remote_link.local.port }} -> binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} over {{ remote_link.link.constraints.remote.transport }}
 {% if remote_link.link.constraints.remote.transport in generated %}
-        self.{{ remote_link.link.name }} = {{ remote_link.interface.name }}Proxy.connect(links.{{ remote_link.link.name|constant }})
+        self.{{ remote_link.link.name }} = {{ remote_link.interface.name }}Proxy.connect(links.{{ _constant(name=remote_link.link.name) }})
 {% else %}
         # Transport not generated: give {{ remote_link.interface.name }}Proxy a Channel of your own.
 {% endif %}
@@ -75,7 +79,7 @@ class {{ binary }}Peer:
 {# One server per received link, each feeding its stub. #}
 {% for remote_link in system.stubs %}
 {% if remote_link.link.constraints.remote.transport in generated %}
-                {{ remote_link.interface.name }}Stub.serve(links.{{ remote_link.link.name|constant }}, self.{{ remote_link.link.name }}_handler),
+                {{ remote_link.interface.name }}Stub.serve(links.{{ _constant(name=remote_link.link.name) }}, self.{{ remote_link.link.name }}_handler),
 {% endif %}
 {% endfor %}
             ]

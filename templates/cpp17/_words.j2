@@ -1,0 +1,36 @@
+{#
+  Words of a name, separated by one space: a word starts at an upper case letter after a lower case
+  letter or a digit, at the last upper case letter of a run followed by a lower case letter, and after
+  any character other than an ASCII letter or digit (dropped). Used by the case macros.
+  Parameters:
+    name: a name.
+  Examples:
+    name: rateHz      -> rate Hz
+    name: HTTPServer  -> HTTP Server
+    name: snake_case  -> snake case
+#}
+{% macro words(name=none) %}
+{% set lower = 'abcdefghijklmnopqrstuvwxyz' %}
+{% set upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+{% set digits = '0123456789' %}
+{% set split = namespace(words=[], word='') %}
+{% for character in name %}
+{% set next = loop.nextitem if loop.nextitem is defined else '' %}
+{% if character in lower or character in upper or character in digits %}
+{% if split.word and character in upper and (split.word[-1] in lower or split.word[-1] in digits or (split.word[-1] in upper and next and next in lower)) %}
+{% set split.words = split.words + [split.word] %}
+{% set split.word = '' %}
+{% endif %}
+{% set split.word = split.word ~ character %}
+{% elif split.word %}
+{% set split.words = split.words + [split.word] %}
+{% set split.word = '' %}
+{% endif %}
+{% endfor %}
+{% if split.word %}
+{% set split.words = split.words + [split.word] %}
+{% endif %}
+{% filter inline %}
+{{ split.words|join(' ') }}
+{% endfilter %}
+{% endmacro %}

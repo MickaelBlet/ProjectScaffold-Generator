@@ -10,6 +10,7 @@
         type: {kind: primitive, name: string, max: null}
         value: hello
 #}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_py_identifier.j2' import py_identifier as _py_identifier %}
 {% from '_py_value.j2' import py_value as _py_value %}
 {% include '_py_banner.j2' %}
@@ -20,6 +21,6 @@ from . import data  # noqa: F401 - types of the values
 {# One module-level value per constant used by the remote types. #}
 {% for constant in remoteConstants %}
 
-{{ constant.description|doc_comment('# ') }}
+{{ _doc_comment(text=constant.description, prefix='# ') }}{##}
 {{ _py_identifier(name=constant.name) }} = {{ _py_value(model_value=constant.value, type_reference=constant.type, prefix='data.') }}
 {% endfor %}

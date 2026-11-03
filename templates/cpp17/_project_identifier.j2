@@ -1,0 +1,12 @@
+{#
+  The project's name as an identifier (_as_identifier) in snake case (_snake): its C++ namespace,
+  include directory, CMake library and Python package.
+  Example (project Plant Demo): plant_demo
+#}
+{% macro project_identifier() %}
+{% from '_as_identifier.j2' import as_identifier as _as_identifier %}
+{% from '_snake.j2' import snake as _snake %}
+{% filter inline %}
+{{ _snake(name=_as_identifier(name=project.name)) }}
+{% endfilter %}
+{% endmacro %}

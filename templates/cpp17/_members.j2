@@ -1,11 +1,3 @@
-{% macro members(module=none, names=none, access=none) %}
-{% from '_identifier.j2' import identifier as _identifier %}
-{% from '_input.j2' import input as _input %}
-{% from '_member.j2' import member as _member %}
-{% from '_name.j2' import name as _name %}
-{% from '_parameters.j2' import parameters as _parameters %}
-{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
-{% from '_type.j2' import type as _type %}
 {#
   Declarations of a module class for one access level: its types (aliases of the types of the module),
   accessors of its attributes (getter, setter unless const; private attributes have none: their data
@@ -25,6 +17,16 @@
     access: public
     -> virtual void run() = 0;
 #}
+{% macro members(module=none, names=none, access=none) %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
+{% from '_identifier.j2' import identifier as _identifier %}
+{% from '_input.j2' import input as _input %}
+{% from '_member.j2' import member as _member %}
+{% from '_name.j2' import name as _name %}
+{% from '_parameters.j2' import parameters as _parameters %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
+{% from '_type.j2' import type as _type %}
+{% from '_ucfirst.j2' import ucfirst as _ucfirst %}
 {% set types = module.types|selectattr('access', 'equalto', access) %}
 {% if types|length > 0 %}
 
@@ -36,8 +38,8 @@
 {% if access != 'private' and attributes|length > 0 %}
 
 {% for attribute in attributes %}
-{% set setter = 'set' ~ attribute.name|ucfirst %}
-{{ attribute.description|doc_comment('    /// ') }}
+{% set setter = 'set' ~ _ucfirst(name=attribute.name) %}
+{{ _doc_comment(text=attribute.description, prefix='    /// ') }}{##}
 {% if not (attribute.name in names) %}
     {%+ if attribute.static %}static {% endif %}{{ _input(type_reference=attribute.type) }} {{ _identifier(name=attribute.name) }}(){% if not attribute.static %} const{% endif %} { return {{ _member(name=attribute.name) }}; }
 {% endif %}
@@ -49,7 +51,7 @@
 {% set methods = module.methods|selectattr('access', 'equalto', access) %}
 {% for method in methods %}
 
-{{ method.description|doc_comment('    /// ') }}
+{{ _doc_comment(text=method.description, prefix='    /// ') }}{##}
 {% for raised_type in method.raises %}
     /// @throws {{ _type(type_reference=raised_type) }}
 {% endfor %}

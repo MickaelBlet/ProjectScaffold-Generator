@@ -1,0 +1,14 @@
+{#
+  A name in constant case: its words (_words) in upper case, joined by `_`.
+  Parameters:
+    name: a name.
+  Examples:
+    name: rateHz      -> RATE_HZ
+    name: Core.Sensor -> CORE_SENSOR
+#}
+{% macro constant(name=none) %}
+{% from '_words.j2' import words as _words %}
+{% filter inline %}
+{{ _words(name=name)|upper|replace(' ', '_') }}
+{% endfilter %}
+{% endmacro %}

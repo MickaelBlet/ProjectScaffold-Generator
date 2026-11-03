@@ -1,4 +1,3 @@
-{% macro address_variable(remote_link=none, side=none) %}
 {#
   Environment variable overriding the address of a link between binaries: the project and link names in
   upper case, `_LISTEN` appended on the server side.
@@ -9,7 +8,10 @@
     remote_link: {link: {name: supervise_camera}}
     side: server  -> ROVER_SUPERVISE_CAMERA_LISTEN
 #}
+{% macro address_variable(remote_link=none, side=none) %}
+{% from '_as_identifier.j2' import as_identifier as _as_identifier %}
+{% from '_constant.j2' import constant as _constant %}
 {% filter inline %}
-{{ (project.name|as_identifier|constant ~ '_' ~ remote_link.link.name)|constant }}{% if side == 'server' %}_LISTEN{% endif %}
+{{ _constant(name=_constant(name=_as_identifier(name=project.name)) ~ '_' ~ remote_link.link.name) }}{% if side == 'server' %}_LISTEN{% endif %}
 {% endfilter %}
 {% endmacro %}

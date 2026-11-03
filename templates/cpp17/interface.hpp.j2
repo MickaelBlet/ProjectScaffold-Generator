@@ -14,6 +14,7 @@
           raises: []
 #}
 {% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
 {% from '_name.j2' import name as _name %}
@@ -26,14 +27,14 @@
 
 namespace {{ _cpp_namespace(entity=interface) }} {
 
-{{ interface.description|doc_comment }}
+{{ _doc_comment(text=interface.description) }}{##}
 class {{ _name(entity=interface) }} {
 public:
     virtual ~{{ _name(entity=interface) }}() = default;
 {# One pure virtual method per message; its `raises` become @throws lines. #}
 {% for message in interface.messages %}
 
-{{ message.description|doc_comment('    /// ') }}
+{{ _doc_comment(text=message.description, prefix='    /// ') }}{##}
 {% for raised_type in message.raises %}
     /// @throws {{ _type(type_reference=raised_type) }}
 {% endfor %}

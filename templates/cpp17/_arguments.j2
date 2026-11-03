@@ -1,5 +1,3 @@
-{% macro arguments(parameters=none) %}
-{% from '_identifier.j2' import identifier as _identifier %}
 {#
   Arguments passing a method's parameters on to another call, by name.
   Parameters:
@@ -8,6 +6,8 @@
   Example:
     parameters: [{name: pose, ...}, {name: tags, ...}]  -> pose, tags
 #}
+{% macro arguments(parameters=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% filter inline %}
 {% for parameter in parameters %}
   {{ _identifier(name=parameter.name) }}{% if not loop.last %}, {% endif %}

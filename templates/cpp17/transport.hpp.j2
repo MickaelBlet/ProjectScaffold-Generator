@@ -6,13 +6,14 @@
   Example input: none, the file is the same for every project but for its namespace.
   Also reads: project.name.
 #}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% include '_banner.j2' %}
 #pragma once
 
 // Transports of the calls between binaries (POSIX): tcp, udp, http, websocket and shm, as the
 // Python peers (python/*/transport.py). Other transports: implement Channel and Server.
 
-#include <{{ project.name|as_identifier|snake }}/remote/wire.hpp>
+#include <{{ _project_identifier() }}/remote/wire.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -22,7 +23,7 @@
 #include <optional>
 #include <string>
 
-namespace {{ project.name|as_identifier|snake }}::remote {
+namespace {{ _project_identifier() }}::remote {
 
 /// Client end of a link: sends call frames, receives their replies.
 class Channel {
@@ -153,4 +154,4 @@ Bytes callRaising(Caller& caller, std::uint16_t message, const Bytes& inputs, bo
     }
 }
 
-} // namespace {{ project.name|as_identifier|snake }}::remote
+} // namespace {{ _project_identifier() }}::remote

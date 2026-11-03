@@ -1,6 +1,3 @@
-{% macro endpoint(link_end=none) %}
-{% from '_accessor.j2' import accessor as _accessor %}
-{% from '_identifier.j2' import identifier as _identifier %}
 {#
   C++ expression reaching a port from the module (or system) wiring it: the accessors of the child
   modules on the way, then the port's accessor.
@@ -9,6 +6,9 @@
   Example:
     link_end: {via: [Core, Sensor], module: Robot.Core.Sensor, port: out}  -> core().sensor().out()
 #}
+{% macro endpoint(link_end=none) %}
+{% from '_accessor.j2' import accessor as _accessor %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% filter inline %}
 {% for child in link_end.via %}{{ _accessor(name=child) }}().{% endfor %}
 {{ _identifier(name=link_end.port) }}()

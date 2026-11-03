@@ -12,8 +12,10 @@
         value: 3
   Also reads: project.name.
 #}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% from '_scalar.j2' import scalar as _scalar %}
 {% from '_type.j2' import type as _type %}
 {% from '_value.j2' import value as _value %}
@@ -24,13 +26,13 @@
 {%- filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.name|as_identifier|snake }} {
+namespace {{ _project_identifier() }} {
 {% for constant in constants %}
 {% set scalar = _scalar(type_reference=constant.type) %}
 {# Numbers, enums and bitmasks are constexpr. #}
 
-{{ constant.description|doc_comment }}
+{{ _doc_comment(text=constant.description) }}{##}
 inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(type_reference=constant.type) }} {{ _identifier(name=constant.name) }} = {{ _value(model_value=constant.value, type_reference=constant.type) }};
 {% endfor %}
 
-} // namespace {{ project.name|as_identifier|snake }}
+} // namespace {{ _project_identifier() }}

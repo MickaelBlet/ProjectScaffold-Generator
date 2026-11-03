@@ -1,7 +1,3 @@
-{% macro parameters(parameters=none) %}
-{% from '_identifier.j2' import identifier as _identifier %}
-{% from '_scalar.j2' import scalar as _scalar %}
-{% from '_type.j2' import type as _type %}
 {#
   C++ parameter list of a message or method: `in` parameters by value for scalars (`const` when marked
   so), else by const reference; `out` / `inout` by reference.
@@ -15,6 +11,10 @@
       - {name: reached, type: {kind: primitive, name: bool}, direction: out, const: false}
     -> const ::common::Pose& target, const double speed, bool& reached
 #}
+{% macro parameters(parameters=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
+{% from '_scalar.j2' import scalar as _scalar %}
+{% from '_type.j2' import type as _type %}
 {% filter inline %}
 {% for parameter in parameters %}
   {% if parameter.direction != 'in' %}

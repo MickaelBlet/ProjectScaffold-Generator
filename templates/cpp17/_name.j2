@@ -1,5 +1,3 @@
-{% macro name(entity=none) %}
-{% from '_identifier.j2' import identifier as _identifier %}
 {#
   C++ class name of an entity: interfaces get an `I` prefix; the others their name as an identifier.
   Parameters:
@@ -8,6 +6,8 @@
     entity: {entity: interface, name: Lifecycle} -> ILifecycle
     entity: {entity: type, name: Reading}        -> Reading
 #}
+{% macro name(entity=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% filter inline %}
 {% if entity.entity == 'interface' %}I{{ entity.name }}{% else %}{{ _identifier(name=entity.name) }}{% endif %}
 {% endfilter %}

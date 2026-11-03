@@ -1,3 +1,4 @@
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_endpoint.j2' import endpoint as _endpoint %}
 {#
   Wiring of a link inside a module or the system, with its constraints as a comment. Included
@@ -7,7 +8,7 @@
 {% set constraints = link.constraints %}
 {% set wiring = _endpoint(link_end=connection.from) ~ '.connect(' ~ _endpoint(link_end=connection.to) ~ ');' %}
     // {{ link.name }}: {{ link.from.module }}:{{ link.from.port }} -> {{ link.to.module }}:{{ link.to.port }}, {{ constraints.direction }}, {{ constraints.performance.class }}{% if constraints.performance.maxLatencyMs %}, max {{ constraints.performance.maxLatencyMs }} ms{% endif %}{% if constraints.performance.rateHz %}, {{ constraints.performance.rateHz }} Hz{% endif %}{% if constraints.ack.required %}, ack{% if constraints.ack.timeoutMs %} within {{ constraints.ack.timeoutMs }} ms{% endif %}{% endif +%}
-{{ link.description|doc_comment('    // ') }}
+{{ _doc_comment(text=link.description, prefix='    // ') }}{##}
 {% if constraints.remote.enabled %}
     {%+ filter user('link.' ~ link.name) +%}
     // Remote over {{ constraints.remote.transport|default('an unset transport', true) }}: replace with a proxy of that transport.

@@ -1,0 +1,27 @@
+{#
+  A project name as an identifier, as dependencies name the project: each run of characters other
+  than ASCII letters, digits and `_` becomes one `_`, `_` trimmed at both ends, `_` put before a
+  leading digit; `Other` for nothing left.
+  Parameters:
+    name: a project name.
+  Examples:
+    name: Plant Demo        -> Plant_Demo
+    name: C++ / 2 robots!   -> C_2_robots
+#}
+{% macro as_identifier(name=none) %}
+{% set kept = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_' %}
+{% set result = namespace(text='', in_run=false) %}
+{% for character in name %}
+{% if character in kept %}
+{% set result.text = result.text ~ character %}
+{% set result.in_run = false %}
+{% elif not result.in_run %}
+{% set result.text = result.text ~ '_' %}
+{% set result.in_run = true %}
+{% endif %}
+{% endfor %}
+{% set identifier = result.text.strip('_') %}
+{% filter inline %}
+{% if not identifier %}Other{% elif identifier[:1] in '0123456789' %}_{{ identifier }}{% else %}{{ identifier }}{% endif %}
+{% endfilter %}
+{% endmacro %}

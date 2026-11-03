@@ -27,6 +27,7 @@
 {% from '_name.j2' import name as _name %}
 {% from '_parameters.j2' import parameters as _parameters %}
 {% from '_type.j2' import type as _type %}
+{% from '_ucfirst.j2' import ucfirst as _ucfirst %}
 {% include '_banner.j2' %}
 {% set class = _name(entity=module) %}
 #include <{{ _header(entity=module) }}>
@@ -85,7 +86,7 @@ namespace {{ _cpp_namespace(entity=module) }} {
 {% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
 {% for message in port.interface.messages %}
 
-{{ _type(type_reference=message.returns) }} {{ class }}::on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _parameters(parameters=message.params) }})
+{{ _type(type_reference=message.returns) }} {{ class }}::on{{ _ucfirst(name=port.name) }}{{ _ucfirst(name=message.name) }}({{ _parameters(parameters=message.params) }})
 {
     {%+ filter user('on.' ~ port.name ~ '.' ~ message.name) +%}
 {% if message.returns %}

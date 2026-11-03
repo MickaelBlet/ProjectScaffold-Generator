@@ -23,7 +23,10 @@
 {% from '_accessor.j2' import accessor as _accessor %}
 {% from '_address.j2' import address as _address %}
 {% from '_address_variable.j2' import address_variable as _address_variable %}
+{% from '_as_identifier.j2' import as_identifier as _as_identifier %}
+{% from '_camel.j2' import camel as _camel %}
 {% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_endpoint.j2' import endpoint as _endpoint %}
 {% from '_generated_transport.j2' import generated_transport as _generated_transport %}
 {% from '_header.j2' import header as _header %}
@@ -55,16 +58,16 @@ namespace {{ _cpp_namespace(entity=system) }} {
 {% for remote_link in system.proxies %}
 {% set state.transport = remote_link.link.constraints.remote.transport|default('an unset transport', true) %}
     // {{ remote_link.link.name }}: {{ remote_link.local.module }}:{{ remote_link.local.port }} -> binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} over {{ state.transport }}
-{{ remote_link.link.description|doc_comment('    // ') }}
-    {{ _endpoint(link_end=remote_link.local) }}.connect({{ remote_link.link.name|camel }}Proxy_);
+{{ _doc_comment(text=remote_link.link.description, prefix='    // ') }}{##}
+    {{ _endpoint(link_end=remote_link.local) }}.connect({{ _camel(name=remote_link.link.name) }}Proxy_);
 {% set state.has_generated_transport = _generated_transport(transport=remote_link.link.constraints.remote.transport) %}
 {% if state.has_generated_transport == 'true' %}
-    {{ remote_link.link.name|camel }}Proxy_.open(remote::connect("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='client') }}", "{{ _address(remote_link=remote_link, side='client') }}"){% if remote_link.settings.path is not none %}, "{{ remote_link.settings.path }}"{% endif %}),
+    {{ _camel(name=remote_link.link.name) }}Proxy_.open(remote::connect("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='client') }}", "{{ _address(remote_link=remote_link, side='client') }}"){% if remote_link.settings.path is not none %}, "{{ remote_link.settings.path }}"{% endif %}),
         {{ remote_link.link.constraints.ack.required|lower }}, std::chrono::milliseconds({{ remote_link.link.constraints.ack.timeoutMs|default(5000, true) }}));
 {% endif %}
     {%+ filter user('link.' ~ remote_link.link.name) +%}
 {% if not (state.has_generated_transport == 'true') %}
-    // Open {{ remote_link.link.name|camel }}Proxy_ with a remote::Channel to binary {{ remote_link.peer.binary }} over {{ state.transport }}.
+    // Open {{ _camel(name=remote_link.link.name) }}Proxy_ with a remote::Channel to binary {{ remote_link.peer.binary }} over {{ state.transport }}.
 {% set state.settings_text = _transport_settings(settings=remote_link.link.constraints.remote.settings) +%}
 {% if state.settings_text != '' %}
     // Settings: {{ state.settings_text }}.
@@ -76,15 +79,15 @@ namespace {{ _cpp_namespace(entity=system) }} {
 {% for remote_link in system.stubs %}
 {% set state.transport = remote_link.link.constraints.remote.transport|default('an unset transport', true) %}
     // {{ remote_link.link.name }}: binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} -> {{ remote_link.local.module }}:{{ remote_link.local.port }} over {{ state.transport }}
-{{ remote_link.link.description|doc_comment('    // ') }}
-    {{ remote_link.link.name|camel }}Stub_.bind({{ _endpoint(link_end=remote_link.local) }});
+{{ _doc_comment(text=remote_link.link.description, prefix='    // ') }}{##}
+    {{ _camel(name=remote_link.link.name) }}Stub_.bind({{ _endpoint(link_end=remote_link.local) }});
 {% set state.has_generated_transport = _generated_transport(transport=remote_link.link.constraints.remote.transport) %}
 {% if state.has_generated_transport == 'true' %}
-    {{ remote_link.link.name|camel }}Stub_.serve("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='server') }}", "{{ _address(remote_link=remote_link, side='server') }}"){% if remote_link.settings.capacity is not none %}, {{ remote_link.settings.capacity }}{% endif %});
+    {{ _camel(name=remote_link.link.name) }}Stub_.serve("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='server') }}", "{{ _address(remote_link=remote_link, side='server') }}"){% if remote_link.settings.capacity is not none %}, {{ remote_link.settings.capacity }}{% endif %});
 {% endif %}
     {%+ filter user('link.' ~ remote_link.link.name) +%}
 {% if not (state.has_generated_transport == 'true') %}
-    // Receive the calls of binary {{ remote_link.peer.binary }} over {{ state.transport }} into {{ remote_link.link.name|camel }}Stub_.dispatch().
+    // Receive the calls of binary {{ remote_link.peer.binary }} over {{ state.transport }} into {{ _camel(name=remote_link.link.name) }}Stub_.dispatch().
 {% set state.settings_text = _transport_settings(settings=remote_link.link.constraints.remote.settings) +%}
 {% if state.settings_text != '' %}
     // Settings: {{ state.settings_text }}.
@@ -94,7 +97,7 @@ namespace {{ _cpp_namespace(entity=system) }} {
 {% endfor %}
 {# Links to another project: only a comment and a user section, no transport is known. #}
 {% for external in system.external %}
-    // {{ external.link.name }}: {{ external.link.from.project|default(project.name|as_identifier, true) }}.{{ external.link.from.module }}:{{ external.link.from.port }} -> {{ external.link.to.project|default(project.name|as_identifier, true) }}.{{ external.link.to.module }}:{{ external.link.to.port }}
+    // {{ external.link.name }}: {{ external.link.from.project|default(_as_identifier(name=project.name), true) }}.{{ external.link.from.module }}:{{ external.link.from.port }} -> {{ external.link.to.project|default(_as_identifier(name=project.name), true) }}.{{ external.link.to.module }}:{{ external.link.to.port }}
     {%+ filter user('external.' ~ external.link.name) +%}
     // Other project: connect {{ _endpoint(link_end=external.local) }} through a transport{% if external.link.constraints.remote.transport is not none %} ({{ external.link.constraints.remote.transport }}){% endif %}.
     {%+ endfilter +%}

@@ -1,5 +1,3 @@
-{% macro transport_settings(settings=none) %}
-{% set state = namespace(parts=[]) %}
 {#
   Transport settings of a link set in the project, as text for a comment: client / server / broker
   addresses, the other settings set, then the options; empty when none is set.
@@ -16,6 +14,8 @@
       options: [{name: qos, value: 1}]
     -> broker 10.0.0.1:1883, topic rover, qos=1
 #}
+{% macro transport_settings(settings=none) %}
+{% set state = namespace(parts=[]) %}
 {% for role in ['client', 'server', 'broker'] %}
   {% set endpoint_settings = settings[role] if role in settings else none %}
   {% if endpoint_settings.host != none or endpoint_settings.port != none %}

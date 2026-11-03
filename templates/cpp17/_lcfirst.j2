@@ -1,0 +1,12 @@
+{#
+  A name with its first letter in lower case, the rest unchanged.
+  Parameters:
+    name: a name.
+  Examples:
+    name: Sensor -> sensor
+#}
+{% macro lcfirst(name=none) %}
+{% filter inline %}
+{{ name[:1]|lower }}{{ name[1:] }}
+{% endfilter %}
+{% endmacro %}

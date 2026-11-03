@@ -1,5 +1,3 @@
-{% macro py_encoder(type_reference=none, prefix=none) %}
-{% from '_py_encode.j2' import py_encode as _py_encode %}
 {#
   Python function `(writer, value)` encoding a type: a `Writer` method, an `encode_<Type>` function of
   data.py, or a lambda for containers and bounded primitives.
@@ -14,6 +12,8 @@
     type_reference: {kind: optional, of: {kind: primitive, name: bool, max: null}}
       -> lambda w, v: w.optional(v, Writer.bool)
 #}
+{% macro py_encoder(type_reference=none, prefix=none) %}
+{% from '_py_encode.j2' import py_encode as _py_encode %}
 {% filter inline %}
 {% if type_reference.kind == 'primitive' and type_reference.max is none %}
   Writer.{{ type_reference.name }}

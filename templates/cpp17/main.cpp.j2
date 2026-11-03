@@ -10,6 +10,7 @@
   Also reads: project.name.
 #}
 {% from '_header.j2' import header as _header %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% include '_banner.j2' %}
 #include <{{ _header(entity=system) }}>
@@ -24,7 +25,7 @@ int main(int argc, char** argv)
     (void)argv;
 {% if system.stubs|length > 0 %}
     // Serves the calls of the other binaries until SIGINT / SIGTERM.
-    {{ project.name|as_identifier|snake }}::remote::waitForStop();
+    {{ _project_identifier() }}::remote::waitForStop();
 {% endif %}
     (void)system;
     {%+ endfilter +%}

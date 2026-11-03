@@ -1,4 +1,3 @@
-{% macro main_path(system=none) %}
 {#
   Source file of the `main` of a system, relative to `src/`: in the directory of its binary when the
   project has binaries.
@@ -8,7 +7,9 @@
     system: {binary: null}            -> main.cpp
     system: {binary: {name: Onboard}} -> onboard/main.cpp
 #}
+{% macro main_path(system=none) %}
+{% from '_snake.j2' import snake as _snake %}
 {% filter inline %}
-{% if system.binary %}{{ system.binary.name|snake }}/{% endif %}main.cpp
+{% if system.binary %}{{ _snake(name=system.binary.name) }}/{% endif %}main.cpp
 {% endfilter %}
 {% endmacro %}

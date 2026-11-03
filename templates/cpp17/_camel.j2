@@ -1,0 +1,15 @@
+{#
+  A name in lower camel case: its words (_words) capitalized and joined, the first letter in lower case.
+  Parameters:
+    name: a name.
+  Examples:
+    name: supervise_camera -> superviseCamera
+    name: HTTPServer       -> httpServer
+#}
+{% macro camel(name=none) %}
+{% from '_words.j2' import words as _words %}
+{% set pascal = _words(name=name)|string|split(' ')|map('capitalize')|join %}
+{% filter inline %}
+{{ pascal[:1]|lower }}{{ pascal[1:] }}
+{% endfilter %}
+{% endmacro %}

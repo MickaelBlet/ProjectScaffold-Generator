@@ -1,0 +1,14 @@
+{#
+  A name in snake case: its words (_words) in lower case, joined by `_`.
+  Parameters:
+    name: a name.
+  Examples:
+    name: rateHz      -> rate_hz
+    name: HTTPServer  -> http_server
+#}
+{% macro snake(name=none) %}
+{% from '_words.j2' import words as _words %}
+{% filter inline %}
+{{ _words(name=name)|lower|replace(' ', '_') }}
+{% endfilter %}
+{% endmacro %}

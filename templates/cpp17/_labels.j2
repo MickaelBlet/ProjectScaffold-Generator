@@ -1,5 +1,3 @@
-{% macro labels(case=none, discriminator=none, discriminator_expression=none) %}
-{% from '_value.j2' import value as _value %}
 {#
   C++ test of a union's discriminator against the labels of one of its cases.
   Parameters:
@@ -12,6 +10,8 @@
     discriminator_expression: d
     -> d == ::rover::Health::Degraded
 #}
+{% macro labels(case=none, discriminator=none, discriminator_expression=none) %}
+{% from '_value.j2' import value as _value %}
 {% filter inline %}
 {% for label in case.labels %}
   {{ discriminator_expression }} == {{ _value(model_value=label, type_reference=discriminator) }}{% if not loop.last %} || {% endif %}

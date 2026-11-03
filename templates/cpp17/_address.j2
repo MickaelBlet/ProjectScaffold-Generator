@@ -1,4 +1,3 @@
-{% macro address(remote_link=none, side=none) %}
 {#
   Address of a link between binaries (C++ and Python alike), from its resolved settings: `host:port` of
   the client (where the caller connects) or of the server (where the callee listens), IPv6 hosts in
@@ -12,6 +11,7 @@
       settings: {client: {host: 192.168.1.20, port: 5600}, server: {host: 0.0.0.0, port: 5600}, name: null}
     side: client  -> 192.168.1.20:5600
 #}
+{% macro address(remote_link=none, side=none) %}
 {% set endpoint_settings = remote_link.settings.server if side == 'server' else remote_link.settings.client %}
 {% filter inline %}
 {% if remote_link.link.constraints.remote.transport == 'shm' %}

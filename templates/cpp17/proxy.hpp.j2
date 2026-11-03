@@ -23,6 +23,7 @@
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_name.j2' import name as _name %}
 {% from '_parameters.j2' import parameters as _parameters %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
 {% set state = namespace() %}
@@ -30,12 +31,12 @@
 #pragma once
 
 #include <{{ _header(entity=remote_interface) }}>
-#include <{{ project.name|as_identifier|snake }}/remote/codec.hpp>
-#include <{{ project.name|as_identifier|snake }}/remote/transport.hpp>
+#include <{{ _project_identifier() }}/remote/codec.hpp>
+#include <{{ _project_identifier() }}/remote/transport.hpp>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.name|as_identifier|snake }}::remote {
+namespace {{ _project_identifier() }}::remote {
 
 /// {{ _name(entity=remote_interface) }} of another binary: each call is encoded and sent over the channel
 /// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
@@ -102,4 +103,4 @@ private:
     {%+ endfilter +%}
 };
 
-} // namespace {{ project.name|as_identifier|snake }}::remote
+} // namespace {{ _project_identifier() }}::remote

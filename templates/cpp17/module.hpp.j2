@@ -27,6 +27,7 @@
 {% from '_accessor.j2' import accessor as _accessor %}
 {% from '_arguments.j2' import arguments as _arguments %}
 {% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_endpoint.j2' import endpoint as _endpoint %}
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
@@ -34,12 +35,14 @@
 {% from '_members.j2' import members as _members %}
 {% from '_name.j2' import name as _name %}
 {% from '_parameters.j2' import parameters as _parameters %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
+{% from '_ucfirst.j2' import ucfirst as _ucfirst %}
 {% from '_value.j2' import value as _value %}
 {% include '_banner.j2' %}
 #pragma once
-{% set root = project.name|as_identifier|snake %}
+{% set root = _project_identifier() %}
 {% set class = _name(entity=module) %}
 {% set virtuals = module.methods|selectattr('virtual', 'equalto', true)|length %}
 {# Names given by the model: attribute accessors (see _members) do not take them. #}
@@ -56,7 +59,7 @@
 
 namespace {{ _cpp_namespace(entity=module) }} {
 
-{{ module.description|doc_comment }}
+{{ _doc_comment(text=module.description) }}{##}
 class {{ class }}{% if module.bases|length > 0 %} : {% for base in module.bases %}public {{ _qualified_name(entity=base) }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %} {
 public:
 {% if module.kind == 'interface' %}
@@ -73,7 +76,7 @@ public:
 {% if port.interface %}
 
     /// {{ port.role }} port {{ port.name }}: {{ port.interface.name }}{% if port.delegates|length > 0 %} ({% if port.role == 'in' %}handled by{% else %}sent by{% endif %} {% for delegate in port.delegates %}{{ delegate.module }}:{{ delegate.port }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif +%}
-{{ port.description|doc_comment('    /// ') }}
+{{ _doc_comment(text=port.description, prefix='    /// ') }}{##}
 {% if port.role == 'out' %}
     ::{{ root }}::OutPort<{{ _qualified_name(entity=port.interface) }}>& {{ _identifier(name=port.name) }}() { return {{ _member(name=port.name) }}; }
 {% elif port.delegates|length > 0 %}
@@ -101,7 +104,7 @@ protected:
 {% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
     // Calls received by in port {{ port.name }}.
 {% for message in port.interface.messages %}
-    {{ _type(type_reference=message.returns) }} on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _parameters(parameters=message.params) }});
+    {{ _type(type_reference=message.returns) }} on{{ _ucfirst(name=port.name) }}{{ _ucfirst(name=message.name) }}({{ _parameters(parameters=message.params) }});
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -113,14 +116,14 @@ private:
 {# Per `in` port: an adapter forwarding the interface calls to the handlers above; per `out` port: the OutPort. #}
 {% for port in module.ports %}
 {% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
-{% set adapter = port.name|ucfirst ~ 'In' %}
+{% set adapter = _ucfirst(name=port.name) ~ 'In' %}
     class {{ adapter }} final : public {{ _qualified_name(entity=port.interface) }} {
     public:
         explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
 {% for message in port.interface.messages %}
         {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameters=message.params) }}) override
         {
-            return owner_.on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _arguments(parameters=message.params) }});
+            return owner_.on{{ _ucfirst(name=port.name) }}{{ _ucfirst(name=message.name) }}({{ _arguments(parameters=message.params) }});
         }
 {% endfor %}
 

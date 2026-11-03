@@ -1,4 +1,3 @@
-{% macro cpp_namespace(entity=none) %}
 {#
   C++ namespace of an entity, without leading `::`: the project's, a dependency's, a module's parents,
   or for a type of a module the module itself (types of modules live beside the module's content).
@@ -10,14 +9,17 @@
     entity: {entity: module, name: Sensor, namespace: [Core]}             -> robot::core
     entity: {entity: type, name: Mode, dependency: null, scope: [Core, Sensor]} -> robot::core::sensor
 #}
-{% set project_namespace = project.name|as_identifier|snake %}
+{% macro cpp_namespace(entity=none) %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
+{% from '_snake.j2' import snake as _snake %}
+{% set project_namespace = _project_identifier() %}
 {% filter inline %}
 {% if entity.entity == 'type' or entity.entity == 'interface' %}
-  {{ entity.dependency|snake if entity.dependency else project_namespace }}
+  {{ _snake(name=entity.dependency) if entity.dependency else project_namespace }}
   {# A type of a module: in the namespace of the module's content. #}
-  {% if entity.entity == 'type' %}{% for part in entity.scope %}::{{ part|snake }}{% endfor %}{% endif %}
+  {% if entity.entity == 'type' %}{% for part in entity.scope %}::{{ _snake(name=part) }}{% endfor %}{% endif %}
 {% elif entity.entity == 'module' %}
-  {{ project_namespace }}{% for parent in entity.namespace %}::{{ parent|snake }}{% endfor %}
+  {{ project_namespace }}{% for parent in entity.namespace %}::{{ _snake(name=parent) }}{% endfor %}
 {% else %}
   {{ project_namespace }}
 {% endif %}

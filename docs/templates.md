@@ -166,6 +166,8 @@ In [`templates/cpp17`](../templates/cpp17), the `_*.j2` partials hold one macro 
 | `_value`                                                         | default values as literals |
 | `_parameters`, `_arguments`, `_input`, `_scalar`                 | parameter passing          |
 | `_name`, `_identifier`, `_accessor`, `_member`                   | names                      |
+| `_snake`, `_constant`, `_camel`, `_ucfirst`, `_lcfirst` (over `_words`), `_as_identifier`, `_project_identifier` | case conversions, in Jinja instead of the filters |
+| `_doc_comment`                                                   | descriptions as comments   |
 | `_cpp_namespace`, `_qualified_name`, `_header`, `_source`        | namespaces and files       |
 | `_includes`, `_endpoint`                                         | wiring expressions         |
 | `_address`, `_address_variable`, `_generated_transport`, `_transport_settings` | links between binaries |

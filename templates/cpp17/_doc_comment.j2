@@ -1,0 +1,19 @@
+{#
+  Each line of a description after `prefix`, each line ending with a line break; nothing for no
+  description. Call it alone on its line, followed by an empty comment (`{` `#` `#` `}`) that drops the
+  line break of the template line, so no empty line is left for no description.
+  Parameters:
+    text: a description.
+    prefix: put before each line (trailing spaces of the line dropped).
+  Examples:
+    text: "One sample\n\nin m/s", prefix: '/// ' -> /// One sample
+                                                  ///
+                                                  /// in m/s
+#}
+{% macro doc_comment(text=none, prefix='/// ') %}
+{% if text %}
+{% for line in text.split('\n') %}
+{{ (prefix ~ line).rstrip() }}
+{% endfor %}
+{% endif %}
+{% endmacro %}

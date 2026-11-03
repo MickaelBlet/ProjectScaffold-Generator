@@ -26,13 +26,14 @@
 {% from '_header.j2' import header as _header %}
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_labels.j2' import labels as _labels %}
+{% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
 {% set state = namespace() %}
 {% include '_banner.j2' %}
 #pragma once
 
-#include <{{ project.name|as_identifier|snake }}/remote/wire.hpp>
+#include <{{ _project_identifier() }}/remote/wire.hpp>
 {% for type_definition in remoteTypes %}
 #include <{{ _header(entity=type_definition) }}>
 {% endfor %}
@@ -40,7 +41,7 @@
 {% endfilter +%}
 
 // Encoding of the types of the calls between binaries (enums, bitmasks and aliases need none: see wire.hpp).
-namespace {{ project.name|as_identifier|snake }}::remote {
+namespace {{ _project_identifier() }}::remote {
 
 {# Forward declarations, so that types may refer to each other in any order. #}
 {% for type_definition in remoteTypes %}
@@ -181,4 +182,4 @@ inline void decode(Reader& r, {{ _qualified_name(entity=type_definition) }}& v)
 {% endif %}
 {% endfor %}
 
-} // namespace {{ project.name|as_identifier|snake }}::remote
+} // namespace {{ _project_identifier() }}::remote

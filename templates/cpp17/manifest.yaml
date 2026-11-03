@@ -55,10 +55,19 @@ partials:
   - _py_zero.j2
   - _py_value.j2
   - _py_results.j2
+  - _words.j2
+  - _snake.j2
+  - _constant.j2
+  - _camel.j2
+  - _ucfirst.j2
+  - _lcfirst.j2
+  - _as_identifier.j2
+  - _project_identifier.j2
+  - _doc_comment.j2
 outputs:
   # include/<project>/ports.hpp: the OutPort template used by the out ports of every module.
   - template: ports.hpp.j2
-    path: "include/{{ project.name|as_identifier|snake }}/ports.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/ports.hpp"
     when: modules|length > 0
   # include/<project>/types/<Type>.hpp: one header per type of the project (struct, exception, enum,
   # bitmask, union, alias, custom primitive).
@@ -73,11 +82,11 @@ outputs:
     path: "{% from '_header.j2' import header as _header %}include/{{ _header(entity=type_definition) }}"
   # include/<project>/types.hpp: includes every type header.
   - template: types.hpp.j2
-    path: "include/{{ project.name|as_identifier|snake }}/types.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/types.hpp"
     when: types|length > 0
   # include/<project>/constants.hpp: the constants of the project.
   - template: constants.hpp.j2
-    path: "include/{{ project.name|as_identifier|snake }}/constants.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/constants.hpp"
     when: constants|length > 0
   # include/<project>/interfaces/<Interface>.hpp: one abstract class per interface.
   - template: interface.hpp.j2
@@ -101,13 +110,13 @@ outputs:
   # (codec.hpp) and the transports (transport.hpp, src/remote/transport.cpp); only when a link crosses
   # binaries (`remoteLinks`).
   - template: wire.hpp.j2
-    path: "include/{{ project.name|as_identifier|snake }}/remote/wire.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/remote/wire.hpp"
     when: remoteLinks|length > 0
   - template: codec.hpp.j2
-    path: "include/{{ project.name|as_identifier|snake }}/remote/codec.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/remote/codec.hpp"
     when: remoteLinks|length > 0
   - template: transport.hpp.j2
-    path: "include/{{ project.name|as_identifier|snake }}/remote/transport.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/remote/transport.hpp"
     when: remoteLinks|length > 0
   - template: transport.cpp.j2
     path: "src/remote/transport.cpp"
@@ -116,12 +125,12 @@ outputs:
   - template: proxy.hpp.j2
     each: remoteInterfaces
     as: remote_interface
-    path: "include/{{ project.name|as_identifier|snake }}/remote/{{ remote_interface.name }}Proxy.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/remote/{{ remote_interface.name }}Proxy.hpp"
   # remote/<Interface>Stub.hpp: the server side, dispatching received calls to a local in port.
   - template: stub.hpp.j2
     each: remoteInterfaces
     as: remote_interface
-    path: "include/{{ project.name|as_identifier|snake }}/remote/{{ remote_interface.name }}Stub.hpp"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/remote/{{ remote_interface.name }}Stub.hpp"
   # One system (and main) per binary of the project, or one for the whole project.
   # include/<project>/<System>.hpp and src/<System>.cpp: instantiate the top-level modules, wire their links,
   # open the proxies and stubs.
@@ -150,47 +159,47 @@ outputs:
   # __init__.py, wire.py, transport.py: Python versions of the wire format and the transports;
   # links.py: the remote links; data.py: the types, constants.py: the constants (when remote interfaces use any).
   - template: init.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/__init__.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/__init__.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: wire.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/wire.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/wire.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: transport.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/transport.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/transport.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: links.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/links.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/links.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: data.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/data.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/data.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: constants.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/constants.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/constants.py"
     when: remoteLinks|length > 0 and remoteConstants|length > 0
     comment: '#'
   # remote/__init__.py and remote/<interface>.py: client and server classes of each remote interface.
   - template: remote_init.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/remote/__init__.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/remote/__init__.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: remote.py.j2
     each: remoteInterfaces
     as: remote_interface
-    path: "{% from '_py_identifier.j2' import py_identifier as _py_identifier %}python/{{ project.name|as_identifier|snake }}/remote/{% set module_name %}{{ remote_interface.name|snake }}{% endset %}{{ _py_identifier(name=module_name) }}.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}{% from '_py_identifier.j2' import py_identifier as _py_identifier %}{% from '_snake.j2' import snake as _snake %}python/{{ _project_identifier() }}/remote/{% set module_name %}{{ _snake(name=remote_interface.name) }}{% endset %}{{ _py_identifier(name=module_name) }}.py"
     comment: '#'
   # peers/<binary>.py: one peer per binary that has proxies or stubs, standing in for it.
   - template: peers_init.py.j2
-    path: "python/{{ project.name|as_identifier|snake }}/peers/__init__.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}python/{{ _project_identifier() }}/peers/__init__.py"
     when: remoteLinks|length > 0
     comment: '#'
   - template: peer.py.j2
     each: systems
     as: system
     when: system.proxies|length > 0 or system.stubs|length > 0
-    path: "python/{{ project.name|as_identifier|snake }}/peers/{{ system.binary.name|snake }}.py"
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}{% from '_snake.j2' import snake as _snake %}python/{{ _project_identifier() }}/peers/{{ _snake(name=system.binary.name) }}.py"
     comment: '#'

@@ -1,4 +1,3 @@
-{% macro source(entity=none) %}
 {#
   Source file of a module or the system, relative to `src/`: in the directories of the module's
   namespace.
@@ -7,8 +6,10 @@
   Example:
     entity: {entity: module, name: Sensor, namespace: [Core]}  -> core/Sensor.cpp
 #}
+{% macro source(entity=none) %}
+{% from '_snake.j2' import snake as _snake %}
 {% filter inline %}
-{% if entity.entity == 'module' %}{% for parent in entity.namespace %}{{ parent|snake }}/{% endfor %}{% endif %}
+{% if entity.entity == 'module' %}{% for parent in entity.namespace %}{{ _snake(name=parent) }}/{% endfor %}{% endif %}
 {{ entity.name }}.cpp
 {% endfilter %}
 {% endmacro %}

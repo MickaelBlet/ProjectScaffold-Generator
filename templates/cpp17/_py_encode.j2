@@ -1,5 +1,3 @@
-{% macro py_encode(type_reference=none, expression=none, writer=none, prefix=none) %}
-{% from '_py_encoder.j2' import py_encoder as _py_encoder %}
 {#
   Python statement encoding a value with a wire.py `Writer`; bounds passed last.
   Parameters:
@@ -16,6 +14,8 @@
     prefix: data.
     -> w.seq(v.path, data.encode_Vec3)
 #}
+{% macro py_encode(type_reference=none, expression=none, writer=none, prefix=none) %}
+{% from '_py_encoder.j2' import py_encoder as _py_encoder %}
 {% filter inline %}
 {% if type_reference.kind == 'primitive' %}
   {{ writer }}.{{ type_reference.name }}({{ expression }}{% if type_reference.max is not none %}, {{ type_reference.max }}{% endif %})

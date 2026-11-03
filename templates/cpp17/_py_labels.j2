@@ -1,5 +1,3 @@
-{% macro py_labels(case=none, discriminator=none, discriminator_expression=none, prefix=none) %}
-{% from '_py_value.j2' import py_value as _py_value %}
 {#
   Python test of a union's discriminator against the labels of one of its cases (a tuple, even of one).
   Parameters:
@@ -14,6 +12,8 @@
     prefix: ''
     -> self.d in (Health.Degraded, )
 #}
+{% macro py_labels(case=none, discriminator=none, discriminator_expression=none, prefix=none) %}
+{% from '_py_value.j2' import py_value as _py_value %}
 {% filter inline %}
 {{ discriminator_expression }} in (
 {% for label in case.labels %}

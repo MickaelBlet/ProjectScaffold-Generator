@@ -7,9 +7,10 @@
       - {entity: interface, name: Notify, messages: [...]}
 #}
 {% from '_py_identifier.j2' import py_identifier as _py_identifier %}
+{% from '_snake.j2' import snake as _snake %}
 {% include '_py_banner.j2' %}
 """Proxies, handlers and stubs of the interfaces of the links between binaries."""
 {# One import line per interface. #}
 {% for interface in remoteInterfaces %}
-from .{{ _py_identifier(name=interface.name|snake) }} import {{ interface.name }}Handler, {{ interface.name }}Proxy, {{ interface.name }}Stub
+from .{{ _py_identifier(name=_snake(name=interface.name)) }} import {{ interface.name }}Handler, {{ interface.name }}Proxy, {{ interface.name }}Stub
 {% endfor %}

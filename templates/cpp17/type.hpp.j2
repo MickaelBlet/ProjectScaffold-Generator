@@ -20,6 +20,7 @@
   Also reads: project.name, typeByKey (through the partials).
 #}
 {% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
+{% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
 {% from '_name.j2' import name as _name %}
@@ -35,13 +36,12 @@
 
 namespace {{ _cpp_namespace(entity=type_definition) }} {
 
-{{ type_definition.description|doc_comment }}{##}
-
+{{ _doc_comment(text=type_definition.description) }}{##}
 {# One block per kind of type; `{% filter user('members') %}` lets the user add members. #}
 {% if type_definition.kind == 'struct' %}
 struct {{ _name(entity=type_definition) }} {
 {% for field in type_definition.fields %}
-{{ field.description|doc_comment('    /// ') }}
+{{ _doc_comment(text=field.description, prefix='    /// ') }}{##}
     {{ _type(type_reference=field.type) }} {{ _identifier(name=field.name) }}{% if field.hasDefault %} = {{ _value(model_value=field.default, type_reference=field.type) }}{% else %}{}{% endif %};
 {% endfor %}
     {%+ filter user('members') +%}
@@ -50,7 +50,7 @@ struct {{ _name(entity=type_definition) }} {
 {% elif type_definition.kind == 'exception' %}
 struct {{ _name(entity=type_definition) }} : std::exception {
 {% for field in type_definition.fields %}
-{{ field.description|doc_comment('    /// ') }}
+{{ _doc_comment(text=field.description, prefix='    /// ') }}{##}
     {{ _type(type_reference=field.type) }} {{ _identifier(name=field.name) }}{% if field.hasDefault %} = {{ _value(model_value=field.default, type_reference=field.type) }}{% else %}{}{% endif %};
 {% endfor %}
 
@@ -106,7 +106,7 @@ public:
 {% set case_labels %}{% for label in case.labels %}{{ _value(model_value=label, type_reference=type_definition.discriminator) }}, {% endfor %}{% if case.isDefault %}the values no case lists{% endif %}{% endset %}
 {# `case_labels` lists the discriminator values of the case, with a trailing ", " removed by rsplit below. #}
 
-{{ case.description|doc_comment('    /// ') }}
+{{ _doc_comment(text=case.description, prefix='    /// ') }}{##}
     /// Held for {{ case_labels.rsplit(', ', 1)|join('') }}; reading another case throws std::bad_variant_access.
     const {{ case_type }}& {{ case_identifier }}() const { return std::get<{{ case.index }}>(v_); }
     {{ case_type }}& {{ case_identifier }}() { return std::get<{{ case.index }}>(v_); }
