@@ -1,10 +1,10 @@
 {#
   Generates include/<project>/remote/<Interface>Proxy.hpp: implementation of an interface living in another
   binary; each method encodes its inputs, sends them through a Caller and decodes the outputs.
-  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`: an
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `remote_interface`: an
   Interface (schema $defs/Interface).
   Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
-    item:
+    remote_interface:
       entity: interface
       name: Echo
       messages:
@@ -29,7 +29,7 @@
 {% include '_banner.j2' %}
 #pragma once
 
-#include <{{ _header(entity=item) }}>
+#include <{{ _header(entity=remote_interface) }}>
 #include <{{ project.name|as_identifier|snake }}/remote/codec.hpp>
 #include <{{ project.name|as_identifier|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
@@ -37,9 +37,9 @@
 
 namespace {{ project.name|as_identifier|snake }}::remote {
 
-/// {{ _name(entity=item) }} of another binary: each call is encoded and sent over the channel
+/// {{ _name(entity=remote_interface) }} of another binary: each call is encoded and sent over the channel
 /// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
-class {{ item.name }}Proxy final : public {{ _qualified_name(entity=item) }} {
+class {{ remote_interface.name }}Proxy final : public {{ _qualified_name(entity=remote_interface) }} {
 public:
     /// Sends the calls over `channel`; `ack`: every call waits for its reply, within `timeout`.
     void open(std::unique_ptr<Channel> channel, bool ack = false,
@@ -48,7 +48,7 @@ public:
         caller_.open(std::move(channel), ack, timeout);
     }
 {# One overriding method per message; its index in the interface is the message number on the wire. #}
-{% for message in item.messages %}
+{% for message in remote_interface.messages %}
 {% set call_prefix %}{% if message.raises|length > 0 %}callRaising<{% for raised_type in message.raises %}{{ _type(type_reference=raised_type) }}{% if not loop.last %}, {% endif %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endset %}
 {# Declared exceptions thrown as such. #}
 

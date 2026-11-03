@@ -2,10 +2,10 @@
   Generates include/<project>/types/<Type>.hpp (beside its module for a type of a module): one user type
   of the project (struct, exception, enum, bitmask, union, alias, custom primitive), in the namespace of
   its project (or of its module).
-  Rendered (manifest.yaml): once per entry of `types` and of `moduleTypes`, as `item`:
+  Rendered (manifest.yaml): once per entry of `types` and of `moduleTypes`, as `type_definition`:
   a TypeDef or ModuleTypeDef (schema $defs/TypeDef, $defs/ModuleTypeDef).
   Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
-    item:
+    type_definition:
       entity: type
       kind: struct
       name: Reading
@@ -29,47 +29,47 @@
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(entity=item) }}
+{{ _includes(entity=type_definition) }}
 {%- filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ _cpp_namespace(entity=item) }} {
+namespace {{ _cpp_namespace(entity=type_definition) }} {
 
-{{ item.description|doc_comment }}{##}
+{{ type_definition.description|doc_comment }}{##}
 
 {# One block per kind of type; `{% filter user('members') %}` lets the user add members. #}
-{% if item.kind == 'struct' %}
-struct {{ _name(entity=item) }} {
-{% for field in item.fields %}
+{% if type_definition.kind == 'struct' %}
+struct {{ _name(entity=type_definition) }} {
+{% for field in type_definition.fields %}
 {{ field.description|doc_comment('    /// ') }}
     {{ _type(type_reference=field.type) }} {{ _identifier(name=field.name) }}{% if field.hasDefault %} = {{ _value(model_value=field.default, type_reference=field.type) }}{% else %}{}{% endif %};
 {% endfor %}
     {%+ filter user('members') +%}
     {%+ endfilter +%}
 };
-{% elif item.kind == 'exception' %}
-struct {{ _name(entity=item) }} : std::exception {
-{% for field in item.fields %}
+{% elif type_definition.kind == 'exception' %}
+struct {{ _name(entity=type_definition) }} : std::exception {
+{% for field in type_definition.fields %}
 {{ field.description|doc_comment('    /// ') }}
     {{ _type(type_reference=field.type) }} {{ _identifier(name=field.name) }}{% if field.hasDefault %} = {{ _value(model_value=field.default, type_reference=field.type) }}{% else %}{}{% endif %};
 {% endfor %}
 
-    const char* what() const noexcept override { return "{{ item.name }}"; }
+    const char* what() const noexcept override { return "{{ type_definition.name }}"; }
     {%+ filter user('members') +%}
     {%+ endfilter +%}
 };
-{% elif item.kind == 'enum' %}
-enum class {{ _name(entity=item) }} : {{ _primitive(name=item.underlying) }} {
-{% for value in item['values'] %}
+{% elif type_definition.kind == 'enum' %}
+enum class {{ _name(entity=type_definition) }} : {{ _primitive(name=type_definition.underlying) }} {
+{% for value in type_definition['values'] %}
     {{ _identifier(name=value.name) }} = {{ value.value }},
 {% endfor %}
 };
-{% elif item.kind == 'bitmask' %}
+{% elif type_definition.kind == 'bitmask' %}
 {# Scoped enum of single bits, with the bitwise operators a plain enum class lacks. #}
-{% set name = _name(entity=item) %}
-{% set underlying = _primitive(name=item.underlying) %}
+{% set name = _name(entity=type_definition) %}
+{% set underlying = _primitive(name=type_definition.underlying) %}
 enum class {{ name }} : {{ underlying }} {
-{% for flag in item.flags %}
+{% for flag in type_definition.flags %}
     {{ _identifier(name=flag.name) }} = {{ underlying }}{1} << {{ flag.bit }},
 {% endfor %}
 };
@@ -92,31 +92,31 @@ constexpr {{ name }}& operator&=({{ name }}& a, {{ name }} b) { return a = a & b
 constexpr {{ name }}& operator^=({{ name }}& a, {{ name }} b) { return a = a ^ b; }
 /// True when every flag of `flags` is set in `value`.
 constexpr bool has({{ name }} value, {{ name }} flags) { return (value & flags) == flags; }
-{% elif item.kind == 'union' %}
+{% elif type_definition.kind == 'union' %}
 {# The discriminator and a std::variant hold the case: one accessor per case, the first alternative being empty. #}
-{% set name = _name(entity=item) %}
-{% set discriminator = _type(type_reference=item.discriminator) %}
+{% set name = _name(entity=type_definition) %}
+{% set discriminator = _type(type_reference=type_definition.discriminator) %}
 class {{ name }} {
 public:
     /// Discriminator: selects the case held.
     {{ discriminator }} _d() const { return d_; }
-{% for case in item.cases %}
+{% for case in type_definition.cases %}
 {% set case_type = _type(type_reference=case.type) %}
 {% set case_identifier = _identifier(name=case.name) %}
-{% set case_labels %}{% for label in case.labels %}{{ _value(model_value=label, type_reference=item.discriminator) }}, {% endfor %}{% if case.isDefault %}the values no case lists{% endif %}{% endset %}
+{% set case_labels %}{% for label in case.labels %}{{ _value(model_value=label, type_reference=type_definition.discriminator) }}, {% endfor %}{% if case.isDefault %}the values no case lists{% endif %}{% endset %}
 {# `case_labels` lists the discriminator values of the case, with a trailing ", " removed by rsplit below. #}
 
 {{ case.description|doc_comment('    /// ') }}
     /// Held for {{ case_labels.rsplit(', ', 1)|join('') }}; reading another case throws std::bad_variant_access.
     const {{ case_type }}& {{ case_identifier }}() const { return std::get<{{ case.index }}>(v_); }
     {{ case_type }}& {{ case_identifier }}() { return std::get<{{ case.index }}>(v_); }
-    void {{ case_identifier }}({{ case_type }} value, {{ discriminator }} d{% if case.label != none %} = {{ _value(model_value=case.label, type_reference=item.discriminator) }}{% endif %})
+    void {{ case_identifier }}({{ case_type }} value, {{ discriminator }} d{% if case.label != none %} = {{ _value(model_value=case.label, type_reference=type_definition.discriminator) }}{% endif %})
     {
         d_ = d;
         v_.emplace<{{ case.index }}>(std::move(value));
     }
 {% endfor %}
-{% if not item.hasDefault %}
+{% if not type_definition.hasDefault %}
 
     /// No case, for the discriminator values no case lists.
     void _default({{ discriminator }} d)
@@ -130,21 +130,21 @@ public:
     {%+ endfilter +%}
 
 private:
-{% if item.cases|length > 0 and item.cases[0].label != none %}
-    {{ discriminator }} d_ = {{ _value(model_value=item.cases[0].label, type_reference=item.discriminator) }};
-    std::variant<std::monostate{% for case in item.cases %}, {{ _type(type_reference=case.type) }}{% endfor %}> v_{std::in_place_index<1>};
+{% if type_definition.cases|length > 0 and type_definition.cases[0].label != none %}
+    {{ discriminator }} d_ = {{ _value(model_value=type_definition.cases[0].label, type_reference=type_definition.discriminator) }};
+    std::variant<std::monostate{% for case in type_definition.cases %}, {{ _type(type_reference=case.type) }}{% endfor %}> v_{std::in_place_index<1>};
 {% else %}
     {{ discriminator }} d_{};
-    std::variant<std::monostate{% for case in item.cases %}, {{ _type(type_reference=case.type) }}{% endfor %}> v_;
+    std::variant<std::monostate{% for case in type_definition.cases %}, {{ _type(type_reference=case.type) }}{% endfor %}> v_;
 {% endif %}
 };
-{% elif item.kind == 'alias' %}
-using {{ _name(entity=item) }} = {{ _type(type_reference=item.type) }};
-{% elif item.kind == 'primitive' %}
+{% elif type_definition.kind == 'alias' %}
+using {{ _name(entity=type_definition) }} = {{ _type(type_reference=type_definition.type) }};
+{% elif type_definition.kind == 'primitive' %}
 {# Custom primitive: the native type is left to the user. #}
 {% filter user('definition') +%}
-using {{ _name(entity=item) }} = void*; // TODO: native type of {{ item.name }}
+using {{ _name(entity=type_definition) }} = void*; // TODO: native type of {{ type_definition.name }}
 {% endfilter +%}
 {% endif %}
 
-} // namespace {{ _cpp_namespace(entity=item) }}
+} // namespace {{ _cpp_namespace(entity=type_definition) }}

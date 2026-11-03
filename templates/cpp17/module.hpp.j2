@@ -2,10 +2,10 @@
   Generates include/<project>/<namespace>/<Module>.hpp: the class of one module (class, abstract class or
   interface class): constructor, port accessors, instances of child modules, attributes, and the adapters
   that route the calls received by `in` ports to `on<Port><Message>` methods.
-  Rendered (manifest.yaml): once per entry of `modules`, as `item`: a Module (schema
+  Rendered (manifest.yaml): once per entry of `modules`, as `module`: a Module (schema
   $defs/Module).
   Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
-    item:
+    module:
       entity: module
       name: Plant
       kind: class
@@ -39,7 +39,6 @@
 {% from '_value.j2' import value as _value %}
 {% include '_banner.j2' %}
 #pragma once
-{% set module = item %}
 {% set root = project.name|as_identifier|snake %}
 {% set class = _name(entity=module) %}
 {% set virtuals = module.methods|selectattr('virtual', 'equalto', true)|length %}

@@ -1,10 +1,10 @@
 {#
   Generates src/<namespace>/<Module>.cpp: the definitions of one module's class: constructor wiring its
   connections, destructor, user methods and the handlers of the calls received by its `in` ports.
-  Rendered (manifest.yaml): once per entry of `modules` that is not an interface (`item.kind`), as `item`: a
+  Rendered (manifest.yaml): once per entry of `modules` that is not an interface (`module.kind`), as `module`: a
   Module (schema $defs/Module).
   Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
-    item:
+    module:
       entity: module
       name: Plant
       kind: class
@@ -28,7 +28,6 @@
 {% from '_parameters.j2' import parameters as _parameters %}
 {% from '_type.j2' import type as _type %}
 {% include '_banner.j2' %}
-{% set module = item %}
 {% set class = _name(entity=module) %}
 #include <{{ _header(entity=module) }}>
 {% filter user('includes') +%}

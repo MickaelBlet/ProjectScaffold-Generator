@@ -1,10 +1,10 @@
 {#
   Generates python/<project>/remote/<interface>.py: Proxy (calls another binary), Handler (receives the calls)
   and Stub (decodes the frames into Handler calls) of one interface used by a remote link.
-  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`: an
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `remote_interface`: an
   Interface (schema $defs/Interface).
   Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
-    item:
+    remote_interface:
       entity: interface
       name: Echo
       description: Every call sends its arguments back
@@ -22,8 +22,8 @@
 {% from '_py_type.j2' import py_type as _py_type %}
 {% set state = namespace() %}
 {% include '_py_banner.j2' %}
-"""Calls of interface {{ item.name }} between binaries: {{ item.name }}Proxy makes them on another binary,
-{{ item.name }}Stub receives them and makes them on its {{ item.name }}Handler.
+"""Calls of interface {{ remote_interface.name }} between binaries: {{ remote_interface.name }}Proxy makes them on another binary,
+{{ remote_interface.name }}Stub receives them and makes them on its {{ remote_interface.name }}Handler.
 
 Calls give back their return value then their out / inout parameters, as a tuple when there are
 several.
@@ -43,23 +43,23 @@ from ..wire import Reader, Writer, raised, respond
 _log = logging.getLogger(__name__)
 
 
-class {{ item.name }}Proxy:
-{{ item.description|doc_comment('    # ') }}
-    """{{ item.name }} of another binary: each call is encoded and sent over the channel, and waits for
+class {{ remote_interface.name }}Proxy:
+{{ remote_interface.description|doc_comment('    # ') }}
+    """{{ remote_interface.name }} of another binary: each call is encoded and sent over the channel, and waits for
     its reply when it has a result or the link acknowledges calls (else returns at once)."""
 
     def __init__(self, channel: Channel, ack: bool = False, timeout: float = 5.0) -> None:
         self._caller = Caller(channel, ack, timeout)
 
     @classmethod
-    def connect(cls, link: Link) -> {{ item.name }}Proxy:
+    def connect(cls, link: Link) -> {{ remote_interface.name }}Proxy:
         """Proxy calling the server of `link`; connects on the first call."""
         return cls(connect(link.transport, link.client_address, link.path), link.ack, link.timeout)
 
     def close(self) -> None:
         self._caller.close()
 {# Proxy: one method per message of the interface, numbered by its position. #}
-{% for message in item.messages %}
+{% for message in remote_interface.messages %}
 {% set raises %}{% if message.raises|length > 0 %}, ({% for raised_type in message.raises %}_data.decode_{{ raised_type.name }}{% if loop.length == 1 %},{% elif loop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endset %}
 {# The decoders of its declared exceptions. #}
 
@@ -92,15 +92,15 @@ class {{ item.name }}Proxy:
     {%+ endfilter +%}
 
 
-class {{ item.name }}Handler:
-    """Calls of {{ item.name }} received from another binary: override its methods. The defaults log the
+class {{ remote_interface.name }}Handler:
+    """Calls of {{ remote_interface.name }} received from another binary: override its methods. The defaults log the
     call and give back default values (inout parameters unchanged)."""
 {# Handler: default implementations logging the call. #}
-{% for message in item.messages %}
+{% for message in remote_interface.messages %}
 
     def {{ _py_identifier(name=message.name) }}(self{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}: {{ _py_type(type_reference=parameter.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(message=message, what='hint', prefix='_data.') }}:
 {{ message.description|doc_comment('        # ') }}
-        _log.info('{{ item.name }}.{{ message.name }}({% for parameter in message.inputs %}%r{% if not loop.last %}, {% endif %}{% endfor %})'{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}{% endfor %})
+        _log.info('{{ remote_interface.name }}.{{ message.name }}({% for parameter in message.inputs %}%r{% if not loop.last %}, {% endif %}{% endfor %})'{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}{% endfor %})
 {% if message.returns or message.outputs|length > 0 %}
         return {{ _py_results(message=message, what='zero', prefix='_data.') }}
 {% endif %}
@@ -110,15 +110,15 @@ class {{ item.name }}Handler:
     {%+ endfilter +%}
 
 
-class {{ item.name }}Stub:
-    """Receives the calls of {{ item.name }} (frames) and makes them on its handler. The calls come on the
+class {{ remote_interface.name }}Stub:
+    """Receives the calls of {{ remote_interface.name }} (frames) and makes them on its handler. The calls come on the
     threads of the transport: several at once over tcp, http and websocket (one per connection)."""
 
-    def __init__(self, handler: {{ item.name }}Handler) -> None:
+    def __init__(self, handler: {{ remote_interface.name }}Handler) -> None:
         self.handler = handler
 
     @classmethod
-    def serve(cls, link: Link, handler: {{ item.name }}Handler) -> Server:
+    def serve(cls, link: Link, handler: {{ remote_interface.name }}Handler) -> Server:
         """Receives the calls of `link` into `handler` until the server is closed."""
         return serve(link.transport, link.server_address, cls(handler), link.capacity)
 
@@ -128,7 +128,7 @@ class {{ item.name }}Stub:
     def _handle(self, _message: int, _r: Reader, _w: Writer) -> bool:
         _h = self.handler
 {# Stub: dispatch on the message number: decode the inputs, call the handler, encode the results. #}
-{% for message in item.messages %}
+{% for message in remote_interface.messages %}
         if _message == {{ loop.index0 }}:
 {% for parameter in message.inputs %}
             {{ _py_identifier(name=parameter.name) }} = {{ _py_decode(type_reference=parameter.type, reader='_r', prefix='_data.') }}

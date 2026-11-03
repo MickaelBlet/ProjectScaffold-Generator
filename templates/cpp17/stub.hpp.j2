@@ -2,10 +2,10 @@
   Generates include/<project>/remote/<Interface>Stub.hpp: receives the calls of an interface from another
   binary, decodes the inputs, calls the bound local port and encodes the result, the outputs or the
   declared exceptions.
-  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`: an
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `remote_interface`: an
   Interface (schema $defs/Interface).
-  Example input: same `item` as proxy.hpp.j2 (an interface with its messages, each with
-  params/inputs/outputs/returns/raises; a message is dispatched by its index in `item.messages`).
+  Example input: same `remote_interface` as proxy.hpp.j2 (an interface with its messages, each with
+  params/inputs/outputs/returns/raises; a message is dispatched by its index in `remote_interface.messages`).
   Also reads: project.name.
 #}
 {% from '_arguments.j2' import arguments as _arguments %}
@@ -19,7 +19,7 @@
 {% include '_banner.j2' %}
 #pragma once
 
-#include <{{ _header(entity=item) }}>
+#include <{{ _header(entity=remote_interface) }}>
 #include <{{ project.name|as_identifier|snake }}/remote/codec.hpp>
 #include <{{ project.name|as_identifier|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
@@ -27,17 +27,17 @@
 
 namespace {{ project.name|as_identifier|snake }}::remote {
 
-/// Receives the calls of {{ _name(entity=item) }} from another binary and makes them on the
+/// Receives the calls of {{ _name(entity=remote_interface) }} from another binary and makes them on the
 /// port bound. The calls come on the threads of the transport: several at once over tcp, http and
 /// websocket (one per connection).
-class {{ item.name }}Stub {
+class {{ remote_interface.name }}Stub {
 public:
-    {{ item.name }}Stub() = default;
-    {{ item.name }}Stub(const {{ item.name }}Stub&) = delete;
-    {{ item.name }}Stub& operator=(const {{ item.name }}Stub&) = delete;
-    ~{{ item.name }}Stub() { server_.reset(); }
+    {{ remote_interface.name }}Stub() = default;
+    {{ remote_interface.name }}Stub(const {{ remote_interface.name }}Stub&) = delete;
+    {{ remote_interface.name }}Stub& operator=(const {{ remote_interface.name }}Stub&) = delete;
+    ~{{ remote_interface.name }}Stub() { server_.reset(); }
 
-    void bind({{ _qualified_name(entity=item) }}& target) { target_ = &target; }
+    void bind({{ _qualified_name(entity=remote_interface) }}& target) { target_ = &target; }
 
     /// Receives the calls over `transport`, at `address`; `capacity`: bytes of each ring of shm.
     void serve(const std::string& transport, const std::string& address,
@@ -51,10 +51,10 @@ public:
     std::optional<Bytes> dispatch(const Bytes& frame)
     {
         return respond(frame, [this](std::uint16_t message_, Reader& reader_, [[maybe_unused]] Writer& writer_) {
-            if (!target_) throw Error("{{ item.name }}Stub not bound");
+            if (!target_) throw Error("{{ remote_interface.name }}Stub not bound");
             switch (message_) {
 {# One switch case per message number: decode inputs, call the target, encode result and outputs. #}
-{% for message in item.messages %}
+{% for message in remote_interface.messages %}
             case {{ loop.index0 }}: {
 {% for parameter in message.params %}
                 {{ _type(type_reference=parameter.type) }} {{ _identifier(name=parameter.name) }}{};
@@ -116,7 +116,7 @@ public:
     {%+ endfilter +%}
 
 private:
-    {{ _qualified_name(entity=item) }}* target_ = nullptr;
+    {{ _qualified_name(entity=remote_interface) }}* target_ = nullptr;
     std::unique_ptr<Server> server_;
     {%+ filter user('private') +%}
     {%+ endfilter +%}

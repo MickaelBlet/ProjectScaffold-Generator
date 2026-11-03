@@ -21,9 +21,10 @@ reserved: alignas alignof and … # names of the model among them are warned abo
 partials: [_banner.j2, _type.j2] # only imported or included by the others
 outputs:
   - template: module.hpp.j2
-    each: modules # Jinja expression: one file per item, bound to `item` (`as:` renames it)
-    when: item.kind != 'interface' # optional Jinja condition
-    path: "{% from '_header.j2' import header as _header %}include/{{ _header(entity=item) }}"
+    each: modules # Jinja expression: one file per item, bound to `item`
+    as: module # optional: the name of the item instead of `item`, in `when`, `path` and the template
+    when: module.kind != 'interface' # optional Jinja condition
+    path: "{% from '_header.j2' import header as _header %}include/{{ _header(entity=module) }}"
   - template: CMakeLists.txt.j2
     path: CMakeLists.txt
     comment: '#'
@@ -164,7 +165,7 @@ In [`templates/cpp17`](../templates/cpp17), the `_*.j2` partials hold one macro 
 | `_address`, `_address_variable`, `_generated_transport`, `_transport_settings` | links between binaries |
 | `_py_type`, `_py_value`, `_py_zero`, `_py_encode`, `_py_decode`… | the Python peers           |
 
-Template variables use the words of the [schema](../viewer/schema/scaffold.schema.json) for what they hold, in snake_case: `type_reference` (a `TypeRef`), `type_definition` (a `TypeDef`), `module_type_definition`, `parameters` / `parameter` (`params`), `case` (`cases`), `value` (enum `values`), `raised_type` (`raises`), `discriminator`, `settings` (a `TransportSettings`); the comments name the schema definition of each parameter and `item`.
+Template variables use the words of the [schema](../viewer/schema/scaffold.schema.json) for what they hold, in snake_case: `type_reference` (a `TypeRef`), `type_definition` (a `TypeDef`), `module_type_definition`, `parameters` / `parameter` (`params`), `case` (`cases`), `value` (enum `values`), `raised_type` (`raises`), `discriminator`, `settings` (a `TransportSettings`); the item of each output is named by `as:` after what it is (`type_definition`, `interface`, `module`, `remote_interface`, `system`), never `item`; the comments name the schema definition of each parameter and `item`.
 
 The other C++ sets (`cpp20`, `cpp14`, `cpp11`, `cpp98`) and `python` still use the earlier short names (`_id(name=…)`, `_type(t=…)`, `_header(e=…)`, `_ns`, `_params`, `_py_ref`, `_settings`…).
 

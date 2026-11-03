@@ -1,9 +1,9 @@
 {#
   Generates include/<project>/interfaces/<Interface>.hpp: one interface, an abstract class of pure virtual methods.
-  Rendered (manifest.yaml): once per entry of `interfaces`, as `item`: an Interface
+  Rendered (manifest.yaml): once per entry of `interfaces`, as `interface`: an Interface
   (schema $defs/Interface).
   Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
-    item:
+    interface:
       entity: interface
       name: Sink
       scope: []
@@ -22,16 +22,16 @@
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(entity=item) }}{##}
+{{ _includes(entity=interface) }}{##}
 
-namespace {{ _cpp_namespace(entity=item) }} {
+namespace {{ _cpp_namespace(entity=interface) }} {
 
-{{ item.description|doc_comment }}
-class {{ _name(entity=item) }} {
+{{ interface.description|doc_comment }}
+class {{ _name(entity=interface) }} {
 public:
-    virtual ~{{ _name(entity=item) }}() = default;
+    virtual ~{{ _name(entity=interface) }}() = default;
 {# One pure virtual method per message; its `raises` become @throws lines. #}
-{% for message in item.messages %}
+{% for message in interface.messages %}
 
 {{ message.description|doc_comment('    /// ') }}
 {% for raised_type in message.raises %}
@@ -41,4 +41,4 @@ public:
 {% endfor %}
 };
 
-} // namespace {{ _cpp_namespace(entity=item) }}
+} // namespace {{ _cpp_namespace(entity=interface) }}
