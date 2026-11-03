@@ -185,6 +185,103 @@ pub fn skeleton(text: &str, comment: &str) -> Result<String, String> {
     replace_sections(&text.replace("\r\n", "\n"), comment, |_| String::new())
 }
 
+/// Lines outside the user sections (markers included) with their line number (1-based).
+fn outside_lines(text: &str, comment: &str) -> Result<Vec<(usize, String)>, String> {
+    let text = text.replace("\r\n", "\n");
+    let sections = extract_sections(&text, comment)?;
+    let mut s = sections.iter().peekable();
+    let mut out = Vec::new();
+    for (i, line) in text.split('\n').enumerate() {
+        while s.peek().is_some_and(|s| s.end < i) {
+            s.next();
+        }
+        if !s.peek().is_some_and(|s| s.start < i && i < s.end) {
+            out.push((i + 1, line.to_string()));
+        }
+    }
+    Ok(out)
+}
+
+/// A difference of a file from what is generated, outside its user sections.
+#[derive(Debug, PartialEq)]
+pub enum Change {
+    /// Lines `first..=last` of the file (1-based) differ.
+    Lines(usize, usize),
+    /// Generated lines are missing after this line of the file (0: at its start).
+    RemovedAfter(usize),
+}
+
+/// Where `text` differs from `generated` outside their user sections.
+pub fn changes(text: &str, generated: &str, comment: &str) -> Result<Vec<Change>, String> {
+    let a = outside_lines(text, comment)?;
+    let b = outside_lines(generated, comment)?;
+    let eq = |i: usize, j: usize| a[i].1 == b[j].1;
+    let prefix = (0..a.len().min(b.len())).take_while(|&k| eq(k, k)).count();
+    let suffix = (0..(a.len() - prefix).min(b.len() - prefix))
+        .take_while(|&k| eq(a.len() - 1 - k, b.len() - 1 - k))
+        .count();
+    let (n, m) = (a.len() - prefix - suffix, b.len() - prefix - suffix);
+    // Longest common subsequence of the middle parts (one change when too large for it).
+    let mut matches = Vec::new();
+    if n > 0 && m > 0 && (n + 1) * (m + 1) <= 4_000_000 {
+        let w = m + 1;
+        let mut t = vec![0u32; (n + 1) * w];
+        for i in (0..n).rev() {
+            for j in (0..m).rev() {
+                t[i * w + j] = if eq(prefix + i, prefix + j) {
+                    t[(i + 1) * w + j + 1] + 1
+                } else {
+                    t[(i + 1) * w + j].max(t[i * w + j + 1])
+                };
+            }
+        }
+        let (mut i, mut j) = (0, 0);
+        while i < n && j < m {
+            if eq(prefix + i, prefix + j) {
+                matches.push((i, j));
+                (i, j) = (i + 1, j + 1);
+            } else if t[(i + 1) * w + j] >= t[i * w + j + 1] {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+    }
+    matches.push((n, m));
+    let mut out = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    for (mi, mj) in matches {
+        if i < mi {
+            out.push(Change::Lines(a[prefix + i].0, a[prefix + mi - 1].0));
+        } else if j < mj {
+            out.push(Change::RemovedAfter(if prefix + i == 0 { 0 } else { a[prefix + i - 1].0 }));
+        }
+        (i, j) = (mi + 1, mj + 1);
+    }
+    Ok(out)
+}
+
+/// Changes as `lines 3-5, 9, after 12 (removed)`.
+pub fn format_changes(changes: &[Change]) -> String {
+    let items: Vec<String> = changes
+        .iter()
+        .map(|c| match c {
+            Change::Lines(f, l) if f == l => format!("{f}"),
+            Change::Lines(f, l) => format!("{f}-{l}"),
+            Change::RemovedAfter(l) => format!("after {l} (removed)"),
+        })
+        .collect();
+    format!(
+        "{} {}",
+        if items.len() == 1 && matches!(changes[0], Change::Lines(f, l) if f == l) {
+            "line"
+        } else {
+            "lines"
+        },
+        items.join(", ")
+    )
+}
+
 /// Short non-cryptographic hash (cyrb53) over UTF-16 code units, hex: the TypeScript generator's.
 pub fn hash(s: &str) -> String {
     let mut h1: u32 = 0xdeadbeef;
@@ -251,5 +348,22 @@ mod tests {
             skeleton(prev, "//").unwrap(),
             "a\n// <user:x>\n// </user:x>\n// <user:y>\n// </user:y>\nb"
         );
+    }
+
+    #[test]
+    fn changed_lines() {
+        let generated = "a\n// <user:x>\ndefault\n// </user:x>\nb\nc\nd\ne";
+        let edited = "a\r\n// <user:x>\r\nmine\r\nmore\r\n// </user:x>\r\nB\r\nc\r\ne\r\nf\r\ng";
+        assert_eq!(
+            changes(edited, generated, "//").unwrap(),
+            vec![Change::Lines(6, 6), Change::RemovedAfter(7), Change::Lines(9, 10)]
+        );
+        assert_eq!(
+            format_changes(&changes(edited, generated, "//").unwrap()),
+            "lines 6, after 7 (removed), 9-10"
+        );
+        assert_eq!(changes("x\na", "a", "//").unwrap(), vec![Change::Lines(1, 1)]);
+        assert_eq!(changes("a", "x\na", "//").unwrap(), vec![Change::RemovedAfter(0)]);
+        assert!(changes(edited, edited, "//").unwrap().is_empty());
     }
 }

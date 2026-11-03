@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Conflicts of files changed outside their user sections name the lines that differ from the generated file (`lines 3, after 13 (removed), 22-23`).
 - Template filter `as_identifier`: a project name as an identifier (`Plant Demo` -> `Plant_Demo`, as `project.ident` and dependencies name it). `cpp17` spells `_project_identifier()` (below) instead of `project.ident|snake`.
 - Customizable toolbar: _Settings › Toolbar_ chooses the buttons right of the menus (any command, each with its icon, picked from a menu by category, separators, order). Default: undo, redo, previous / next selection.
 - Module views have their own layout: modules moved or resized in a module's own view (the module itself too, moved with its content or resized) keep their place in the _Project_ view, and the other way round. Stored in `editor.views[].layout`; _View › Reset view layout_ goes back to the _Project_ view's layout.

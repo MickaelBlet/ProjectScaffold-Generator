@@ -71,7 +71,7 @@ Generating again rewrites only what changed:
 
 - the content of each user section is carried over by id; sections still holding what was generated in them take the new template's content;
 - sections with no place left (a renamed method, module or port) are appended to `<file>.orphans`, never lost;
-- a file changed **outside** its user sections is left as it is and reported as a conflict (`--force` overwrites it);
+- a file changed **outside** its user sections is left as it is and reported as a conflict, with the lines that differ from the generated file (`--force` overwrites it);
 - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files);
 - `.scaffold-gen.json` in the output directory records what was generated: keep it with the code.
 

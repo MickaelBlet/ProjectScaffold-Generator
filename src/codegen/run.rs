@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use super::generate::generate;
 use super::sections::{
-    Section, extract_sections, format_orphans, hash, merge_sections, section_hash, skeleton,
+    Section, changes, extract_sections, format_changes, format_orphans, hash, merge_sections, section_hash,
+    skeleton,
 };
 use super::template_set::{MANIFEST, TemplateSet, load_template_set};
 
@@ -197,14 +198,19 @@ pub fn generate_into(
             None => skeleton(&previous, &f.comment)? != skeleton(&f.text, &f.comment)?,
         };
         if hand_edited && !options.force {
-            report.conflicts.push((
-                f.path.clone(),
-                if entry.is_some() {
-                    "changed outside its user sections".into()
-                } else {
-                    "differs outside its user sections (no generation record)".into()
-                },
-            ));
+            let mut why = match &entry {
+                Some(_) => "changed outside its user sections".to_string(),
+                None => "differs outside its user sections (no generation record)".to_string(),
+            };
+            // Lines against this generation: also template changes when it differs from the last.
+            let changed = changes(&previous, &f.text, &f.comment)?;
+            if !changed.is_empty() {
+                why += &format!(", {}", format_changes(&changed));
+                if entry.as_ref().is_some_and(|e| e.hash != next.hash) {
+                    why += " (compared with this generation)";
+                }
+            }
+            report.conflicts.push((f.path.clone(), why));
             if let Some(entry) = entry {
                 record.files.insert(f.path.clone(), entry);
             }
