@@ -3,7 +3,7 @@
   `true` for a type cheap to copy, passed and returned by value: numbers, bool, char, enums, bitmasks,
   aliases of those; empty for the others.
   Parameters:
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
   Examples:
@@ -15,11 +15,11 @@
 {% if type_reference.kind == 'primitive' %}
   {% if not (type_reference.name == 'string' or type_reference.name == 'bytes') %}true{% endif %}
 {% elif type_reference.kind == 'ref' %}
-  {% set definition = typeByKey[type_reference.key] %}
-  {% if definition.kind == 'enum' or definition.kind == 'bitmask' %}
+  {% set type_definition = typeByKey[type_reference.key] %}
+  {% if type_definition.kind == 'enum' or type_definition.kind == 'bitmask' %}
     true
-  {% elif definition.kind == 'alias' %}
-    {{ scalar(type_reference=definition.type) }}
+  {% elif type_definition.kind == 'alias' %}
+    {{ scalar(type_reference=type_definition.type) }}
   {% endif %}
 {% endif %}
 {% endfilter %}

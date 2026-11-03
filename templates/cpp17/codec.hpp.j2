@@ -33,8 +33,8 @@
 #pragma once
 
 #include <{{ project.name|as_identifier|snake }}/remote/wire.hpp>
-{% for user_type in remoteTypes %}
-#include <{{ _header(entity=user_type) }}>
+{% for type_definition in remoteTypes %}
+#include <{{ _header(entity=type_definition) }}>
 {% endfor %}
 {% filter user('includes') +%}
 {% endfilter +%}
@@ -43,19 +43,19 @@
 namespace {{ project.name|as_identifier|snake }}::remote {
 
 {# Forward declarations, so that types may refer to each other in any order. #}
-{% for user_type in remoteTypes %}
-{% if user_type.kind == 'struct' or (user_type.kind == 'union' or user_type.kind == 'exception') %}
-inline void encode(Writer& w, const {{ _qualified_name(entity=user_type) }}& v);
-inline void decode(Reader& r, {{ _qualified_name(entity=user_type) }}& v);
+{% for type_definition in remoteTypes %}
+{% if type_definition.kind == 'struct' or (type_definition.kind == 'union' or type_definition.kind == 'exception') %}
+inline void encode(Writer& w, const {{ _qualified_name(entity=type_definition) }}& v);
+inline void decode(Reader& r, {{ _qualified_name(entity=type_definition) }}& v);
 {% endif %}
 {% endfor %}
 {# Definitions: members in order for struct/exception, discriminator then selected case for union. #}
-{% for user_type in remoteTypes %}
-{% if user_type.kind == 'struct' or user_type.kind == 'exception' %}
+{% for type_definition in remoteTypes %}
+{% if type_definition.kind == 'struct' or type_definition.kind == 'exception' %}
 
-inline void encode(Writer& w, const {{ _qualified_name(entity=user_type) }}& v)
+inline void encode(Writer& w, const {{ _qualified_name(entity=type_definition) }}& v)
 {
-{% for field in user_type.fields %}
+{% for field in type_definition.fields %}
 {% set state.expression = 'v.' ~ _identifier(name=field.name) %}
 {% set state.bounds_check = _bounds(type_reference=field.type, expression=state.expression, depth=0) %}
 {% if state.bounds_check != '' %}
@@ -68,9 +68,9 @@ inline void encode(Writer& w, const {{ _qualified_name(entity=user_type) }}& v)
 {% endfor %}
 }
 
-inline void decode(Reader& r, {{ _qualified_name(entity=user_type) }}& v)
+inline void decode(Reader& r, {{ _qualified_name(entity=type_definition) }}& v)
 {
-{% for field in user_type.fields %}
+{% for field in type_definition.fields %}
 {% set state.expression = 'v.' ~ _identifier(name=field.name) %}
 {% set state.bounds_check = _bounds(type_reference=field.type, expression=state.expression, depth=0) %}
 {# Decoded, then checked. #}
@@ -83,26 +83,26 @@ inline void decode(Reader& r, {{ _qualified_name(entity=user_type) }}& v)
     (void)v;
 {% endfor %}
 }
-{% elif user_type.kind == 'union' %}
+{% elif type_definition.kind == 'union' %}
 {% set state.default_case = none %}
-{% for union_case in user_type.cases %}
-{% if union_case.isDefault %}
-{% set state.default_case = union_case %}
+{% for case in type_definition.cases %}
+{% if case.isDefault %}
+{% set state.default_case = case %}
 {% endif %}
 {% endfor %}
-{% set discriminator_cpp_type = _type(type_reference=user_type.discriminator) %}
+{% set discriminator_cpp_type = _type(type_reference=type_definition.discriminator) %}
 {# The discriminator, then the case it selects. #}
 
-inline void encode(Writer& w, const {{ _qualified_name(entity=user_type) }}& v)
+inline void encode(Writer& w, const {{ _qualified_name(entity=type_definition) }}& v)
 {
     const {{ discriminator_cpp_type }} d = v._d();
     encode(w, d);
 {% set state.branch_keyword = 'if' %}
-{% for union_case in user_type.cases %}
-{% if union_case.labels|length > 0 %}
-{% set state.label_test = _labels(union_case=union_case, discriminator_type=user_type.discriminator, discriminator='d') %}
-{% set state.expression = 'v.' ~ _identifier(name=union_case.name) ~ '()' %}
-{% set state.bounds_check = _bounds(type_reference=union_case.type, expression=state.expression, depth=0) %}
+{% for case in type_definition.cases %}
+{% if case.labels|length > 0 %}
+{% set state.label_test = _labels(case=case, discriminator=type_definition.discriminator, discriminator_expression='d') %}
+{% set state.expression = 'v.' ~ _identifier(name=case.name) ~ '()' %}
+{% set state.bounds_check = _bounds(type_reference=case.type, expression=state.expression, depth=0) %}
 {# Its labels. #}
     {{ state.branch_keyword }} ({{ state.label_test }}) {
 {% if state.bounds_check != '' %}
@@ -133,23 +133,23 @@ inline void encode(Writer& w, const {{ _qualified_name(entity=user_type) }}& v)
 {% endif %}
 }
 
-inline void decode(Reader& r, {{ _qualified_name(entity=user_type) }}& v)
+inline void decode(Reader& r, {{ _qualified_name(entity=type_definition) }}& v)
 {
     {{ discriminator_cpp_type }} d{};
     decode(r, d);
 {% set state.branch_keyword = 'if' %}
-{% for union_case in user_type.cases %}
-{% if union_case.labels|length > 0 %}
-{% set state.label_test = _labels(union_case=union_case, discriminator_type=user_type.discriminator, discriminator='d') %}
-{% set state.bounds_check = _bounds(type_reference=union_case.type, expression='x', depth=0) %}
+{% for case in type_definition.cases %}
+{% if case.labels|length > 0 %}
+{% set state.label_test = _labels(case=case, discriminator=type_definition.discriminator, discriminator_expression='d') %}
+{% set state.bounds_check = _bounds(type_reference=case.type, expression='x', depth=0) %}
 {# Its labels. #}
     {{ state.branch_keyword }} ({{ state.label_test }}) {
-        {{ _type(type_reference=union_case.type) }} x{};
+        {{ _type(type_reference=case.type) }} x{};
         decode(r, x);
 {% if state.bounds_check != '' %}
         {{ state.bounds_check }}
 {% endif %}
-        v.{{ _identifier(name=union_case.name) }}(std::move(x), d);
+        v.{{ _identifier(name=case.name) }}(std::move(x), d);
 {% set state.branch_keyword = '} else if' %}
 {% endif %}
 {% endfor %}
@@ -172,11 +172,11 @@ inline void decode(Reader& r, {{ _qualified_name(entity=user_type) }}& v)
     }
 {% endif %}
 }
-{% elif user_type.kind == 'primitive' %}
+{% elif type_definition.kind == 'primitive' %}
 
-{% filter user('codec.' ~ user_type.name) +%}
-// {{ user_type.name }} is a custom type: write encode(Writer&, const {{ _qualified_name(entity=user_type) }}&) and
-// decode(Reader&, {{ _qualified_name(entity=user_type) }}&) here, as its Python peer does (data.py).
+{% filter user('codec.' ~ type_definition.name) +%}
+// {{ type_definition.name }} is a custom type: write encode(Writer&, const {{ _qualified_name(entity=type_definition) }}&) and
+// decode(Reader&, {{ _qualified_name(entity=type_definition) }}&) here, as its Python peer does (data.py).
 {% endfilter +%}
 {% endif %}
 {% endfor %}

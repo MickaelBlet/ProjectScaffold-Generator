@@ -3,7 +3,7 @@
 {#
   Python statement encoding a value with a wire.py `Writer`; bounds passed last.
   Parameters:
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
     expression: the Python expression of the value.

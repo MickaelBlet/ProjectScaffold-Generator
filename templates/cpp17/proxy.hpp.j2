@@ -1,7 +1,8 @@
 {#
   Generates include/<project>/remote/<Interface>Proxy.hpp: implementation of an interface living in another
   binary; each method encodes its inputs, sends them through a Caller and decodes the outputs.
-  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`: an
+  Interface (schema $defs/Interface).
   Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
     item:
       entity: interface
@@ -48,10 +49,10 @@ public:
     }
 {# One overriding method per message; its index in the interface is the message number on the wire. #}
 {% for message in item.messages %}
-{% set call_prefix %}{% if message.raises|length > 0 %}callRaising<{% for exception_type in message.raises %}{{ _type(type_reference=exception_type) }}{% if not loop.last %}, {% endif %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endset %}
+{% set call_prefix %}{% if message.raises|length > 0 %}callRaising<{% for raised_type in message.raises %}{{ _type(type_reference=raised_type) }}{% if not loop.last %}, {% endif %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endset %}
 {# Declared exceptions thrown as such. #}
 
-    {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameter_list=message.params) }}) override
+    {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameters=message.params) }}) override
     {
         Writer request_;
 {% for parameter in message.inputs %}

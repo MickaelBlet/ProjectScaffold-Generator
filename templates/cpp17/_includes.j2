@@ -32,8 +32,8 @@
     {% set state.standard_headers = state.standard_headers + ['<exception>'] %}
   {% endif %}
 {% endfor %}
-{% for used_type in entity.uses.types %}
-  {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=used_type) ~ '>'] %}
+{% for type_definition in entity.uses.types %}
+  {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=type_definition) ~ '>'] %}
 {% endfor %}
 {% if entity.entity == 'module' %}
   {% for base in entity.bases %}

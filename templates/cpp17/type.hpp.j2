@@ -2,7 +2,8 @@
   Generates include/<project>/types/<Type>.hpp (beside its module for a type of a module): one user type
   of the project (struct, exception, enum, bitmask, union, alias, custom primitive), in the namespace of
   its project (or of its module).
-  Rendered (manifest.yaml): once per entry of `types` and of `moduleTypes`, as `item`.
+  Rendered (manifest.yaml): once per entry of `types` and of `moduleTypes`, as `item`:
+  a TypeDef or ModuleTypeDef (schema $defs/TypeDef, $defs/ModuleTypeDef).
   Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
     item:
       entity: type
@@ -59,8 +60,8 @@ struct {{ _name(entity=item) }} : std::exception {
 };
 {% elif item.kind == 'enum' %}
 enum class {{ _name(entity=item) }} : {{ _primitive(name=item.underlying) }} {
-{% for enumerator in item['values'] %}
-    {{ _identifier(name=enumerator.name) }} = {{ enumerator.value }},
+{% for value in item['values'] %}
+    {{ _identifier(name=value.name) }} = {{ value.value }},
 {% endfor %}
 };
 {% elif item.kind == 'bitmask' %}
@@ -99,20 +100,20 @@ class {{ name }} {
 public:
     /// Discriminator: selects the case held.
     {{ discriminator }} _d() const { return d_; }
-{% for union_case in item.cases %}
-{% set case_type = _type(type_reference=union_case.type) %}
-{% set case_identifier = _identifier(name=union_case.name) %}
-{% set case_labels %}{% for label in union_case.labels %}{{ _value(model_value=label, type_reference=item.discriminator) }}, {% endfor %}{% if union_case.isDefault %}the values no case lists{% endif %}{% endset %}
+{% for case in item.cases %}
+{% set case_type = _type(type_reference=case.type) %}
+{% set case_identifier = _identifier(name=case.name) %}
+{% set case_labels %}{% for label in case.labels %}{{ _value(model_value=label, type_reference=item.discriminator) }}, {% endfor %}{% if case.isDefault %}the values no case lists{% endif %}{% endset %}
 {# `case_labels` lists the discriminator values of the case, with a trailing ", " removed by rsplit below. #}
 
-{{ union_case.description|doc_comment('    /// ') }}
+{{ case.description|doc_comment('    /// ') }}
     /// Held for {{ case_labels.rsplit(', ', 1)|join('') }}; reading another case throws std::bad_variant_access.
-    const {{ case_type }}& {{ case_identifier }}() const { return std::get<{{ union_case.index }}>(v_); }
-    {{ case_type }}& {{ case_identifier }}() { return std::get<{{ union_case.index }}>(v_); }
-    void {{ case_identifier }}({{ case_type }} value, {{ discriminator }} d{% if union_case.label != none %} = {{ _value(model_value=union_case.label, type_reference=item.discriminator) }}{% endif %})
+    const {{ case_type }}& {{ case_identifier }}() const { return std::get<{{ case.index }}>(v_); }
+    {{ case_type }}& {{ case_identifier }}() { return std::get<{{ case.index }}>(v_); }
+    void {{ case_identifier }}({{ case_type }} value, {{ discriminator }} d{% if case.label != none %} = {{ _value(model_value=case.label, type_reference=item.discriminator) }}{% endif %})
     {
         d_ = d;
-        v_.emplace<{{ union_case.index }}>(std::move(value));
+        v_.emplace<{{ case.index }}>(std::move(value));
     }
 {% endfor %}
 {% if not item.hasDefault %}
@@ -131,10 +132,10 @@ public:
 private:
 {% if item.cases|length > 0 and item.cases[0].label != none %}
     {{ discriminator }} d_ = {{ _value(model_value=item.cases[0].label, type_reference=item.discriminator) }};
-    std::variant<std::monostate{% for union_case in item.cases %}, {{ _type(type_reference=union_case.type) }}{% endfor %}> v_{std::in_place_index<1>};
+    std::variant<std::monostate{% for case in item.cases %}, {{ _type(type_reference=case.type) }}{% endfor %}> v_{std::in_place_index<1>};
 {% else %}
     {{ discriminator }} d_{};
-    std::variant<std::monostate{% for union_case in item.cases %}, {{ _type(type_reference=union_case.type) }}{% endfor %}> v_;
+    std::variant<std::monostate{% for case in item.cases %}, {{ _type(type_reference=case.type) }}{% endfor %}> v_;
 {% endif %}
 };
 {% elif item.kind == 'alias' %}

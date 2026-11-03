@@ -1,7 +1,8 @@
 {#
   Generates python/<project>/remote/<interface>.py: Proxy (calls another binary), Handler (receives the calls)
   and Stub (decodes the frames into Handler calls) of one interface used by a remote link.
-  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`: an
+  Interface (schema $defs/Interface).
   Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
     item:
       entity: interface
@@ -59,7 +60,7 @@ class {{ item.name }}Proxy:
         self._caller.close()
 {# Proxy: one method per message of the interface, numbered by its position. #}
 {% for message in item.messages %}
-{% set raises %}{% if message.raises|length > 0 %}, ({% for exception in message.raises %}_data.decode_{{ exception.name }}{% if loop.length == 1 %},{% elif loop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endset %}
+{% set raises %}{% if message.raises|length > 0 %}, ({% for raised_type in message.raises %}_data.decode_{{ raised_type.name }}{% if loop.length == 1 %},{% elif loop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endset %}
 {# The decoders of its declared exceptions. #}
 
     def {{ _py_identifier(name=message.name) }}(self{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}: {{ _py_type(type_reference=parameter.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(message=message, what='hint', prefix='_data.') }}:
@@ -137,9 +138,9 @@ class {{ item.name }}Stub:
 {% if message.raises|length > 0 %}
             try:
                 {{ call }}
-{% for exception in message.raises %}
-            except _data.{{ _py_identifier(name=exception.name) }} as _e:
-                raise raised({{ loop.index0 }}, _data.encode_{{ exception.name }}, _e) from None
+{% for raised_type in message.raises %}
+            except _data.{{ _py_identifier(name=raised_type.name) }} as _e:
+                raise raised({{ loop.index0 }}, _data.encode_{{ raised_type.name }}, _e) from None
 {% endfor %}
 {% else %}
             {{ call }}

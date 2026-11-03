@@ -7,8 +7,9 @@
   given type: enums by enumerator, bitmasks as or-ed flags, unions through a lambda setting their case,
   structs as braced lists of all their fields (the value's, else the field's default, else `{}`).
   Parameters:
-    model_value: the value as read from the project file (number, string, list, mapping).
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    model_value: a value as read from the project file: a field's or attribute's `default`, a Constant's
+      `value` (number, string, list, mapping).
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
   Examples (project Plant):
@@ -63,27 +64,27 @@
   {% endfor %}
   }
 {% elif type_reference.kind == 'ref' %}
-  {% set definition = typeByKey[type_reference.key] %}
-  {% if definition.kind == 'enum' %}
+  {% set type_definition = typeByKey[type_reference.key] %}
+  {% if type_definition.kind == 'enum' %}
     {{ _type(type_reference=type_reference) }}::{{ _identifier(name=model_value) }}
-  {% elif definition.kind == 'bitmask' %}
+  {% elif type_definition.kind == 'bitmask' %}
     {# The flags of the list, or no flag. #}
     {% if model_value|length == 0 %}{{ _type(type_reference=type_reference) }}{}{% endif %}
     {% for flag in model_value %}
       {{ _type(type_reference=type_reference) }}::{{ _identifier(name=flag) }}{% if not loop.last %} | {% endif %}
     {% endfor %}
-  {% elif definition.kind == 'union' %}
+  {% elif type_definition.kind == 'union' %}
     {# The case of the one-entry mapping, set by a lambda. #}
     {% for entry in model_value.items() %}
-      {% set state.union_case = definition.cases|selectattr('name', 'equalto', entry[0])|first %}
-      [] { {{ _type(type_reference=type_reference) }} u; u.{{ _identifier(name=state.union_case.name) }}({{ value(model_value=entry[1], type_reference=state.union_case.type) }}); return u; }()
+      {% set state.case = type_definition.cases|selectattr('name', 'equalto', entry[0])|first %}
+      [] { {{ _type(type_reference=type_reference) }} u; u.{{ _identifier(name=state.case.name) }}({{ value(model_value=entry[1], type_reference=state.case.type) }}); return u; }()
     {% endfor %}
-  {% elif definition.kind == 'alias' %}
-    {{ value(model_value=model_value, type_reference=definition.type) }}
-  {% elif definition.kind == 'struct' %}
+  {% elif type_definition.kind == 'alias' %}
+    {{ value(model_value=model_value, type_reference=type_definition.type) }}
+  {% elif type_definition.kind == 'struct' %}
     {# Fields in order: the value's, else the field's default, else value-initialized. #}
     {{ _type(type_reference=type_reference) }}{
-    {% for field in definition.fields %}
+    {% for field in type_definition.fields %}
       {% if field.name in model_value %}
         {{ value(model_value=model_value[field.name], type_reference=field.type) }}
       {% elif field.hasDefault %}

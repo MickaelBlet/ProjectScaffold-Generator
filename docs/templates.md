@@ -161,10 +161,12 @@ In [`templates/cpp17`](../templates/cpp17), the `_*.j2` partials hold one macro 
 | `_name`, `_identifier`, `_accessor`, `_member`                   | names                      |
 | `_cpp_namespace`, `_qualified_name`, `_header`, `_source`        | namespaces and files       |
 | `_includes`, `_endpoint`                                         | wiring expressions         |
-| `_address`, `_address_variable`, `_generated_transport`          | links between binaries     |
+| `_address`, `_address_variable`, `_generated_transport`, `_transport_settings` | links between binaries |
 | `_py_type`, `_py_value`, `_py_zero`, `_py_encode`, `_py_decode`… | the Python peers           |
 
-The other C++ sets (`cpp20`, `cpp14`, `cpp11`, `cpp98`) and `python` still use the earlier short names (`_id(name=…)`, `_type(t=…)`, `_header(e=…)`, `_ns`, `_params`, `_py_ref`…).
+Template variables use the words of the [schema](../viewer/schema/scaffold.schema.json) for what they hold, in snake_case: `type_reference` (a `TypeRef`), `type_definition` (a `TypeDef`), `module_type_definition`, `parameters` / `parameter` (`params`), `case` (`cases`), `value` (enum `values`), `raised_type` (`raises`), `discriminator`, `settings` (a `TransportSettings`); the comments name the schema definition of each parameter and `item`.
+
+The other C++ sets (`cpp20`, `cpp14`, `cpp11`, `cpp98`) and `python` still use the earlier short names (`_id(name=…)`, `_type(t=…)`, `_header(e=…)`, `_ns`, `_params`, `_py_ref`, `_settings`…).
 
 ## From Liquid
 

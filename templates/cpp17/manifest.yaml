@@ -43,7 +43,7 @@ partials:
   - _generated_transport.j2
   - _address.j2
   - _address_variable.j2
-  - _settings.j2
+  - _transport_settings.j2
   - _py_banner.j2
   - _py_identifier.j2
   - _py_type.j2

@@ -11,7 +11,8 @@
   accessors of its attributes (getter, setter unless const; private attributes have none: their data
   members are private anyway), then its methods (with `@throws` of their exceptions).
   Parameters:
-    module: an entry of `modules` (`types`, `attributes`, `methods`, each with `access`).
+    module: an entry of `modules`, a Module (schema $defs/Module: `types`, `attributes`, `methods`,
+      each with `access`).
     names: names taken by the model in the class (ports, children...): no accessor generated with such a name.
     access: 'public', 'protected' or 'private'.
   Example (one method, project Plant):
@@ -27,8 +28,8 @@
 {% set types = module.types|selectattr('access', 'equalto', access) %}
 {% if types|length > 0 %}
 
-{% for module_type in types %}
-    using {{ _name(entity=module_type) }} = {{ _qualified_name(entity=module_type) }};
+{% for module_type_definition in types %}
+    using {{ _name(entity=module_type_definition) }} = {{ _qualified_name(entity=module_type_definition) }};
 {% endfor %}
 {% endif %}
 {% set attributes = module.attributes|selectattr('access', 'equalto', access) %}
@@ -49,9 +50,9 @@
 {% for method in methods %}
 
 {{ method.description|doc_comment('    /// ') }}
-{% for exception in method.raises %}
-    /// @throws {{ _type(type_reference=exception) }}
+{% for raised_type in method.raises %}
+    /// @throws {{ _type(type_reference=raised_type) }}
 {% endfor %}
-    {%+ if method.static %}static {% endif %}{% if method.virtual and method.override == false %}virtual {% endif %}{{ _type(type_reference=method.returns) }} {{ _identifier(name=method.name) }}({{ _parameters(parameter_list=method.params) }}){% if method.const %} const{% endif %}{% if method.override %} override{% endif %}{% if method.pure %} = 0{% endif %};
+    {%+ if method.static %}static {% endif %}{% if method.virtual and method.override == false %}virtual {% endif %}{{ _type(type_reference=method.returns) }} {{ _identifier(name=method.name) }}({{ _parameters(parameters=method.params) }}){% if method.const %} const{% endif %}{% if method.override %} override{% endif %}{% if method.pure %} = 0{% endif %};
 {% endfor %}
 {%+ endmacro %}

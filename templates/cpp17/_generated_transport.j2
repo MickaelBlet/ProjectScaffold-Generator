@@ -3,7 +3,7 @@
   `true` for a transport implemented by transport.cpp / transport.py (tcp, udp, http, websocket, shm),
   empty for the others (written by the user).
   Parameters:
-    transport: a link's `constraints.remote.transport`.
+    transport: a link's `constraints.remote.transport` (links[].constraints.remote.transport).
   Example:
     transport: tcp   -> true
     transport: mqtt  -> (empty)

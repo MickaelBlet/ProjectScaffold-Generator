@@ -4,7 +4,7 @@
   aliases, optionals and the elements of containers; structs check their own fields): nothing when
   unbounded. Elements are visited with `for` loops over variables `x0_`, `x1_`... (one per depth).
   Parameters:
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
     expression: the C++ expression of the value (`value.name`, `*value`...).

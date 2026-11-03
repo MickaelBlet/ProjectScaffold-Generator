@@ -27,7 +27,7 @@
 {% from '_endpoint.j2' import endpoint as _endpoint %}
 {% from '_generated_transport.j2' import generated_transport as _generated_transport %}
 {% from '_header.j2' import header as _header %}
-{% from '_settings.j2' import settings as _settings %}
+{% from '_transport_settings.j2' import transport_settings as _transport_settings %}
 {% set state = namespace() %}
 {% include '_banner.j2' %}
 #include <{{ _header(entity=system) }}>
@@ -65,7 +65,7 @@ namespace {{ _cpp_namespace(entity=system) }} {
     {%+ filter user('link.' ~ remote_link.link.name) +%}
 {% if not (state.has_generated_transport == 'true') %}
     // Open {{ remote_link.link.name|camel }}Proxy_ with a remote::Channel to binary {{ remote_link.peer.binary }} over {{ state.transport }}.
-{% set state.settings_text = _settings(remote_settings=remote_link.link.constraints.remote.settings) +%}
+{% set state.settings_text = _transport_settings(settings=remote_link.link.constraints.remote.settings) +%}
 {% if state.settings_text != '' %}
     // Settings: {{ state.settings_text }}.
 {% endif %}
@@ -85,7 +85,7 @@ namespace {{ _cpp_namespace(entity=system) }} {
     {%+ filter user('link.' ~ remote_link.link.name) +%}
 {% if not (state.has_generated_transport == 'true') %}
     // Receive the calls of binary {{ remote_link.peer.binary }} over {{ state.transport }} into {{ remote_link.link.name|camel }}Stub_.dispatch().
-{% set state.settings_text = _settings(remote_settings=remote_link.link.constraints.remote.settings) +%}
+{% set state.settings_text = _transport_settings(settings=remote_link.link.constraints.remote.settings) +%}
 {% if state.settings_text != '' %}
     // Settings: {{ state.settings_text }}.
 {% endif %}

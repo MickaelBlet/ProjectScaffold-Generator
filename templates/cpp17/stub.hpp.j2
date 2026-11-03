@@ -2,7 +2,8 @@
   Generates include/<project>/remote/<Interface>Stub.hpp: receives the calls of an interface from another
   binary, decodes the inputs, calls the bound local port and encodes the result, the outputs or the
   declared exceptions.
-  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`: an
+  Interface (schema $defs/Interface).
   Example input: same `item` as proxy.hpp.j2 (an interface with its messages, each with
   params/inputs/outputs/returns/raises; a message is dispatched by its index in `item.messages`).
   Also reads: project.name.
@@ -73,14 +74,14 @@ public:
 {% if message.returns %}
 {% set state.bounds_check = _bounds(type_reference=message.returns, expression='result_', depth=0) %}
 {% if state.bounds_check != '' %}
-                const auto result_ = target_->{{ _identifier(name=message.name) }}({{ _arguments(parameter_list=message.params) }});
+                const auto result_ = target_->{{ _identifier(name=message.name) }}({{ _arguments(parameters=message.params) }});
                 {{ state.bounds_check }}
                 encode(writer_, result_);
 {% else %}
-                encode(writer_, target_->{{ _identifier(name=message.name) }}({{ _arguments(parameter_list=message.params) }}));
+                encode(writer_, target_->{{ _identifier(name=message.name) }}({{ _arguments(parameters=message.params) }}));
 {% endif %}
 {% else %}
-                target_->{{ _identifier(name=message.name) }}({{ _arguments(parameter_list=message.params) }});
+                target_->{{ _identifier(name=message.name) }}({{ _arguments(parameters=message.params) }});
 {% endif %}
 {% for parameter in message.outputs %}
 {% set state.expression = _identifier(name=parameter.name) %}
@@ -94,8 +95,8 @@ public:
 {% if message.raises|length > 0 %}
                 try {
 {{ '    ' ~ call_statements.rstrip()|replace('\n', '\n    ') }}
-{% for exception_type in message.raises %}
-                } catch (const {{ _type(type_reference=exception_type) }}& e) {
+{% for raised_type in message.raises %}
+                } catch (const {{ _type(type_reference=raised_type) }}& e) {
                     throw raised({{ loop.index0 }}, e);
 {% endfor %}
                 }

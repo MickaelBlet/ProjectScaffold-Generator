@@ -1,20 +1,20 @@
-{% macro labels(union_case=none, discriminator_type=none, discriminator=none) %}
+{% macro labels(case=none, discriminator=none, discriminator_expression=none) %}
 {% from '_value.j2' import value as _value %}
 {#
   C++ test of a union's discriminator against the labels of one of its cases.
   Parameters:
-    union_case: a case of a union (`labels`: values of the discriminator type).
-    discriminator_type: the union's `discriminator` (a type reference).
-    discriminator: the C++ expression of the discriminator.
+    case: an entry of a union TypeDef's `cases` (`labels`: values of the discriminator type).
+    discriminator: the union TypeDef's `discriminator` (a TypeRef).
+    discriminator_expression: the C++ expression of the discriminator.
   Example:
-    union_case: {name: reason, labels: [Degraded]}
-    discriminator_type: {kind: ref, name: Health, typeKind: enum, key: Health}
-    discriminator: d
+    case: {name: reason, labels: [Degraded]}
+    discriminator: {kind: ref, name: Health, typeKind: enum, key: Health}
+    discriminator_expression: d
     -> d == ::rover::Health::Degraded
 #}
 {% filter inline %}
-{% for label in union_case.labels %}
-  {{ discriminator }} == {{ _value(model_value=label, type_reference=discriminator_type) }}{% if not loop.last %} || {% endif %}
+{% for label in case.labels %}
+  {{ discriminator_expression }} == {{ _value(model_value=label, type_reference=discriminator) }}{% if not loop.last %} || {% endif %}
 {% endfor %}
 {% endfilter %}
 {% endmacro %}

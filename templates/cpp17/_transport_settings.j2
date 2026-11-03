@@ -1,13 +1,14 @@
-{% macro settings(remote_settings=none) %}
+{% macro transport_settings(settings=none) %}
 {% set state = namespace(parts=[]) %}
 {#
   Transport settings of a link set in the project, as text for a comment: client / server / broker
   addresses, the other settings set, then the options; empty when none is set.
   Parameters:
-    remote_settings: a link's `constraints.remote.settings` (`client`, `server`, `broker`: host and port;
+    settings: a link's `constraints.remote.settings`, a TransportSettings (schema
+      $defs/TransportSettings: `client`, `server`, `broker`: host and port;
       `path`, `name`, `capacity`, `socket`, `topic`, `interface`, `id`, `device`, `baud`; `options`).
   Example:
-    remote_settings:
+    settings:
       client: {host: null, port: null}
       server: {host: null, port: null}
       broker: {host: 10.0.0.1, port: 1883}
@@ -16,18 +17,18 @@
     -> broker 10.0.0.1:1883, topic rover, qos=1
 #}
 {% for role in ['client', 'server', 'broker'] %}
-  {% set endpoint_settings = remote_settings[role] if role in remote_settings else none %}
+  {% set endpoint_settings = settings[role] if role in settings else none %}
   {% if endpoint_settings.host != none or endpoint_settings.port != none %}
     {% set state.parts = state.parts + [role ~ ' ' ~ endpoint_settings.host ~ ':' ~ endpoint_settings.port] %}
   {% endif %}
 {% endfor %}
 {% for key in ['path', 'name', 'capacity', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
-  {% set setting_value = remote_settings[key] if key in remote_settings else none %}
+  {% set setting_value = settings[key] if key in settings else none %}
   {% if setting_value != none %}
     {% set state.parts = state.parts + [key ~ ' ' ~ setting_value] %}
   {% endif %}
 {% endfor %}
-{% for option in remote_settings.options %}
+{% for option in settings.options %}
   {% set state.parts = state.parts + [option.name ~ '=' ~ option.value] %}
 {% endfor %}
 {{ state.parts|join(', ') }}{% endmacro %}

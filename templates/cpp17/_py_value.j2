@@ -7,8 +7,9 @@
   of a given type: enums by member, unions by their case's first label, structs by keyword arguments
   (the fields not given keep their defaults).
   Parameters:
-    model_value: the value as read from the project file (number, string, list, mapping).
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    model_value: a value as read from the project file: a field's or attribute's `default`, a Constant's
+      `value` (number, string, list, mapping).
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
     prefix: `data.` outside data.py, else ''.
@@ -57,28 +58,28 @@
   {% endfor %}
   }
 {% elif type_reference.kind == 'ref' %}
-  {% set definition = typeByKey[type_reference.key] %}
-  {% if definition.kind == 'enum' %}
+  {% set type_definition = typeByKey[type_reference.key] %}
+  {% if type_definition.kind == 'enum' %}
     {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=model_value) }}
-  {% elif definition.kind == 'union' %}
+  {% elif type_definition.kind == 'union' %}
     {# The case of the one-entry mapping, with its first label. #}
     {% for entry in model_value.items() %}
-      {% set union_case = definition.cases|selectattr('name', 'equalto', entry[0])|first %}
+      {% set case = type_definition.cases|selectattr('name', 'equalto', entry[0])|first %}
       {{ _py_reference(type_reference=type_reference, prefix=prefix) }}(
-      {% if union_case.label == none %}None{% else %}{{ py_value(model_value=union_case.label, type_reference=definition.discriminator, prefix=prefix) }}{% endif %}
-      , {{ py_value(model_value=entry[1], type_reference=union_case.type, prefix=prefix) }})
+      {% if case.label == none %}None{% else %}{{ py_value(model_value=case.label, type_reference=type_definition.discriminator, prefix=prefix) }}{% endif %}
+      , {{ py_value(model_value=entry[1], type_reference=case.type, prefix=prefix) }})
     {% endfor %}
-  {% elif definition.kind == 'bitmask' %}
+  {% elif type_definition.kind == 'bitmask' %}
     {% if model_value|length == 0 %}{{ _py_reference(type_reference=type_reference, prefix=prefix) }}(0){% endif %}
     {% for flag in model_value %}
       {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=flag) }}{% if not loop.last %} | {% endif %}
     {% endfor %}
-  {% elif definition.kind == 'alias' %}
-    {{ py_value(model_value=model_value, type_reference=definition.type, prefix=prefix) }}
-  {% elif definition.kind == 'struct' %}
+  {% elif type_definition.kind == 'alias' %}
+    {{ py_value(model_value=model_value, type_reference=type_definition.type, prefix=prefix) }}
+  {% elif type_definition.kind == 'struct' %}
     {# The fields given; the others keep their defaults. #}
     {{ _py_reference(type_reference=type_reference, prefix=prefix) }}(
-    {% for field in definition.fields if field.name in model_value and model_value[field.name] != none %}
+    {% for field in type_definition.fields if field.name in model_value and model_value[field.name] != none %}
       {{ _py_identifier(name=field.name) }}={{ py_value(model_value=model_value[field.name], type_reference=field.type, prefix=prefix) }}{% if not loop.last %}, {% endif %}
     {% endfor %}
     )

@@ -12,6 +12,6 @@
 {% include '_banner.j2' %}
 #pragma once
 
-{% for user_type in types %}
-#include <{{ _header(entity=user_type) }}>
+{% for type_definition in types %}
+#include <{{ _header(entity=type_definition) }}>
 {% endfor %}

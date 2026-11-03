@@ -1,14 +1,15 @@
-{% macro arguments(parameter_list=none) %}
+{% macro arguments(parameters=none) %}
 {% from '_identifier.j2' import identifier as _identifier %}
 {#
   Arguments passing a method's parameters on to another call, by name.
   Parameters:
-    parameter_list: the `params` of a message or method (each with `name`).
+    parameters: the `params` of a message (Interface.messages[]) or method (Module.methods[]), each
+      with `name`.
   Example:
-    parameter_list: [{name: pose, ...}, {name: tags, ...}]  -> pose, tags
+    parameters: [{name: pose, ...}, {name: tags, ...}]  -> pose, tags
 #}
 {% filter inline %}
-{% for parameter in parameter_list %}
+{% for parameter in parameters %}
   {{ _identifier(name=parameter.name) }}{% if not loop.last %}, {% endif %}
 {% endfor %}
 {% endfilter %}

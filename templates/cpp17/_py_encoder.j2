@@ -4,7 +4,7 @@
   Python function `(writer, value)` encoding a type: a `Writer` method, an `encode_<Type>` function of
   data.py, or a lambda for containers and bounded primitives.
   Parameters:
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
     prefix: `data.` outside data.py, else ''.

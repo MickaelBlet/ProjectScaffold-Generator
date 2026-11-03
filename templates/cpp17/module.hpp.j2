@@ -2,7 +2,8 @@
   Generates include/<project>/<namespace>/<Module>.hpp: the class of one module (class, abstract class or
   interface class): constructor, port accessors, instances of child modules, attributes, and the adapters
   that route the calls received by `in` ports to `on<Port><Message>` methods.
-  Rendered (manifest.yaml): once per entry of `modules`, as `item`.
+  Rendered (manifest.yaml): once per entry of `modules`, as `item`: a Module (schema
+  $defs/Module).
   Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
     item:
       entity: module
@@ -101,7 +102,7 @@ protected:
 {% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
     // Calls received by in port {{ port.name }}.
 {% for message in port.interface.messages %}
-    {{ _type(type_reference=message.returns) }} on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _parameters(parameter_list=message.params) }});
+    {{ _type(type_reference=message.returns) }} on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _parameters(parameters=message.params) }});
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -118,9 +119,9 @@ private:
     public:
         explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
 {% for message in port.interface.messages %}
-        {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameter_list=message.params) }}) override
+        {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameters=message.params) }}) override
         {
-            return owner_.on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _arguments(parameter_list=message.params) }});
+            return owner_.on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _arguments(parameters=message.params) }});
         }
 {% endfor %}
 

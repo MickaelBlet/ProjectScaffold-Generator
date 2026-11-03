@@ -5,7 +5,7 @@
   C++ expression reaching a port from the module (or system) wiring it: the accessors of the child
   modules on the way, then the port's accessor.
   Parameters:
-    link_end: the `from` or `to` of a connection (`via`: child modules on the way, `port`).
+    link_end: the `from` or `to` of a connection (as links[].from / to, plus `via`: child modules on the way, `port`).
   Example:
     link_end: {via: [Core, Sensor], module: Robot.Core.Sensor, port: out}  -> core().sensor().out()
 #}

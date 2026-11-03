@@ -5,7 +5,7 @@
   Python expression of the default value of a type: what C++ value-initializes it to (an enum gets its
   first value, a struct its defaults, an array its size of elements); `None` for no type.
   Parameters:
-    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+    type_reference: a TypeRef (schema $defs/TypeRef): `kind` primitive (`name`, bound `max`), ref (a user
       type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
       (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
       Or none.
@@ -33,19 +33,19 @@
     0
   {% endif %}
 {% elif type_reference.kind == 'ref' %}
-  {% set definition = typeByKey[type_reference.key] %}
-  {% if definition.kind == 'struct' or definition.kind == 'union' %}
+  {% set type_definition = typeByKey[type_reference.key] %}
+  {% if type_definition.kind == 'struct' or type_definition.kind == 'union' %}
     {{ _py_reference(type_reference=type_reference, prefix=prefix) }}()
-  {% elif definition.kind == 'enum' %}
-    {% if definition['values']|length > 0 %}
-      {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=definition['values'][0].name) }}
+  {% elif type_definition.kind == 'enum' %}
+    {% if type_definition['values']|length > 0 %}
+      {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=type_definition['values'][0].name) }}
     {% else %}
       0
     {% endif %}
-  {% elif definition.kind == 'bitmask' %}
+  {% elif type_definition.kind == 'bitmask' %}
     {{ _py_reference(type_reference=type_reference, prefix=prefix) }}(0)
-  {% elif definition.kind == 'alias' %}
-    {{ py_zero(type_reference=definition.type, prefix=prefix) }}
+  {% elif type_definition.kind == 'alias' %}
+    {{ py_zero(type_reference=type_definition.type, prefix=prefix) }}
   {% else %}
     None
   {% endif %}

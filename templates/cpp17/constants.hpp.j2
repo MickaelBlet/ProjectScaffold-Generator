@@ -1,6 +1,7 @@
 {#
   Generates include/<project>/constants.hpp: the constants of the project, as inline variables of its namespace.
-  Rendered once (manifest.yaml), when `constants` is not empty.
+  Rendered once (manifest.yaml), when `constants` (each a Constant, schema
+  $defs/Constant) is not empty.
   Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
     constantsFile: {entity: constants, name: constants, uses: {types: [], builtins: [uint8]}}
     constants:
