@@ -147,4 +147,7 @@ using {{ _name(entity=type_definition) }} = void*; // TODO: native type of {{ ty
 {% endfilter +%}
 {% endif %}
 
+{% filter user('end') +%}
+{% endfilter +%}
+
 } // namespace {{ _cpp_namespace(entity=type_definition) }}

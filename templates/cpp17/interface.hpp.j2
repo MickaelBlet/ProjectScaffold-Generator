@@ -23,7 +23,9 @@
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(entity=interface) }}{##}
+{{ _includes(entity=interface) }}
+{%- filter user('includes') +%}
+{% endfilter +%}
 
 namespace {{ _cpp_namespace(entity=interface) }} {
 
@@ -40,6 +42,12 @@ public:
 {% endfor %}
     virtual {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameters=message.params) }}) = 0;
 {% endfor %}
+
+    {%+ filter user('members') +%}
+    {%+ endfilter +%}
 };
+
+{% filter user('end') +%}
+{% endfilter +%}
 
 } // namespace {{ _cpp_namespace(entity=interface) }}

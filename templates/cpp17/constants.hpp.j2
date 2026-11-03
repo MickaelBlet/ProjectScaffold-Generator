@@ -35,4 +35,7 @@ namespace {{ _project_identifier() }} {
 inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(type_reference=constant.type) }} {{ _identifier(name=constant.name) }} = {{ _value(model_value=constant.value, type_reference=constant.type) }};
 {% endfor %}
 
+{% filter user('constants') +%}
+{% endfilter +%}
+
 } // namespace {{ _project_identifier() }}

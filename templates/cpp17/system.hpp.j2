@@ -90,4 +90,7 @@ private:
     {%+ endfilter +%}
 };
 
+{% filter user('end') +%}
+{% endfilter +%}
+
 } // namespace {{ _cpp_namespace(entity=system) }}
