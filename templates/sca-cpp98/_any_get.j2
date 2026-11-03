@@ -6,30 +6,26 @@
   Expression extracting a value of type t from the any `any` into the member of attribute `name`
   (true when the any holds one). Parameters: any, name, t.
 #}
-{% set target -%}
-  {{- _member(name=name) -}}
-{%- endset -%}
-{%- set kind -%}
-  {{- _cx_kind(t=t) -}}
-{%- endset -%}
-{%- if kind == 'basic' -%}
-  {%- set prim -%}
-    {{- _cx_prim(t=t) -}}
-  {%- endset -%}
-  {%- if prim == 'bool' -%}
-    {{- '(' ~ any ~ ' >>= ::CORBA::Any::to_boolean(' ~ target ~ '))' -}}
-  {%- elif prim == 'char' -%}
-    {{- '(' ~ any ~ ' >>= ::CORBA::Any::to_char(' ~ target ~ '))' -}}
-  {%- elif prim == 'int8' or prim == 'uint8' -%}
-    {{- '(' ~ any ~ ' >>= ::CORBA::Any::to_octet(' ~ target ~ '))' -}}
-  {%- else -%}
-    {{- '(' ~ any ~ ' >>= ' ~ target ~ ')' -}}
-  {%- endif -%}
-{%- elif kind == 'enum' -%}
-  {{- '(' ~ any ~ ' >>= ' ~ target ~ ')' -}}
-{%- elif kind == 'string' -%}
-  {{- '::sca::fromAny(' ~ any ~ ', ' ~ target ~ ')' -}}
-{%- else -%}
-  {{- '::sca::fromAnyValue(' ~ any ~ ', ' ~ target ~ ')' -}}
-{%- endif %}
-{%+ endmacro %}
+{% set target = _member(name=name) %}
+{% set kind = _cx_kind(t=t) %}
+{% filter inline %}
+{% if kind == 'basic' %}
+  {% set prim = _cx_prim(t=t) %}
+  {% if prim == 'bool' %}
+    ({{ any }} >>= ::CORBA::Any::to_boolean({{ target }}))
+  {% elif prim == 'char' %}
+    ({{ any }} >>= ::CORBA::Any::to_char({{ target }}))
+  {% elif prim in ['int8', 'uint8'] %}
+    ({{ any }} >>= ::CORBA::Any::to_octet({{ target }}))
+  {% else %}
+    ({{ any }} >>= {{ target }})
+  {% endif %}
+{% elif kind == 'enum' %}
+  ({{ any }} >>= {{ target }})
+{% elif kind == 'string' %}
+  ::sca::fromAny({{ any }}, {{ target }})
+{% else %}
+  ::sca::fromAnyValue({{ any }}, {{ target }})
+{% endif %}
+{% endfilter %}
+{% endmacro %}

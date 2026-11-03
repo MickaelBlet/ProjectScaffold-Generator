@@ -13,6 +13,7 @@ Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `
 ## Quick start
 
 ```sh
+git submodule update --init                            # JSON Schemas (viewer/)
 scripts/build_cli.sh                                   # dist-cli/scaffold-gen (needs Rust: rustup.rs)
 dist-cli/scaffold-gen examples/robot.scaffold.yaml -d  # C++17 code into examples/generated/
 ```

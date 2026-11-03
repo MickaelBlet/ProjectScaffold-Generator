@@ -3,7 +3,7 @@
   `true` for a transport written by transport.cpp and transport.py: tcp, udp, http, websocket, shm.
   Parameter: transport.
 #}
-{% if transport == 'tcp' or transport == 'udp' or transport == 'http' or transport == 'websocket' or transport == 'shm' -%}
-  {{- 'true' -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if transport in ['tcp', 'udp', 'http', 'websocket', 'shm'] %}true{% endif %}
+{% endfilter %}
+{% endmacro %}

@@ -3,6 +3,7 @@ pub mod builtin;
 pub mod context;
 pub mod filters;
 pub mod generate;
+pub mod inline;
 pub mod node;
 pub mod run;
 pub mod sections;

@@ -3,6 +3,7 @@
   Environment variable overriding the address of a link between binaries: `ROVER_SUPERVISE_CAMERA` on
   the client side, `ROVER_SUPERVISE_CAMERA_LISTEN` on the server side. Parameters: r, side.
 #}
-{{ (project.ident|constant ~ '_' ~ r.link.name)|constant }}
-{%- if side == 'server' %}_LISTEN{% endif %}
-{%+ endmacro %}
+{% filter inline %}
+{{ (project.ident|constant ~ '_' ~ r.link.name)|constant }}{% if side == 'server' %}_LISTEN{% endif %}
+{% endfilter %}
+{% endmacro %}

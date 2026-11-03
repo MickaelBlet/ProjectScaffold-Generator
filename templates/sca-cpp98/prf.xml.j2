@@ -9,9 +9,7 @@
 <properties>
 {% for a in item.attributes %}
 {% if not a.static %}
-{% set prf -%}
-  {{- _prf_type(t=a.type) -}}
-{%- endset %}
+{% set prf = _prf_type(t=a.type) %}
 {% set mode = 'readwrite' %}
 {% if a.const %}
 {% set mode = 'readonly' %}

@@ -2,9 +2,7 @@
 {#
   IDL module (and C++ namespace) of an interface: its dependency's, else the project's. Parameter: i.
 #}
-{% if i.dependency -%}
-  {{- i.dependency|snake -}}
-{%- else -%}
-  {{- project.ident|snake -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{{ (i.dependency or project.ident)|snake }}
+{% endfilter %}
+{% endmacro %}

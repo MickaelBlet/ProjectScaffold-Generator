@@ -1,31 +1,25 @@
 {% macro exposed(m=none) %}
-{% set ns = namespace() %}
+{% set ns = namespace(ends=[]) %}
 {#
   Ports of the modules inside component m that links of the waveform reach (from other components,
   or other projects): `Plant.Store:query,...`. The component offers them as ports of its own, named
   by their path inside it (`Store.query`). Parameter: m.
 #}
-{% set prefix = m.path ~ '.' -%}
-{%- set found = '' -%}
-{%- set ns.ends = '' -%}
-{%- for s in systems -%}
-  {%- for c in s.connections -%}
-    {%- set ns.ends = ns.ends ~ c.from.module ~ ':' ~ c.from.port ~ ',' -%}
-    {%- set ns.ends = ns.ends ~ c.to.module ~ ':' ~ c.to.port ~ ',' -%}
-  {%- endfor -%}
-  {%- for e in s.external -%}
-    {%- set ns.ends = ns.ends ~ e.local.module ~ ':' ~ e.local.port ~ ',' -%}
-  {%- endfor -%}
-{%- endfor -%}
-{%- for r in remoteLinks -%}
-  {%- set ns.ends = ns.ends ~ r.from.module ~ ':' ~ r.from.port ~ ',' -%}
-  {%- set ns.ends = ns.ends ~ r.to.module ~ ':' ~ r.to.port ~ ',' -%}
-{%- endfor -%}
-{%- set ns.ends = ns.ends|split(',')|select|list|unique|list -%}
-{%- for x in ns.ends -%}
-  {%- set start = (x)[0:][:prefix|length] -%}
-  {%- if start == prefix -%}
-    {{- x ~ ',' -}}
-  {%- endif -%}
-{%- endfor %}
-{%+ endmacro %}
+{% set prefix = m.path ~ '.' %}
+{% for s in systems %}
+  {% for c in s.connections %}
+    {% set ns.ends = ns.ends + [c.from.module ~ ':' ~ c.from.port, c.to.module ~ ':' ~ c.to.port] %}
+  {% endfor %}
+  {% for e in s.external %}
+    {% set ns.ends = ns.ends + [e.local.module ~ ':' ~ e.local.port] %}
+  {% endfor %}
+{% endfor %}
+{% for r in remoteLinks %}
+  {% set ns.ends = ns.ends + [r.from.module ~ ':' ~ r.from.port, r.to.module ~ ':' ~ r.to.port] %}
+{% endfor %}
+{% filter inline %}
+{% for x in ns.ends|unique if x[:prefix|length] == prefix %}
+  {{ x }},
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

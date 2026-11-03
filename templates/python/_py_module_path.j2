@@ -4,13 +4,9 @@
   Import path of the Python module of a module: `robot.modules.core.sensor` (a module with children
   is a package: its class is in its `__init__.py`). Parameter: m.
 #}
-{{ project.ident|snake ~ '.modules' -}}
-{%- for parent in m.namespace -%}
-  {%- set part = parent|snake -%}
-  {{- '.' -}}
-  {{- _py_id(name=part) -}}
-{%- endfor -%}
-{%- set leaf = m.name|snake -%}
-{{- '.' -}}
-{{- _py_id(name=leaf) -}}
-{%+ endmacro %}
+{% filter inline %}
+{{ project.ident|snake }}.modules
+{% for parent in m.namespace %}.{{ _py_id(name=parent|snake) }}{% endfor %}
+.{{ _py_id(name=m.name|snake) }}
+{% endfilter %}
+{% endmacro %}

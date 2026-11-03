@@ -6,51 +6,28 @@
   of key / value structs. Included (not rendered): records them in `idl.declared` (a namespace), which the
   including template starts. Parameter: t.
 #}
-{% if t.kind == 'primitive' or t.kind == 'ref' -%}
-{%- else -%}
-  {%- if t.kind == 'map' -%}
-    {%- with t = t.key %}{% include '_idl_containers.j2' %}{% endwith -%}
-    {%- with t = t.value %}{% include '_idl_containers.j2' %}{% endwith -%}
-  {%- else -%}
-    {%- with t = t.of %}{% include '_idl_containers.j2' %}{% endwith -%}
-  {%- endif -%}
-  {%- set idlc_name -%}
-    {{- _idl_name(t=t) -}}
-  {%- endset -%}
-  {%- set idlc_key = '|' ~ idlc_name ~ '|' -%}
-  {%- if not (idlc_key in idl.declared) -%}
-    {%- set idl.declared = idl.declared ~ idlc_key -%}
-    {%- if t.kind == 'map' -%}
-      {%- set idlc_entry -%}
-        {{- '    struct ' ~ idlc_name ~ 'Entry {' ~ '\n' -}}
-        {{- '        ' -}}
-        {{- _idl_type(t=t.key) -}}
-        {{- ' key;' ~ '\n' ~ '        ' -}}
-        {{- _idl_type(t=t.value) -}}
-        {{- ' value;' ~ '\n' ~ '    };' ~ '\n' -}}
-        {{- '    typedef sequence<::' -}}
-        {{- project.ident|snake -}}
-        {{- '::' ~ idlc_name ~ 'Entry' -}}
-        {%- if t.max is not none -%}
-          {{- ', ' ~ t.max -}}
-        {%- endif -%}
-        {{- '> ' ~ idlc_name ~ ';' ~ '\n' -}}
-      {%- endset -%}
-      {{- idlc_entry -}}
-    {%- else -%}
-      {{- '    typedef sequence<' -}}
-      {{- _idl_type(t=t.of) -}}
-      {%- if t.kind == 'optional' -%}
-        {{- ', 1> ' ~ idlc_name ~ '; // optional: empty or one' -}}
-      {%- elif t.kind == 'array' -%}
-        {{- ', ' ~ t.size ~ '> ' ~ idlc_name ~ '; // array of ' ~ t.size -}}
-      {%- else -%}
-        {%- if t.max is not none -%}
-          {{- ', ' ~ t.max -}}
-        {%- endif -%}
-        {{- '> ' ~ idlc_name ~ ';' -}}
-      {%- endif -%}
-      {{- '\n' -}}
-    {%- endif -%}
-  {%- endif -%}
-{%- endif %}
+{% if t.kind not in ['primitive', 'ref'] %}
+  {% if t.kind == 'map' %}
+    {% with t = t.key %}{% include '_idl_containers.j2' %}{% endwith %}
+    {% with t = t.value %}{% include '_idl_containers.j2' %}{% endwith %}
+  {% else %}
+    {% with t = t.of %}{% include '_idl_containers.j2' %}{% endwith %}
+  {% endif %}
+  {% set idlc_name = _idl_name(t=t) %}
+  {% if idlc_name not in idl.declared %}
+    {% set idl.declared = idl.declared + [idlc_name] %}
+    {% if t.kind == 'map' %}
+    struct {{ idlc_name }}Entry {
+        {{ _idl_type(t=t.key) }} key;
+        {{ _idl_type(t=t.value) }} value;
+    };
+    typedef sequence<::{{ project.ident|snake }}::{{ idlc_name }}Entry{% if t.max is not none %}, {{ t.max }}{% endif %}> {{ idlc_name }};
+    {% elif t.kind == 'optional' %}
+    typedef sequence<{{ _idl_type(t=t.of) }}, 1> {{ idlc_name }}; // optional: empty or one
+    {% elif t.kind == 'array' %}
+    typedef sequence<{{ _idl_type(t=t.of) }}, {{ t.size }}> {{ idlc_name }}; // array of {{ t.size }}
+    {% else %}
+    typedef sequence<{{ _idl_type(t=t.of) }}{% if t.max is not none %}, {{ t.max }}{% endif %}> {{ idlc_name }};
+    {% endif %}
+  {% endif %}
+{% endif %}

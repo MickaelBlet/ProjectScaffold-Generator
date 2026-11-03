@@ -63,7 +63,7 @@ The project file is a ProjectScaffold file (YAML or JSON), or an OMG IDL file: i
 
 ### Building the generator
 
-`scripts/build_cli.sh` builds `dist-cli/scaffold-gen`: one static executable (Rust, nothing to install), built-in templates included. An argument names another Rust target, such as `aarch64-unknown-linux-musl` or `x86_64-pc-windows-gnu` (→ `scaffold-gen.exe`, with a MinGW linker). From the sources: `cargo run --release -- <project file> [options]`.
+`scripts/build_cli.sh` builds `dist-cli/scaffold-gen`: one static executable (Rust, nothing to install), built-in templates included. An argument names another Rust target, such as `aarch64-unknown-linux-musl`, `x86_64-pc-windows-msvc` (→ `scaffold-gen.exe`, recommended for Windows: built from Linux with `cargo install cargo-xwin`, which downloads the MSVC runtime and Windows SDK, and `llvm-rc`) or `x86_64-pc-windows-gnu` (with a MinGW linker and `windres`). Windows executables carry version information and a manifest. Unsigned, they may still be flagged by antivirus software: sign them for distribution. From the sources: `cargo run --release -- <project file> [options]`.
 
 ## Generating again
 

@@ -4,12 +4,11 @@
   Python test of discriminator `d` against the labels of a union case: `d in (1, 2)`.
   Parameters: c (the case), t (the discriminator type), d (expression), prefix.
 #}
-{{ d ~ ' in (' -}}
-{%- for l in c.labels -%}
-  {{- _py_value(v=l, t=t, prefix=prefix) -}}
-  {%- if loop.length == 1 or loop.last == false -%}
-    {{- ', ' -}}
-  {%- endif -%}
-{%- endfor -%}
-{{- ')' -}}
-{%+ endmacro %}
+{% filter inline %}
+{{ d }} in (
+{% for l in c.labels %}
+  {{ _py_value(v=l, t=t, prefix=prefix) }}{% if loop.length == 1 or not loop.last %}, {% endif %}
+{% endfor %}
+)
+{% endfilter %}
+{% endmacro %}

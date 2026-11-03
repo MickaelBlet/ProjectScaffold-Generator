@@ -5,12 +5,12 @@
   Return type of an attribute's getter: `T` for basic types and enums, `const char*` for strings,
   else `const T&`. Parameters: t, owner.
 #}
-{% set kind -%}
-  {{- _cx_kind(t=t) -}}
-{%- endset -%}
-{%- if kind == 'string' -%}
-  {{- 'const char*' -}}
-{%- else -%}
-  {{- _cx_in(t=t, owner=owner) -}}
-{%- endif %}
-{%+ endmacro %}
+{% set kind = _cx_kind(t=t) %}
+{% filter inline %}
+{% if kind == 'string' %}
+  const char*
+{% else %}
+  {{ _cx_in(t=t, owner=owner) }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

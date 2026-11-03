@@ -2,17 +2,19 @@
 {#
   C++ type of a primitive of the model. Parameter: name.
 #}
-{% if name == 'int8' or name == 'int16' or name == 'int32' or name == 'int64' or name == 'uint8' or name == 'uint16' or name == 'uint32' or name == 'uint64' -%}
-  {{- 'std::' ~ name ~ '_t' -}}
-{%- elif name == 'float32' -%}
-  {{- 'float' -}}
-{%- elif name == 'float64' -%}
-  {{- 'double' -}}
-{%- elif name == 'string' -%}
-  {{- 'std::string' -}}
-{%- elif name == 'bytes' -%}
-  {{- 'std::vector<std::uint8_t>' -}}
-{%- else -%}
-  {{- name -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if name in ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'] %}
+  std::{{ name }}_t
+{% elif name == 'float32' %}
+  float
+{% elif name == 'float64' %}
+  double
+{% elif name == 'string' %}
+  std::string
+{% elif name == 'bytes' %}
+  std::vector<std::uint8_t>
+{% else %}
+  {{ name }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

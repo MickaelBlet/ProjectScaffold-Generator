@@ -16,20 +16,16 @@
 {% from '_value.j2' import value as _value %}
 {% include '_banner.j2' %}
 #pragma once
-{% set m = item -%}
-{%- set root = project.ident|snake -%}
-{%- set class -%}
-  {{- _name(e=m) -}}
-{%- endset -%}
-{%- set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length -%}
-{#- Names given by the model: attribute accessors do not take them. -#}
-{%- set methodNames = m.methods|map(attribute='name') -%}
-{%- set portNames = m.ports|map(attribute='name') -%}
-{%- set names = (methodNames + portNames) -%}
-{%- set polymorphic = false -%}
-{%- if m.abstract or (m.isBase or (virtuals > 0 or m.bases|length > 0)) -%}
-  {%- set polymorphic = true -%}
-{%- endif %}
+{% set m = item %}
+{% set root = project.ident|snake %}
+{% set class = _name(e=m) %}
+{% set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length %}
+{# Names given by the model: attribute accessors do not take them. #}
+{% set names = m.methods|map(attribute='name')|list + m.ports|map(attribute='name')|list %}
+{% set polymorphic = false %}
+{% if m.abstract or m.isBase or virtuals > 0 or m.bases|length > 0 %}
+  {% set polymorphic = true %}
+{% endif %}
 
 
 {{ _includes(e=m) }}

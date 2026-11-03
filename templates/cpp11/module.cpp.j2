@@ -10,10 +10,8 @@
 {% from '_params.j2' import params as _params %}
 {% from '_type.j2' import type as _type %}
 {% include '_banner.j2' %}
-{% set m = item -%}
-{%- set class -%}
-  {{- _name(e=m) -}}
-{%- endset %}
+{% set m = item %}
+{% set class = _name(e=m) %}
 #include <{{ _header(e=m) }}>
 {% filter user('includes') +%}
 {% endfilter +%}

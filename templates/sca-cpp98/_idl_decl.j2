@@ -8,9 +8,7 @@
   type's name (`State_On`): IDL puts them in the enclosing module. Included (not rendered): a
   custom primitive's user section belongs to the including file. Parameter: e.
 #}
-{% set idld_name -%}
-  {{- _idl_id(name=e.flatName) -}}
-{%- endset +%}
+{% set idld_name = _idl_id(name=e.flatName) +%}
 
 {{ e.description|doc_comment('    // ') }}{##}
 

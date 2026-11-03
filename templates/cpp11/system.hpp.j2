@@ -8,15 +8,15 @@
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(e=system) }}
-{%- set ns.remote = '' -%}
-{%- for r in system.proxies -%}
-  {%- set ns.remote = ns.remote ~ r.interface.name ~ 'Proxy,' -%}
-{%- endfor -%}
-{%- for r in system.stubs -%}
-  {%- set ns.remote = ns.remote ~ r.interface.name ~ 'Stub,' -%}
-{%- endfor -%}
-{%- set ns.remote = ns.remote|split(',')|select|list|unique|list|sort %}
+{{ _includes(e=system) -}}
+{% set ns.remote = [] %}
+{% for r in system.proxies %}
+  {% set ns.remote = ns.remote + [r.interface.name ~ 'Proxy'] %}
+{% endfor %}
+{% for r in system.stubs %}
+  {% set ns.remote = ns.remote + [r.interface.name ~ 'Stub'] %}
+{% endfor %}
+{% set ns.remote = ns.remote|unique|list|sort %}
 {% for r in ns.remote %}
 #include <{{ project.ident|snake }}/remote/{{ r }}.hpp>
 {% endfor %}

@@ -49,12 +49,8 @@ class {{ item.name }}Proxy:
 {{ msg.description|doc_comment('        # ') }}
         _w = Writer()
 {% for p in msg.inputs %}
-{% set __capture %}
-{{ _py_id(name=p.name) }}
-{%- endset %}{% set ns.value = __capture %}
-{% set __capture %}
-{{ _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') }}
-{%- endset %}{% set ns.statement = __capture %}
+{% set ns.value = _py_id(name=p.name) %}
+{% set ns.statement = _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') %}
         {{ ns.statement }}
 {% endfor %}
 {% if msg.returns or msg.outputs|length > 0 %}
@@ -131,18 +127,14 @@ class {{ item.name }}Stub:
 {% endif %}
 {% set ns.k = 0 %}
 {% if msg.returns %}
-{% set __capture %}
-{{ _py_encode(t=msg.returns, v='_v0', w='_w', prefix='_data.') }}
-{%- endset %}{% set ns.statement = __capture %}
+{% set ns.statement = _py_encode(t=msg.returns, v='_v0', w='_w', prefix='_data.') %}
             {{ ns.statement }}
 {% set ns.k = 1 %}
 {% endif %}
 {% for p in msg.outputs %}
 {% set i = (loop.index0 + ns.k) %}
 {% set ns.value = '_v' ~ i %}
-{% set __capture %}
-{{ _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') }}
-{%- endset %}{% set ns.statement = __capture %}
+{% set ns.statement = _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') %}
             {{ ns.statement }}
 {% endfor %}
             return True

@@ -7,149 +7,91 @@
   through ::scaffold::Make (no braced lists in C++98), structs through their constructor.
   Parameters: v, t.
 #}
-{% if t.kind == 'primitive' -%}
-  {%- if t.name == 'bool' -%}
-    {%- if v == true or v == 'true' -%}
-      {{- 'true' -}}
-    {%- else -%}
-      {{- 'false' -}}
-    {%- endif -%}
-  {%- elif t.name == 'char' -%}
-    {%- set ns.c = v|replace('\\', '\\\\')|replace("'", "\\'") -%}
-    {{- "'" ~ ns.c ~ "'" -}}
-  {%- elif t.name == 'string' -%}
-    {%- set text = v|replace('\\', '\\\\')|replace('"', '\\"')|replace('\n', '\\n')|replace('\t', '\\t') -%}
-    {{- '"' ~ text ~ '"' -}}
-  {%- elif t.name == 'bytes' -%}
-    {#- The text's characters, one byte each. -#}
-    {%- set chars = v|split('')|select|list -%}
-    {%- if chars|length == 0 -%}
-      {{- 'std::vector<uint8_t>()' -}}
-    {%- else -%}
-      {{- '::scaffold::Make<std::vector<uint8_t> >()' -}}
-    {%- endif -%}
-    {%- for ch in chars -%}
-      {%- set ns.c = ch|replace('\\', '\\\\')|replace("'", "\\'") -%}
-      {{- "('" ~ ns.c ~ "')" -}}
-    {%- endfor -%}
-  {%- elif t.name == 'float32' or t.name == 'float64' -%}
-    {%- set number = v ~ '' -%}
-    {{- number -}}
-    {%- if not ('.' in number or 'e' in number) -%}
-      {{- '.0' -}}
-    {%- endif -%}
-    {%- if t.name == 'float32' -%}
-      {{- 'f' -}}
-    {%- endif -%}
-  {%- elif t.name == 'int64' -%}
-    {{- v ~ 'LL' -}}
-  {%- elif t.name == 'uint64' -%}
-    {{- v ~ 'ULL' -}}
-  {%- elif t.name == 'uint32' -%}
-    {{- v ~ 'U' -}}
-  {%- else -%}
-    {{- v -}}
-  {%- endif -%}
-{%- elif t.kind == 'optional' -%}
-  {%- if v == none -%}
-    {{- '::scaffold::nullopt' -}}
-  {%- else -%}
-    {{- value(v=v, t=t.of) -}}
-  {%- endif -%}
-{%- elif t.kind == 'array' or t.kind == 'vector' or t.kind == 'list' or t.kind == 'set' -%}
-  {%- set type -%}
-    {{- _type(t=t) -}}
-  {%- endset -%}
-  {%- if v|length == 0 -%}
-    {{- type ~ '()' -}}
-  {%- else -%}
-    {%- set last = (type)[-1:][:1] -%}
-    {{- '::scaffold::Make< ' ~ type -}}
-    {%- if last == '>' -%}
-      {{- ' ' -}}
-    {%- endif -%}
-    {{- '>()' -}}
-  {%- endif -%}
-  {%- for item in v -%}
-    {{- '(' -}}
-    {{- value(v=item, t=t.of) -}}
-    {{- ')' -}}
-  {%- endfor -%}
-{%- elif t.kind == 'map' -%}
-  {%- set type -%}
-    {{- _type(t=t) -}}
-  {%- endset -%}
-  {%- if v|length == 0 -%}
-    {{- type ~ '()' -}}
-  {%- else -%}
-    {{- '::scaffold::Make< ' ~ type ~ ' >()' -}}
-  {%- endif -%}
-  {%- for entry in v.items() -%}
-    {{- '(' -}}
-    {{- value(v=entry[0], t=t.key) -}}
-    {{- ', ' -}}
-    {{- value(v=entry[1], t=t.value) -}}
-    {{- ')' -}}
-  {%- endfor -%}
-{%- elif t.kind == 'ref' -%}
-  {%- set def = typeByKey[t.key] -%}
-  {%- if def.kind == 'enum' -%}
-    {{- _type(t=t) -}}
-    {{- '::' -}}
-    {{- _id(name=v) -}}
-  {%- elif def.kind == 'bitmask' -%}
-    {#- The flags of the list, or no flag. -#}
-    {%- if v|length == 0 -%}
-      {{- _type(t=t) -}}
-      {{- '()' -}}
-    {%- endif -%}
-    {%- for flag in v -%}
-      {{- _type(t=t) -}}
-      {{- '::' -}}
-      {{- _id(name=flag) -}}
-      {%- if not loop.last -%}
-        {{- ' | ' -}}
-      {%- endif -%}
-    {%- endfor -%}
-  {%- elif def.kind == 'union' -%}
-    {#- The case of the one-entry mapping, made by the union's factory of that case. -#}
-    {%- for entry in v.items() -%}
-      {%- set ns.c = def.cases|selectattr('name', 'equalto', entry[0])|first -%}
-      {{- _type(t=t) -}}
-      {%- set factory = '::make' ~ ns.c.name|ucfirst -%}
-      {{- factory -}}
-      {{- '(' -}}
-      {{- value(v=entry[1], t=ns.c.type) -}}
-      {{- ')' -}}
-    {%- endfor -%}
-  {%- elif def.kind == 'alias' -%}
-    {{- value(v=v, t=def.type) -}}
-  {%- elif def.kind == 'struct' -%}
-    {#- Fields in order: the value's, else the field's default, else value-initialized. -#}
-    {%- set ns.given = '|' -%}
-    {%- for entry in v.items() -%}
-      {%- set ns.given = ns.given ~ entry[0] ~ '|' -%}
-    {%- endfor -%}
-    {{- _type(t=t) -}}
-    {{- '(' -}}
-    {%- for f in def.fields -%}
-      {%- set key = '|' ~ f.name ~ '|' -%}
-      {%- if key in ns.given -%}
-        {{- value(v=v[f.name], t=f.type) -}}
-      {%- elif f.hasDefault -%}
-        {{- value(v=f.default, t=f.type) -}}
-      {%- else -%}
-        {{- _type(t=f.type) -}}
-        {{- '()' -}}
-      {%- endif -%}
-      {%- if not loop.last -%}
-        {{- ', ' -}}
-      {%- endif -%}
-    {%- endfor -%}
-    {{- ')' -}}
-  {%- else -%}
-    {#- Custom primitive: the value is written as it is (a string is a C++ expression). -#}
-    {{- v -}}
-  {%- endif -%}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.kind == 'primitive' %}
+  {% if t.name == 'bool' %}
+    {% if v == true or v == 'true' %}true{% else %}false{% endif %}
+  {% elif t.name == 'char' %}
+    '{{ v|replace('\\', '\\\\')|replace("'", "\\'") }}'
+  {% elif t.name == 'string' %}
+    "{{ v|replace('\\', '\\\\')|replace('"', '\\"')|replace('\n', '\\n')|replace('\t', '\\t') }}"
+  {% elif t.name == 'bytes' %}
+    {# The text's characters, one byte each. #}
+    {% set chars = v|split('')|select|list %}
+    {% if chars|length == 0 %}
+      std::vector<uint8_t>()
+    {% else %}
+      ::scaffold::Make<std::vector<uint8_t> >()
+    {% endif %}
+    {% for ch in chars %}('{{ ch|replace('\\', '\\\\')|replace("'", "\\'") }}'){% endfor %}
+  {% elif t.name == 'float32' or t.name == 'float64' %}
+    {% set number = v ~ '' %}
+    {{ number }}
+    {% if not ('.' in number or 'e' in number) %}.0{% endif %}
+    {% if t.name == 'float32' %}f{% endif %}
+  {% elif t.name == 'int64' %}
+    {{ v }}LL
+  {% elif t.name == 'uint64' %}
+    {{ v }}ULL
+  {% elif t.name == 'uint32' %}
+    {{ v }}U
+  {% else %}
+    {{ v }}
+  {% endif %}
+{% elif t.kind == 'optional' %}
+  {% if v == none %}::scaffold::nullopt{% else %}{{ value(v=v, t=t.of) }}{% endif %}
+{% elif t.kind == 'array' or t.kind == 'vector' or t.kind == 'list' or t.kind == 'set' %}
+  {% set type = _type(t=t) %}
+  {% if v|length == 0 %}
+    {{ type }}()
+  {% else %}
+    ::scaffold::Make< {{ type }}{% if type.endswith('>') %} {% endif %}>()
+  {% endif %}
+  {% for item in v %}({{ value(v=item, t=t.of) }}){% endfor %}
+{% elif t.kind == 'map' %}
+  {% set type = _type(t=t) %}
+  {% if v|length == 0 %}
+    {{ type }}()
+  {% else %}
+    ::scaffold::Make< {{ type }} >()
+  {% endif %}
+  {% for entry in v.items() %}({{ value(v=entry[0], t=t.key) }}, {{ value(v=entry[1], t=t.value) }}){% endfor %}
+{% elif t.kind == 'ref' %}
+  {% set def = typeByKey[t.key] %}
+  {% if def.kind == 'enum' %}
+    {{ _type(t=t) }}::{{ _id(name=v) }}
+  {% elif def.kind == 'bitmask' %}
+    {# The flags of the list, or no flag. #}
+    {% if v|length == 0 %}{{ _type(t=t) }}(){% endif %}
+    {% for flag in v %}
+      {{ _type(t=t) }}::{{ _id(name=flag) }}{% if not loop.last %} | {% endif %}
+    {% endfor %}
+  {% elif def.kind == 'union' %}
+    {# The case of the one-entry mapping, made by the union's factory of that case. #}
+    {% for entry in v.items() %}
+      {% set ns.c = def.cases|selectattr('name', 'equalto', entry[0])|first %}
+      {{ _type(t=t) }}::make{{ ns.c.name|ucfirst }}({{ value(v=entry[1], t=ns.c.type) }})
+    {% endfor %}
+  {% elif def.kind == 'alias' %}
+    {{ value(v=v, t=def.type) }}
+  {% elif def.kind == 'struct' %}
+    {# Fields in order: the value's, else the field's default, else value-initialized. #}
+    {{ _type(t=t) }}(
+    {% for f in def.fields %}
+      {% if f.name in v %}
+        {{ value(v=v[f.name], t=f.type) }}
+      {% elif f.hasDefault %}
+        {{ value(v=f.default, t=f.type) }}
+      {% else %}
+        {{ _type(t=f.type) }}()
+      {% endif %}
+      {% if not loop.last %}, {% endif %}
+    {% endfor %}
+    )
+  {% else %}
+    {# Custom primitive: the value is written as it is (a string is a C++ expression). #}
+    {{ v }}
+  {% endif %}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

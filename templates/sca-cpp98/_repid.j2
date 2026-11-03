@@ -3,7 +3,7 @@
 {#
   Repository id of an interface: `IDL:robot/Telemetry:1.0`. Parameter: i.
 #}
-{{ 'IDL:' -}}
-{{- _iface_ns(i=i) -}}
-{{- '/' ~ i.name ~ ':1.0' -}}
-{%+ endmacro %}
+{% filter inline %}
+IDL:{{ _iface_ns(i=i) }}/{{ i.name }}:1.0
+{% endfilter %}
+{% endmacro %}

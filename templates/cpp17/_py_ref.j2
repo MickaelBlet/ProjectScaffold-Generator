@@ -5,10 +5,8 @@
   a module (in `module_types.py`, by its flat name). Parameters: t, prefix (`data.` outside data.py and
   module_types.py, else '').
 #}
-{% if t.scope|length > 0 and prefix != '' -%}
-  {{- 'module_types.' -}}
-{%- else -%}
-  {{- prefix -}}
-{%- endif -%}
-{{- _py_id(name=t.flatName) -}}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.scope|length > 0 and prefix != '' %}module_types.{% else %}{{ prefix }}{% endif %}
+{{ _py_id(name=t.flatName) }}
+{% endfilter %}
+{% endmacro %}

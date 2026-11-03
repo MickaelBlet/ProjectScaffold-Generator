@@ -3,59 +3,42 @@
   C++ expression of a value of a basic type, an enum or a bitmask (nothing for other types).
   Parameters: v, t.
 #}
-{% if t.kind == 'primitive' -%}
-  {%- if t.name == 'bool' -%}
-    {%- if v == true or v == 'true' -%}
-      {{- 'true' -}}
-    {%- else -%}
-      {{- 'false' -}}
-    {%- endif -%}
-  {%- elif t.name == 'char' -%}
-    {%- set c = v|replace('\\', '\\\\')|replace("'", "\\'") -%}
-    {{- "'" ~ c ~ "'" -}}
-  {%- elif t.name == 'int8' -%}
-    {#- An octet: negative values wrap around. -#}
-    {%- if v < 0 -%}
-      {{- (v + 256) -}}
-    {%- else -%}
-      {{- v -}}
-    {%- endif -%}
-  {%- elif t.name == 'float32' or t.name == 'float64' -%}
-    {%- set number = v ~ '' -%}
-    {{- number -}}
-    {%- if not ('.' in number or 'e' in number) -%}
-      {{- '.0' -}}
-    {%- endif -%}
-    {%- if t.name == 'float32' -%}
-      {{- 'f' -}}
-    {%- endif -%}
-  {%- elif t.name == 'int64' -%}
-    {{- v ~ 'LL' -}}
-  {%- elif t.name == 'uint64' -%}
-    {{- v ~ 'ULL' -}}
-  {%- elif t.name == 'uint32' -%}
-    {{- v ~ 'U' -}}
-  {%- elif t.name == 'string' or t.name == 'bytes' -%}
-  {%- else -%}
-    {{- v -}}
-  {%- endif -%}
-{%- elif t.kind == 'ref' -%}
-  {%- set def = typeByKey[t.key] -%}
-  {%- set ns_ = def.dependency|default(project.ident, true)|snake -%}
-  {%- if def.kind == 'enum' -%}
-    {{- '::' ~ ns_ ~ '::' ~ def.flatName ~ '_' ~ v -}}
-  {%- elif def.kind == 'bitmask' -%}
-    {%- if v|length == 0 -%}
-      {{- '0' -}}
-    {%- endif -%}
-    {%- for flag in v -%}
-      {{- '::' ~ ns_ ~ '::' ~ def.flatName ~ '_' ~ flag -}}
-      {%- if not loop.last -%}
-        {{- ' | ' -}}
-      {%- endif -%}
-    {%- endfor -%}
-  {%- elif def.kind == 'alias' -%}
-    {{- cx_literal(v=v, t=def.type) -}}
-  {%- endif -%}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.kind == 'primitive' %}
+  {% if t.name == 'bool' %}
+    {% if v == true or v == 'true' %}true{% else %}false{% endif %}
+  {% elif t.name == 'char' %}
+    {% set c = v|replace('\\', '\\\\')|replace("'", "\\'") %}
+    '{{ c }}'
+  {% elif t.name == 'int8' %}
+    {# An octet: negative values wrap around. #}
+    {{ v + 256 if v < 0 else v }}
+  {% elif t.name in ['float32', 'float64'] %}
+    {% set number = v ~ '' %}
+    {{ number }}{% if not ('.' in number or 'e' in number) %}.0{% endif %}{% if t.name == 'float32' %}f{% endif %}
+  {% elif t.name == 'int64' %}
+    {{ v }}LL
+  {% elif t.name == 'uint64' %}
+    {{ v }}ULL
+  {% elif t.name == 'uint32' %}
+    {{ v }}U
+  {% elif t.name in ['string', 'bytes'] %}
+  {% else %}
+    {{ v }}
+  {% endif %}
+{% elif t.kind == 'ref' %}
+  {% set def = typeByKey[t.key] %}
+  {% set ns_ = def.dependency|default(project.ident, true)|snake %}
+  {% if def.kind == 'enum' %}
+    ::{{ ns_ }}::{{ def.flatName }}_{{ v }}
+  {% elif def.kind == 'bitmask' %}
+    {% if v|length == 0 %}0{% endif %}
+    {% for flag in v %}
+      ::{{ ns_ }}::{{ def.flatName }}_{{ flag }}{% if not loop.last %} | {% endif %}
+    {% endfor %}
+  {% elif def.kind == 'alias' %}
+    {{ cx_literal(v=v, t=def.type) }}
+  {% endif %}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

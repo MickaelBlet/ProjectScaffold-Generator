@@ -3,8 +3,7 @@
   A model name as a C++ identifier of the generated classes (modules, ports, attributes): C++
   keywords get a trailing `_`. Parameter: name.
 #}
-{{ name -}}
-{%- if name in generator.reserved -%}
-  {{- '_' -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{{ name }}{% if name in generator.reserved %}_{% endif %}
+{% endfilter %}
+{% endmacro %}

@@ -4,14 +4,7 @@
 {#
   Type of a value read only: `T` for scalars, else `const T&`. Parameter: t.
 #}
-{% set scalar -%}
-  {{- _scalar(t=t) -}}
-{%- endset -%}
-{%- if scalar == 'true' -%}
-  {{- _type(t=t) -}}
-{%- else -%}
-  {{- 'const ' -}}
-  {{- _type(t=t) -}}
-  {{- '&' -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if _scalar(t=t) == 'true' %}{{ _type(t=t) }}{% else %}const {{ _type(t=t) }}&{% endif %}
+{% endfilter %}
+{% endmacro %}

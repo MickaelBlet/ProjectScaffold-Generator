@@ -2,6 +2,9 @@
 name = "scaffold-gen"
 version = "1.0.0"
 edition = "2024"
+description = "ProjectScaffold code generator"
+authors = ["Mickaël Blet"]
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
@@ -14,6 +17,9 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
 yaml-rust2 = "0.13.0"
+
+[build-dependencies]
+embed-resource = "3.0.12"
 
 [profile.release]
 strip = true

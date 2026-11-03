@@ -15,8 +15,7 @@ from .data import *  # noqa: F401,F403
 {% filter user('imports') +%}
 {% endfilter +%}
 {% for t in allModuleTypes %}
-
-{%- if t.kind == 'enum' %}
+{% if t.kind == 'enum' %}
 
 
 class {{ _py_id(name=t.flatName) }}(IntEnum):

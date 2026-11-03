@@ -1,25 +1,17 @@
 {% from '_component.j2' import component as _component %}
 {% from '_port_name.j2' import port_name as _port_name %}
 {% from '_waveform_links.j2' import waveform_links as _waveform_links %}
-{% set ns = namespace() %}
+{% set ns = namespace(components=[]) %}
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE softwareassembly PUBLIC "-//JTRS//DTD SCA V2.2.2 SAD//EN" "softwareassembly.dtd">
 {% include '_xml_banner.j2' %}
-{% set root = project.ident|snake -%}
-{%- set ns.components = '' -%}
-{%- for m in modules -%}
-  {%- set __capture -%}
-    {{- _component(m=m) -}}
-  {%- endset %}{% set ns.isComponent = __capture -%}
-  {%- if ns.isComponent == 'true' -%}
-    {%- set ns.components = ns.components ~ m.path ~ ',' -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- set ns.components = ns.components|split(',')|select|list -%}
-{%- set links -%}
-  {{- _waveform_links() -}}
-{%- endset -%}
-{%- set waveLinks = links|split(';')|select|list %}
+{% set root = project.ident|snake %}
+{% for m in modules %}
+  {% if _component(m=m) == 'true' %}
+    {% set ns.components = ns.components + [m.path] %}
+  {% endif %}
+{% endfor %}
+{% set waveLinks = _waveform_links()|split(';')|select|list %}
 <!-- Waveform {{ project.name|escape|string }}: a component per concrete top-level module, the binaries as host collocations, the first component as assembly controller. -->
 <softwareassembly id="DCE:{{ (root ~ '/waveform')|uuid }}" name="{{ project.name|escape|string }}">
 {% if project.description != '' %}
@@ -37,10 +29,7 @@
 {% for b in binaries %}
         <hostcollocation id="DCE:{{ (root ~ '/binaries/' ~ b.name)|uuid }}" name="{{ b.name }}">
 {% for m in b.modules %}
-{% set __capture -%}
-  {{- _component(m=m) -}}
-{%- endset %}{% set ns.isComponent = __capture %}
-{% if ns.isComponent == 'true' %}
+{% if _component(m=m) == 'true' %}
 {% with m = m, pad = '    ' %}{% include '_sad_placement.j2' %}{% endwith %}
 {% endif %}
 {% endfor %}
@@ -72,63 +61,55 @@
 {% if waveLinks|length > 0 %}
     <connections>
 {% for entry in waveLinks %}
-{% set ns.x = entry|split('|')|select|list %}
-{% set from = ns.x[1]|split('.')|select|list|first %}
-{% set to = ns.x[3]|split('.')|select|list|first %}
+{% set x = entry|split('|')|select|list %}
+{% set from = x[1]|split('.')|select|list|first %}
+{% set to = x[3]|split('.')|select|list|first %}
 {% set fromModule = modules|selectattr('path', 'equalto', from)|first %}
 {% set toModule = modules|selectattr('path', 'equalto', to)|first %}
-{% set fromComponent -%}
-  {{- _component(m=fromModule) -}}
-{%- endset -%}
-{%- set toComponent -%}
-  {{- _component(m=toModule) -}}
-{%- endset %}
+{% set fromComponent = _component(m=fromModule) %}
+{% set toComponent = _component(m=toModule) %}
 {% if fromComponent == 'true' and toComponent == 'true' %}
-        <connectinterface id="{{ ns.x[0] }}">
+        <connectinterface id="{{ x[0] }}">
             <usesport>
-                <usesidentifier>{{ _port_name(module=ns.x[1], port=ns.x[2], component=from) }}</usesidentifier>
+                <usesidentifier>{{ _port_name(module=x[1], port=x[2], component=from) }}</usesidentifier>
                 <componentinstantiationref refid="DCE:{{ (root ~ '/instances/' ~ from)|uuid }}"/>
             </usesport>
             <providesport>
-                <providesidentifier>{{ _port_name(module=ns.x[3], port=ns.x[4], component=to) }}</providesidentifier>
+                <providesidentifier>{{ _port_name(module=x[3], port=x[4], component=to) }}</providesidentifier>
                 <componentinstantiationref refid="DCE:{{ (root ~ '/instances/' ~ to)|uuid }}"/>
             </providesport>
         </connectinterface>
 {% else %}
-        <!-- {{ ns.x[0] }}: {{ ns.x[1] }}:{{ ns.x[2] }} -> {{ ns.x[3] }}:{{ ns.x[4] }}, an end not in a component. -->
+        <!-- {{ x[0] }}: {{ x[1] }}:{{ x[2] }} -> {{ x[3] }}:{{ x[4] }}, an end not in a component. -->
 {% endif %}
 {% endfor %}
     </connections>
 {% endif %}
-{% set ns.externals = '' %}
+{% set ns.externals = [] %}
 {% for s in systems %}
 {% for e in s.external %}
 {% set top = e.local.module|split('.')|select|list|first %}
 {% set topModule = modules|selectattr('path', 'equalto', top)|first %}
-{% set topComponent -%}
-  {{- _component(m=topModule) -}}
-{%- endset %}
-{% if topComponent == 'true' %}
-{% set ns.externals = ns.externals ~ e.link.name ~ '|' ~ e.local.module ~ '|' ~ e.local.port ~ '|' ~ top ~ ';' %}
+{% if _component(m=topModule) == 'true' %}
+{% set ns.externals = ns.externals + [e.link.name ~ '|' ~ e.local.module ~ '|' ~ e.local.port ~ '|' ~ top] %}
 {% endif %}
 {% endfor %}
 {% endfor %}
-{% set ns.externals = ns.externals|split(';')|select|list %}
 {% if ns.externals|length > 0 %}
     <!-- Ports linked to other projects. -->
     <externalports>
 {% for entry in ns.externals %}
-{% set ns.x = entry|split('|')|select|list %}
-{% set owner = modules|selectattr('path', 'equalto', ns.x[1])|first %}
-{% set p = owner.ports|selectattr('name', 'equalto', ns.x[2])|first %}
+{% set x = entry|split('|')|select|list %}
+{% set owner = modules|selectattr('path', 'equalto', x[1])|first %}
+{% set p = owner.ports|selectattr('name', 'equalto', x[2])|first %}
         <port>
-            <description>{{ ns.x[0] }}</description>
+            <description>{{ x[0] }}</description>
 {% if p.role == 'in' %}
-            <providesidentifier>{{ _port_name(module=ns.x[1], port=ns.x[2], component=ns.x[3]) }}</providesidentifier>
+            <providesidentifier>{{ _port_name(module=x[1], port=x[2], component=x[3]) }}</providesidentifier>
 {% else %}
-            <usesidentifier>{{ _port_name(module=ns.x[1], port=ns.x[2], component=ns.x[3]) }}</usesidentifier>
+            <usesidentifier>{{ _port_name(module=x[1], port=x[2], component=x[3]) }}</usesidentifier>
 {% endif %}
-            <componentinstantiationref refid="DCE:{{ (root ~ '/instances/' ~ ns.x[3])|uuid }}"/>
+            <componentinstantiationref refid="DCE:{{ (root ~ '/instances/' ~ x[3])|uuid }}"/>
         </port>
 {% endfor %}
     </externalports>

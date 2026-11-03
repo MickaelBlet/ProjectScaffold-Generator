@@ -12,7 +12,7 @@
 
 namespace {{ project.ident|snake }} {
 {% for c in constants %}
-{% set scalar %}{{ _scalar(t=c.type) }}{% endset %}
+{% set scalar = _scalar(t=c.type) %}
 {# Numbers, enums and bitmasks are constexpr. #}
 
 {{ c.description|doc_comment }}

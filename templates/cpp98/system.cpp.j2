@@ -17,16 +17,11 @@
 {% set ns_ %}{{ _ns(e=system) }}{% endset +%}
 {{ _namespace_open(ns_=ns_) }}{##}
 
-{% set ns.inits = '' -%}
-{%- for c in system.instances -%}
-  {%- if c.abstract -%}
-    {%- set accessor -%}
-      {{- _accessor(name=c.name) -}}
-    {%- endset -%}
-    {%- set ns.inits = ns.inits ~ '|' ~ accessor ~ '_(NULL)' -%}
-  {%- endif -%}
-{%- endfor %}
-{{ system.name }}::{{ system.name }}(){% if ns.inits != '' %} : {{ ns.inits|replace('|', '', 1)|replace('|', ', ') }}{% endif +%}
+{% set ns.inits = [] %}
+{% for c in system.instances if c.abstract %}
+  {% set ns.inits = ns.inits + [_accessor(name=c.name) ~ '_(NULL)'] %}
+{% endfor %}
+{{ system.name }}::{{ system.name }}(){% if ns.inits %} : {{ ns.inits|join(', ') }}{% endif +%}
 {
 {% for c in system.instances %}
 {% if c.abstract %}
@@ -43,9 +38,7 @@
     // {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ ns.transport }}
 {{ r.link.description|doc_comment('    // ') }}
     {{ _endpoint(x=r.local) }}.connect({{ r.link.name|camel }}Proxy_);
-{% set __capture %}
-{{ _generated_transport(transport=r.link.constraints.remote.transport) }}
-{%- endset %}{% set ns.generated = __capture %}
+{% set ns.generated = _generated_transport(transport=r.link.constraints.remote.transport) %}
 {% if ns.generated == 'true' %}
     {{ r.link.name|camel }}Proxy_.open(remote::connect("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='client') }}", "{{ _address(r=r, side='client') }}"){% if r.settings.path is not none %}, "{{ r.settings.path }}"{% endif %}),
         {{ r.link.constraints.ack.required|lower }}, {{ r.link.constraints.ack.timeoutMs|default(5000, true) }});
@@ -53,7 +46,7 @@
     {%+ filter user('link.' ~ r.link.name) +%}
 {% if not (ns.generated == 'true') %}
     // Open {{ r.link.name|camel }}Proxy_ with a remote::Channel to binary {{ r.peer.binary }} over {{ ns.transport }}.
-{% set __capture %}{{ _settings(s=r.link.constraints.remote.settings) }}{% endset %}{% set ns.settings = __capture +%}
+{% set ns.settings = _settings(s=r.link.constraints.remote.settings) +%}
 {% if ns.settings != '' %}
     // Settings: {{ ns.settings }}.
 {% endif %}
@@ -65,16 +58,14 @@
     // {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ ns.transport }}
 {{ r.link.description|doc_comment('    // ') }}
     {{ r.link.name|camel }}Stub_.bind({{ _endpoint(x=r.local) }});
-{% set __capture %}
-{{ _generated_transport(transport=r.link.constraints.remote.transport) }}
-{%- endset %}{% set ns.generated = __capture %}
+{% set ns.generated = _generated_transport(transport=r.link.constraints.remote.transport) %}
 {% if ns.generated == 'true' %}
     {{ r.link.name|camel }}Stub_.serve("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='server') }}", "{{ _address(r=r, side='server') }}"){% if r.settings.capacity is not none %}, {{ r.settings.capacity }}{% endif %});
 {% endif %}
     {%+ filter user('link.' ~ r.link.name) +%}
 {% if not (ns.generated == 'true') %}
     // Receive the calls of binary {{ r.peer.binary }} over {{ ns.transport }} into {{ r.link.name|camel }}Stub_.dispatch().
-{% set __capture %}{{ _settings(s=r.link.constraints.remote.settings) }}{% endset %}{% set ns.settings = __capture +%}
+{% set ns.settings = _settings(s=r.link.constraints.remote.settings) +%}
 {% if ns.settings != '' %}
     // Settings: {{ ns.settings }}.
 {% endif %}

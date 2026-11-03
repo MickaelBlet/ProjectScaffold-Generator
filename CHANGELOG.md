@@ -23,7 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Built-in template sets rewritten for reading: macros spell their C++ / Python as plain text in `{% filter inline %}` blocks (new: the block's text is joined on one line, see _Writing templates_), lists instead of comma-joined strings, no capture blocks. Generated code is unchanged.
+- The JSON Schemas come from the `viewer` submodule (ProjectScaffold-Viewer) instead of a copy in `schema/`: clone with `--recurse-submodules` (or `git submodule update --init`) to build.
 - The generator is written in Rust: `scaffold-gen` is one static executable (no Node), built-in templates included, built by `scripts/build_cli.sh` (`cargo build`); same command line, same messages, same generated code.
+- Windows: `scripts/build_cli.sh x86_64-pc-windows-msvc` builds `scaffold-gen.exe` with MSVC from Linux ([cargo-xwin](https://github.com/rust-cross/cargo-xwin)), C runtime linked statically; Windows executables carry version information and an application manifest (long paths, UTF-8), which antivirus software flags less often.
 - **Templates are Jinja** ([MiniJinja](https://github.com/mitsuhiko/minijinja)) in place of Liquid: built-in sets in `templates/<set>/*.j2` (partials are macros, user sections `{% filter user('id') %}…{% endfilter %}`, manifest `path` / `each` / `when` in Jinja). Template sets of your own convert with `scripts/dev/liquid2jinja.py <set> <new set>`: see [Writing templates › From Liquid](docs/templates.md#from-liquid).
 
 - Split from [ProjectScaffold](https://github.com/MickaelBlet/ProjectScaffold): this repository holds the code generator alone (command line, standalone `scaffold-gen`, template sets, the model it reads). The editor is [ProjectScaffold-Viewer](https://github.com/MickaelBlet/ProjectScaffold-Viewer), the VS Code extension [ProjectScaffold-VsCode](https://github.com/MickaelBlet/ProjectScaffold-VsCode). Sources moved from `src/renderer/src/` to `src/`.

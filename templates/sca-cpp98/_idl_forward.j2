@@ -2,8 +2,6 @@
 {#
   Forward declaration of a struct or union (nothing for other types). Included. Parameter: e.
 #}
-{% if e.kind == 'struct' or e.kind == 'union' -%}
-  {{- '    ' ~ e.kind ~ ' ' -}}
-  {{- _idl_id(name=e.flatName) -}}
-  {{- ';\n' -}}
-{%- endif %}
+{% if e.kind in ['struct', 'union'] %}
+    {{ e.kind }} {{ _idl_id(name=e.flatName) }};
+{% endif %}

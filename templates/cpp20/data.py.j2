@@ -18,8 +18,7 @@ from .wire import Reader, Writer, enum
 {% filter user('imports') +%}
 {% endfilter +%}
 {% for t in remoteTypes %}
-
-{%- if t.kind == 'enum' %}
+{% if t.kind == 'enum' %}
 
 
 class {{ _py_id(name=t.name) }}(IntEnum):
@@ -69,8 +68,7 @@ class {{ _py_id(name=t.name) }}{% if t.kind == 'exception' %}(Exception){% endif
 {% endif %}
 {% endfor %}
 {% for t in remoteTypes %}
-
-{%- if t.kind == 'enum' %}
+{% if t.kind == 'enum' %}
 
 
 def encode_{{ t.name }}(w: Writer, v: int) -> None:
@@ -98,14 +96,14 @@ def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
 
 
 def encode_{{ t.name }}(w: Writer, v: {{ _py_id(name=t.name) }}) -> None:
-{% set __capture %}{{ _py_encode(t=t.discriminator, v='v.d', w='w', prefix='') }}{% endset %}{% set ns.statement = __capture %}
+{% set ns.statement = _py_encode(t=t.discriminator, v='v.d', w='w', prefix='') %}
 {# The discriminator, then the case it selects. #}
     {{ ns.statement }}
 {% set ns.branch = 'if' %}
 {% for c in t.cases %}
 {% if c.labels|length > 0 %}
-{% set __capture %}{{ _py_labels(c=c, t=t.discriminator, d='v.d', prefix='') }}{% endset %}{% set ns.test = __capture %}
-{% set __capture %}{{ _py_encode(t=c.type, v='v.value', w='w', prefix='') }}{% endset %}{% set ns.statement = __capture %}
+{% set ns.test = _py_labels(c=c, t=t.discriminator, d='v.d', prefix='') %}
+{% set ns.statement = _py_encode(t=c.type, v='v.value', w='w', prefix='') %}
 {# Its labels. #}
     {{ ns.branch }} {{ ns.test }}:
         {{ ns.statement }}
@@ -113,7 +111,7 @@ def encode_{{ t.name }}(w: Writer, v: {{ _py_id(name=t.name) }}) -> None:
 {% endif %}
 {% endfor %}
 {% if ns.fallback %}
-{% set __capture %}{{ _py_encode(t=ns.fallback.type, v='v.value', w='w', prefix='') }}{% endset %}{% set ns.statement = __capture %}
+{% set ns.statement = _py_encode(t=ns.fallback.type, v='v.value', w='w', prefix='') %}
 {% if ns.branch == 'if' %}
     {{ ns.statement }}
 {% else %}
@@ -127,7 +125,7 @@ def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
     d = {{ _py_decode(t=t.discriminator, r='r', prefix='') }}
 {% for c in t.cases %}
 {% if c.labels|length > 0 %}
-{% set __capture %}{{ _py_labels(c=c, t=t.discriminator, d='d', prefix='') }}{% endset %}{% set ns.test = __capture %}
+{% set ns.test = _py_labels(c=c, t=t.discriminator, d='d', prefix='') %}
 {# Its labels. #}
     if {{ ns.test }}:
         return {{ _py_id(name=t.name) }}(d, {{ _py_decode(t=c.type, r='r', prefix='') }})
@@ -143,13 +141,7 @@ def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
 
 def encode_{{ t.name }}(w: Writer, v: {{ _py_id(name=t.name) }}) -> None:
 {% for f in t.fields %}
-{% set value %}
-v.{{ _py_id(name=f.name) }}
-{%- endset %}
-{% set __capture %}
-{{ _py_encode(t=f.type, v=value, w='w', prefix='') }}
-{%- endset %}{% set ns.statement = __capture %}
-    {{ ns.statement }}
+    {{ _py_encode(t=f.type, v='v.' ~ _py_id(name=f.name), w='w', prefix='') }}
 {% else %}
     pass
 {% endfor %}
@@ -165,9 +157,7 @@ def decode_{{ t.name }}(r: Reader) -> {{ _py_id(name=t.name) }}:
 
 
 def encode_{{ t.name }}(w: Writer, v: {{ _py_type(t=t.type, prefix='') }}) -> None:
-{% set __capture %}
-{{ _py_encode(t=t.type, v='v', w='w', prefix='') }}
-{%- endset %}{% set ns.statement = __capture %}
+{% set ns.statement = _py_encode(t=t.type, v='v', w='w', prefix='') %}
     {{ ns.statement }}
 
 

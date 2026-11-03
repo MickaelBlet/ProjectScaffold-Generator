@@ -4,48 +4,38 @@
   Python type hint of a type reference: `Dict[str, List[data.Pose]]`; `None` for none. Aliases are
   spelled as the type they stand for. Parameters: t, prefix (`data.` outside data.py, else '').
 #}
-{% if t == none -%}
-  {{- 'None' -}}
-{%- else -%}
-  {%- if t.kind == 'primitive' -%}
-    {%- if t.name == 'bool' -%}
-      {{- 'bool' -}}
-    {%- elif t.name == 'char' or t.name == 'string' -%}
-      {{- 'str' -}}
-    {%- elif t.name == 'float32' or t.name == 'float64' -%}
-      {{- 'float' -}}
-    {%- elif t.name == 'bytes' -%}
-      {{- 'bytes' -}}
-    {%- else -%}
-      {{- 'int' -}}
-    {%- endif -%}
-  {%- elif t.kind == 'ref' -%}
-    {%- set def = typeByKey[t.key] -%}
-    {%- if def.kind == 'alias' -%}
-      {{- py_type(t=def.type, prefix=prefix) -}}
-    {%- elif def.kind == 'primitive' -%}
-      {{- 'Any' -}}
-    {%- else -%}
-      {{- _py_ref(t=t, prefix=prefix) -}}
-    {%- endif -%}
-  {%- elif t.kind == 'optional' -%}
-    {{- 'Optional[' -}}
-    {{- py_type(t=t.of, prefix=prefix) -}}
-    {{- ']' -}}
-  {%- elif t.kind == 'set' -%}
-    {{- 'Set[' -}}
-    {{- py_type(t=t.of, prefix=prefix) -}}
-    {{- ']' -}}
-  {%- elif t.kind == 'map' -%}
-    {{- 'Dict[' -}}
-    {{- py_type(t=t.key, prefix=prefix) -}}
-    {{- ', ' -}}
-    {{- py_type(t=t.value, prefix=prefix) -}}
-    {{- ']' -}}
-  {%- else -%}
-    {{- 'List[' -}}
-    {{- py_type(t=t.of, prefix=prefix) -}}
-    {{- ']' -}}
-  {%- endif -%}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t == none %}
+  None
+{% elif t.kind == 'primitive' %}
+  {% if t.name == 'bool' %}
+    bool
+  {% elif t.name == 'char' or t.name == 'string' %}
+    str
+  {% elif t.name == 'float32' or t.name == 'float64' %}
+    float
+  {% elif t.name == 'bytes' %}
+    bytes
+  {% else %}
+    int
+  {% endif %}
+{% elif t.kind == 'ref' %}
+  {% set def = typeByKey[t.key] %}
+  {% if def.kind == 'alias' %}
+    {{ py_type(t=def.type, prefix=prefix) }}
+  {% elif def.kind == 'primitive' %}
+    Any
+  {% else %}
+    {{ _py_ref(t=t, prefix=prefix) }}
+  {% endif %}
+{% elif t.kind == 'optional' %}
+  Optional[{{ py_type(t=t.of, prefix=prefix) }}]
+{% elif t.kind == 'set' %}
+  Set[{{ py_type(t=t.of, prefix=prefix) }}]
+{% elif t.kind == 'map' %}
+  Dict[{{ py_type(t=t.key, prefix=prefix) }}, {{ py_type(t=t.value, prefix=prefix) }}]
+{% else %}
+  List[{{ py_type(t=t.of, prefix=prefix) }}]
+{% endif %}
+{% endfilter %}
+{% endmacro %}

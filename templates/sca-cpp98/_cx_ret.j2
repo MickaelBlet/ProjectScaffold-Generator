@@ -5,15 +5,11 @@
   C++ return type of an operation: `void`, `T`, `char*` for strings, `T*` for variable-length
   types (the caller owns them). Parameters: t (nil: none), owner.
 #}
-{% if t == none -%}
-  {{- 'void' -}}
-{%- else -%}
-  {%- set kind -%}
-    {{- _cx_kind(t=t) -}}
-  {%- endset -%}
-  {{- _cx_name(t=t, owner=owner) -}}
-  {%- if kind == 'variable' -%}
-    {{- '*' -}}
-  {%- endif -%}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t == none %}
+  void
+{% else %}
+  {{ _cx_name(t=t, owner=owner) }}{% if _cx_kind(t=t) == 'variable' %}*{% endif %}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

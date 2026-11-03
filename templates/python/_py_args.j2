@@ -3,10 +3,9 @@
 {#
   Arguments passing the inputs of a message on: `pose, tags`. Parameter: msg.
 #}
-{% for p in msg.inputs -%}
-  {{- _py_id(name=p.name) -}}
-  {%- if not loop.last -%}
-    {{- ', ' -}}
-  {%- endif -%}
-{%- endfor %}
-{%+ endmacro %}
+{% filter inline %}
+{% for p in msg.inputs %}
+  {{ _py_id(name=p.name) }}{% if not loop.last %}, {% endif %}
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

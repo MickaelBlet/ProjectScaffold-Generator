@@ -5,10 +5,7 @@
   Parameters of a message or method in Python: its inputs (in, inout) with their type hints; out
   and inout values are given back (see _py_results). Parameter: msg.
 #}
-{% for p in msg.inputs -%}
-  {{- ', ' -}}
-  {{- _py_id(name=p.name) -}}
-  {{- ': ' -}}
-  {{- _py_type(t=p.type, prefix='data.') -}}
-{%- endfor %}
-{%+ endmacro %}
+{% filter inline %}
+{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}: {{ _py_type(t=p.type, prefix='data.') }}{% endfor %}
+{% endfilter %}
+{% endmacro %}

@@ -1,11 +1,9 @@
 {% from '_py_id.j2' import py_id as _py_id %}
 {% include '_py_banner.j2' %}
-{% set ns_ = project.ident|snake -%}
-{%- set binary = system.binary.name -%}
-{%- set faces = system.proxies|map(attribute='interface') -%}
-{%- set more = system.stubs|map(attribute='interface') -%}
-{%- set faces = (faces + more)|unique|list -%}
-{%- set generated = 'tcp,udp,http,websocket,shm'|split(',')|select|list %}
+{% set ns_ = project.ident|snake %}
+{% set binary = system.binary.name %}
+{% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
+{% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm'] %}
 """Stands in for binary {{ binary }} of {{ project.name }}, to test the other binaries: serves the calls
 {{ binary }} receives, makes those it sends.
 
@@ -20,7 +18,7 @@ from typing import List, Optional
 from .. import links
 from ..transport import Server
 {% for i in faces %}
-from ..remote.{% set module %}{{ i.name|snake }}{% endset %}{{ _py_id(name=module) }} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
+from ..remote.{{ _py_id(name=i.name|snake) }} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
 {% endfor %}
 {% filter user('imports') +%}
 {% endfilter +%}

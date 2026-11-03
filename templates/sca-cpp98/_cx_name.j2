@@ -6,47 +6,41 @@
   containers are the typedefs of the IDL module `owner` (where the entity naming them is declared):
   `::robot::PoseSeq`. Strings are `char*`. Parameters: t, owner.
 #}
-{% if t.kind == 'primitive' -%}
-  {%- if t.name == 'int8' or t.name == 'uint8' -%}
-    {{- '::CORBA::Octet' -}}
-  {%- elif t.name == 'int16' -%}
-    {{- '::CORBA::Short' -}}
-  {%- elif t.name == 'uint16' -%}
-    {{- '::CORBA::UShort' -}}
-  {%- elif t.name == 'int32' -%}
-    {{- '::CORBA::Long' -}}
-  {%- elif t.name == 'uint32' -%}
-    {{- '::CORBA::ULong' -}}
-  {%- elif t.name == 'int64' -%}
-    {{- '::CORBA::LongLong' -}}
-  {%- elif t.name == 'uint64' -%}
-    {{- '::CORBA::ULongLong' -}}
-  {%- elif t.name == 'float32' -%}
-    {{- '::CORBA::Float' -}}
-  {%- elif t.name == 'float64' -%}
-    {{- '::CORBA::Double' -}}
-  {%- elif t.name == 'bool' -%}
-    {{- '::CORBA::Boolean' -}}
-  {%- elif t.name == 'char' -%}
-    {{- '::CORBA::Char' -}}
-  {%- elif t.name == 'string' -%}
-    {{- 'char*' -}}
-  {%- elif t.name == 'bytes' -%}
-    {{- '::CF::OctetSequence' -}}
-  {%- else -%}
-    {{- t.name -}}
-  {%- endif -%}
-{%- elif t.kind == 'ref' -%}
-  {{- '::' -}}
-  {%- if t.dependency -%}
-    {{- t.dependency|snake -}}
-  {%- else -%}
-    {{- project.ident|snake -}}
-  {%- endif -%}
-  {{- '::' -}}
-  {{- _cx_id(name=t.flatName) -}}
-{%- else -%}
-  {{- '::' ~ owner ~ '::' -}}
-  {{- _idl_name(t=t) -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.kind == 'primitive' %}
+  {% if t.name in ['int8', 'uint8'] %}
+    ::CORBA::Octet
+  {% elif t.name == 'int16' %}
+    ::CORBA::Short
+  {% elif t.name == 'uint16' %}
+    ::CORBA::UShort
+  {% elif t.name == 'int32' %}
+    ::CORBA::Long
+  {% elif t.name == 'uint32' %}
+    ::CORBA::ULong
+  {% elif t.name == 'int64' %}
+    ::CORBA::LongLong
+  {% elif t.name == 'uint64' %}
+    ::CORBA::ULongLong
+  {% elif t.name == 'float32' %}
+    ::CORBA::Float
+  {% elif t.name == 'float64' %}
+    ::CORBA::Double
+  {% elif t.name == 'bool' %}
+    ::CORBA::Boolean
+  {% elif t.name == 'char' %}
+    ::CORBA::Char
+  {% elif t.name == 'string' %}
+    char*
+  {% elif t.name == 'bytes' %}
+    ::CF::OctetSequence
+  {% else %}
+    {{ t.name }}
+  {% endif %}
+{% elif t.kind == 'ref' %}
+  ::{{ (t.dependency or project.ident)|snake }}::{{ _cx_id(name=t.flatName) }}
+{% else %}
+  {{ '::' ~ owner ~ '::' }}{{ _idl_name(t=t) }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

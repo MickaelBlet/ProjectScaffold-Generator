@@ -35,8 +35,8 @@ public:
     {
         Writer request_;
 {% for p in msg.inputs %}
-{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = _id(name=p.name) %}
+{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
 {% if ns.check != '' %}
         {{ ns.check }}
 {% endif %}
@@ -48,14 +48,14 @@ public:
 {% if msg.returns %}
         {{ _type(t=msg.returns) }} result_{};
         decode(reader_, result_);
-{% set __capture %}{{ _bounds(t=msg.returns, v='result_', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.check = _bounds(t=msg.returns, v='result_', depth=0) %}
 {% if ns.check != '' %}
         {{ ns.check }}
 {% endif %}
 {% endif %}
 {% for p in msg.outputs %}
-{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = _id(name=p.name) %}
+{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
 {# Decoded, then checked. #}
         decode(reader_, {{ ns.value }});
 {% if ns.check != '' %}

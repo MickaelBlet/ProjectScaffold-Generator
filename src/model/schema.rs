@@ -1,4 +1,4 @@
-// Structure check of a project file against the published JSON Schema (schema/scaffold.schema.json),
+// Structure check of a project file against the published JSON Schema (viewer/schema/scaffold.schema.json),
 // with the messages of zod (the editor's model, which generates the schema): the same errors as the
 // editor for the same file.
 //
@@ -17,7 +17,7 @@ use serde_json::Value as Json;
 use super::text::{DataPath, Seg, path_text};
 
 static SCHEMA: LazyLock<Json> =
-    LazyLock::new(|| serde_json::from_str(include_str!("../../schema/scaffold.schema.json")).unwrap());
+    LazyLock::new(|| serde_json::from_str(include_str!("../../viewer/schema/scaffold.schema.json")).unwrap());
 
 pub struct Issue {
     pub path: DataPath,

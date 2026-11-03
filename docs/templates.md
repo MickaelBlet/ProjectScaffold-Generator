@@ -36,6 +36,19 @@ Template and partial paths are relative to the manifest and stay inside its dire
 
 - `{% filter user('id') %}default{% endfilter %}` writes a user section. `id` is any expression, unique in the file; the markers take the indentation of the tag's line.
 - A line holding only a tag (`{% if %}`, `{% for %}`, `{% set %}`…) leaves no line: `trim_blocks` and `lstrip_blocks` are on (`{%+ … %}` keeps the line's indentation, `-` trims as usual); `trimTagLines: false` turns them off.
+- `{% filter inline %}…{% endfilter %}` joins its text on one line: each line break of the template, with the spaces around it, is dropped (printed values are not changed), so a macro spelling a fragment (a type, a value, a path) can be written as indented plain text instead of `{{- 'text' -}}`:
+
+  ```jinja
+  {% filter inline %}
+  {% if t.kind == 'map' %}
+    std::map<{{ type(t=t.key) }}, {{ type(t=t.value) }}>
+  {% else %}
+    std::{{ t.kind }}<{{ type(t=t.of) }}>
+  {% endif %}
+  {% endfilter %}
+  ```
+
+  Spaces inside a line stay: put separators at the end (`{{ x }}{% if not loop.last %}, {% endif %}`), or a leading space in an expression (`{{ ' ' ~ x }}`).
 - Runs of blank lines are collapsed; `squeezeBlankLines: false` keeps them.
 - `none` prints nothing. An undefined variable or attribute is an error, except in the condition of an `if`.
 - Assignments in a loop stay in the loop: carry values out of it with a namespace (`{% set ns = namespace(n=0) %}`, `{% set ns.n = ns.n + 1 %}`). Python string methods work (`s.rstrip()`, `s.split(',')`, `s.rsplit(',', 1)`).
@@ -84,6 +97,7 @@ Besides [MiniJinja's](https://docs.rs/minijinja/latest/minijinja/filters/):
 | `json`                                          | a value as JSON (`JSON.stringify`)                                          |
 | `escape`                                        | `&`, `<`, `>`, `"`, `'` as XML entities                                     |
 | `replace(old, new, count)`                      | Jinja's, with an optional count                                             |
+| `inline`                                        | `{% filter inline %}`: the block's text on one line (see above)             |
 
 ## Partials of the C++ sets
 

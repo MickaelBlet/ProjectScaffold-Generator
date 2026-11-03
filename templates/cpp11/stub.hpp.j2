@@ -53,8 +53,8 @@ public:
                 {{ _type(t=p.type) }} {{ _id(name=p.name) }}{};
 {% endfor %}
 {% for p in msg.inputs %}
-{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = _id(name=p.name) %}
+{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
 {# Decoded, then checked. #}
                 decode(reader_, {{ ns.value }});
 {% if ns.check != '' %}
@@ -64,7 +64,7 @@ public:
                 reader_.end();
 {% set call %}
 {% if msg.returns %}
-{% set __capture %}{{ _bounds(t=msg.returns, v='result_', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.check = _bounds(t=msg.returns, v='result_', depth=0) %}
 {% if ns.check != '' %}
                 const auto result_ = target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }});
                 {{ ns.check }}
@@ -76,8 +76,8 @@ public:
                 target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }});
 {% endif %}
 {% for p in msg.outputs %}
-{% set __capture %}{{ _id(name=p.name) }}{% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=p.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = _id(name=p.name) %}
+{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
 {% if ns.check != '' %}
                 {{ ns.check }}
 {% endif %}

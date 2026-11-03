@@ -4,17 +4,13 @@
   Python function `(writer, value)` encoding a type: `Writer.int32`, `data.encode_Pose`, a lambda.
   Parameters: t, prefix.
 #}
-{% if t.kind == 'primitive' -%}
-  {%- if t.max is not none -%}
-    {{- 'lambda w, v: ' -}}
-    {{- _py_encode(t=t, v='v', w='w', prefix=prefix) -}}
-  {%- else -%}
-    {{- 'Writer.' ~ t.name -}}
-  {%- endif -%}
-{%- elif t.kind == 'ref' -%}
-  {{- prefix ~ 'encode_' ~ t.name -}}
-{%- else -%}
-  {{- 'lambda w, v: ' -}}
-  {{- _py_encode(t=t, v='v', w='w', prefix=prefix) -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.kind == 'primitive' and t.max is none %}
+  Writer.{{ t.name }}
+{% elif t.kind == 'ref' %}
+  {{ prefix }}encode_{{ t.name }}
+{% else %}
+  lambda w, v: {{ _py_encode(t=t, v='v', w='w', prefix=prefix) }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

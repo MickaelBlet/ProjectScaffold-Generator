@@ -10,11 +10,9 @@
 {% from '_py_value.j2' import py_value as _py_value %}
 {% from '_py_zero.j2' import py_zero as _py_zero %}
 {% include '_py_banner.j2' %}
-{% set m = item -%}
-{%- set root = project.ident|snake -%}
-{%- set class -%}
-  {{- _py_class(e=m) -}}
-{%- endset %}
+{% set m = item %}
+{% set root = project.ident|snake %}
+{% set class = _py_class(e=m) %}
 """Module {{ m.path }} of {{ project.name }}."""
 from __future__ import annotations
 

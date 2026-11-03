@@ -4,8 +4,7 @@
 {#
   Fully qualified class name: `::robot::core::Sensor`. Parameter: e.
 #}
-{{ '::' -}}
-{{- _ns(e=e) -}}
-{{- '::' -}}
-{{- _name(e=e) -}}
-{%+ endmacro %}
+{% filter inline %}
+::{{ _ns(e=e) }}::{{ _name(e=e) }}
+{% endfilter %}
+{% endmacro %}

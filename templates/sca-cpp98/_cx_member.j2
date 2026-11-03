@@ -4,12 +4,12 @@
 {#
   C++ type holding a value: `::CORBA::String_var` for strings, else the type. Parameters: t, owner.
 #}
-{% set kind -%}
-  {{- _cx_kind(t=t) -}}
-{%- endset -%}
-{%- if kind == 'string' -%}
-  {{- '::CORBA::String_var' -}}
-{%- else -%}
-  {{- _cx_name(t=t, owner=owner) -}}
-{%- endif %}
-{%+ endmacro %}
+{% set kind = _cx_kind(t=t) %}
+{% filter inline %}
+{% if kind == 'string' %}
+  ::CORBA::String_var
+{% else %}
+  {{ _cx_name(t=t, owner=owner) }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

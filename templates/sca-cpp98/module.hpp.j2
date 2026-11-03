@@ -18,46 +18,34 @@
 {% from '_namespace_open.j2' import namespace_open as _namespace_open %}
 {% from '_ns.j2' import ns as _ns %}
 {% from '_qualified.j2' import qualified as _qualified %}
-{% set ns = namespace() %}
+{% set ns = namespace(baseComponent=false, inherits=[]) %}
 {% include '_banner.j2' %}
 #pragma once
-{% set m = item -%}
-{%- set root = project.ident|snake -%}
-{%- set class -%}
-  {{- _id(name=m.name) -}}
-{%- endset -%}
-{%- set component -%}
-  {{- _component(m=m) -}}
-{%- endset -%}
-{#- A component deriving from another component is a CF::Resource through it. -#}
-{%- set ns.baseComponent = false -%}
-{%- for b in m.bases -%}
-  {%- set isComponent -%}
-    {{- _component(m=b) -}}
-  {%- endset -%}
-  {%- if isComponent == 'true' and ns.baseComponent == false -%}
-    {%- set ns.baseComponent = b -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length -%}
-{#- Names given by the model: attribute accessors do not take them. -#}
-{%- set methodNames = m.methods|map(attribute='name') -%}
-{%- set portNames = m.ports|map(attribute='name') -%}
-{%- set names = (methodNames + portNames) -%}
-{%- set polymorphic = false -%}
-{%- if component == 'true' or (m.abstract or (m.isBase or (virtuals > 0 or m.bases|length > 0))) -%}
-  {%- set polymorphic = true -%}
-{%- endif -%}
-{%- set ns.inherits = '' -%}
-{%- if component == 'true' and ns.baseComponent == false -%}
-  {%- set ns.inherits = '|public ::sca::Resource' -%}
-{%- endif -%}
-{%- for b in m.bases -%}
-  {%- set base -%}
-    {{- _qualified(e=b) -}}
-  {%- endset -%}
-  {%- set ns.inherits = ns.inherits ~ '|public ' ~ base -%}
-{%- endfor %}
+{% set m = item %}
+{% set root = project.ident|snake %}
+{% set class = _id(name=m.name) %}
+{% set component = _component(m=m) %}
+{# A component deriving from another component is a CF::Resource through it. #}
+{% for b in m.bases %}
+  {% if _component(m=b) == 'true' and ns.baseComponent == false %}
+    {% set ns.baseComponent = b %}
+  {% endif %}
+{% endfor %}
+{% set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length %}
+{# Names given by the model: attribute accessors do not take them. #}
+{% set methodNames = m.methods|map(attribute='name') %}
+{% set portNames = m.ports|map(attribute='name') %}
+{% set names = methodNames + portNames %}
+{% set polymorphic = false %}
+{% if component == 'true' or m.abstract or m.isBase or virtuals > 0 or m.bases|length > 0 %}
+  {% set polymorphic = true %}
+{% endif %}
+{% if component == 'true' and ns.baseComponent == false %}
+  {% set ns.inherits = ['public ::sca::Resource'] %}
+{% endif %}
+{% for b in m.bases %}
+  {% set ns.inherits = ns.inherits + ['public ' ~ _qualified(e=b)] %}
+{% endfor %}
 
 
 #include <{{ root }}.hh>
@@ -75,7 +63,7 @@
 {% filter user('includes') +%}
 {% endfilter +%}
 
-{% set ns_ %}{{ _ns(e=m) }}{% endset +%}
+{% set ns_ = _ns(e=m) +%}
 {{ _namespace_open(ns_=ns_) }}{##}
 
 {{ m.description|doc_comment }}
@@ -83,16 +71,14 @@
 /// SCA component {{ m.name }} (CF::Resource): its ports through getPort, its attributes as properties
 /// (configure / query); served by the executable of its binary, described in dom/components/{{ m.name }}.
 {% endif %}
-class {{ class }}{% if ns.inherits != '' %} : {{ ns.inherits|replace('|', '', 1)|replace('|', ', ') }}{% endif %} {
+class {{ class }}{% if ns.inherits %} : {{ ns.inherits|join(', ') }}{% endif %} {
 public:
 {% if m.kind == 'interface' %}
     {{ class }}(){{ _init(m=m) }}
     {
 {% for a in m.attributes %}
 {% if a.hasDefault and a.static == false %}
-{% set member -%}
-  {{- _member(name=a.name) -}}
-{%- endset %}
+{% set member = _member(name=a.name) %}
 {{ _cx_init(target=member, v=a.default, t=a.type, owner=root, pad='        ', depth=0) }}
 {%- endif %}
 {% endfor %}
@@ -104,21 +90,17 @@ public:
 {% endif %}
 {% for p in m.ports %}
 {% if p.interface %}
-{% set __capture -%}
-  {{- _iface_ns(i=p.interface) -}}
-{%- endset %}{% set ns.ifns = __capture -%}
-{%- set __capture -%}
-  {{- _cx_id(name=p.interface.name) -}}
-{%- endset %}{% set ns.iface = __capture +%}
+{% set ifns = _iface_ns(i=p.interface) %}
+{% set iface = _cx_id(name=p.interface.name) +%}
 
     /// {% if p.role == 'in' %}Provides{% else %}Uses{% endif %} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates|length > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif +%}
 {{ p.description|doc_comment('    /// ') }}
 {% if p.role == 'out' %}
-    ::sca::UsesPort< ::{{ ns.ifns }}::{{ ns.iface }}>& {{ _id(name=p.name) }}() { return {{ _member(name=p.name) }}; }
+    ::sca::UsesPort< ::{{ ifns }}::{{ iface }}>& {{ _id(name=p.name) }}() { return {{ _member(name=p.name) }}; }
 {% elif p.delegates|length > 0 %}
-    POA_{{ ns.ifns }}::{{ ns.iface }}& {{ _id(name=p.name) }}() { return {{ _endpoint(x=p.delegates[0], skip=0) }}; }
+    POA_{{ ifns }}::{{ iface }}& {{ _id(name=p.name) }}() { return {{ _endpoint(x=p.delegates[0], skip=0) }}; }
 {% else %}
-    POA_{{ ns.ifns }}::{{ ns.iface }}& {{ _id(name=p.name) }}() { return {{ p.name }}In_; }
+    POA_{{ ifns }}::{{ iface }}& {{ _id(name=p.name) }}() { return {{ p.name }}In_; }
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -136,12 +118,10 @@ public:
 protected:
 {% for p in m.ports %}
 {% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
-{% set __capture -%}
-  {{- _iface_ns(i=p.interface) -}}
-{%- endset %}{% set ns.ifns = __capture +%}
+{% set ifns = _iface_ns(i=p.interface) +%}
     // Calls received by provides port {{ p.name }}.
 {% for msg in p.interface.messages %}
-    {{ _cx_ret(t=msg.returns, owner=ns.ifns) }} on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _cx_params(params=msg.params, owner=ns.ifns) }});
+    {{ _cx_ret(t=msg.returns, owner=ifns) }} on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _cx_params(params=msg.params, owner=ifns) }});
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -169,19 +149,15 @@ private:
 
 {% for p in m.ports %}
 {% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
-{% set __capture -%}
-  {{- _iface_ns(i=p.interface) -}}
-{%- endset %}{% set ns.ifns = __capture -%}
-{%- set __capture -%}
-  {{- _cx_id(name=p.interface.name) -}}
-{%- endset %}{% set ns.iface = __capture %}
+{% set ifns = _iface_ns(i=p.interface) %}
+{% set iface = _cx_id(name=p.interface.name) %}
 {% set servant = p.name|ucfirst ~ 'In' %}
     /// Servant of provides port {{ p.name }}: hands its calls to the handlers above.
-    class {{ servant }} : public virtual POA_{{ ns.ifns }}::{{ ns.iface }} {
+    class {{ servant }} : public virtual POA_{{ ifns }}::{{ iface }} {
     public:
         explicit {{ servant }}({{ class }}& owner) : owner_(owner) {}
 {% for msg in p.interface.messages %}
-        {{ _cx_ret(t=msg.returns, owner=ns.ifns) }} {{ _cx_member_id(name=msg.name, scope=p.interface.name) }}({{ _cx_params(params=msg.params, owner=ns.ifns) }})
+        {{ _cx_ret(t=msg.returns, owner=ifns) }} {{ _cx_member_id(name=msg.name, scope=p.interface.name) }}({{ _cx_params(params=msg.params, owner=ifns) }})
         {
             return owner_.on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _cx_args(params=msg.params) }});
         }
@@ -204,9 +180,7 @@ private:
 {% endfor %}
 {% for a in m.attributes %}
 {% if a.static %}
-{% set type -%}
-  {{- _cx_member(t=a.type, owner=root) -}}
-{%- endset +%}
+{% set type = _cx_member(t=a.type, owner=root) +%}
     /// Static attribute: a function-local static (set to its default on first use).
     static {{ type }}& {{ _member(name=a.name) }}()
     {

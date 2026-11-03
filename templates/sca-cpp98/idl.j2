@@ -2,10 +2,10 @@
 {% from '_idl_literal.j2' import idl_literal as _idl_literal %}
 {% from '_idl_member.j2' import idl_member as _idl_member %}
 {% from '_idl_type.j2' import idl_type as _idl_type %}
-{% set ns = namespace() %}
+{% set ns = namespace(done=[], ready=false) %}
 {% include '_banner.j2' %}
-{% set ns_ = project.ident|snake -%}
-{%- set guard = ns_|upper ~ '_IDL' %}
+{% set ns_ = project.ident|snake %}
+{% set guard = ns_|upper ~ '_IDL' %}
 // Types, constants and interfaces of {{ project.name }}, in IDL module {{ ns_ }}: the containers of the
 // model as typedefs (sequences; maps as sequences of key / value structs), each type after the ones
 // it names.
@@ -20,55 +20,41 @@
 {% endfilter +%}
 
 {% set idl_body %}
-{% set idl = namespace(declared='|') -%}
-{%- set ns.idl_done = '|' -%}
-{#- Types of modules too, by their flat name (Core_Sensor_Mode). -#}
-{%- set idl_types = (types + moduleTypes) -%}
-{%- for pass in idl_types -%}
-  {%- for e in idl_types -%}
-    {%- set ns.idl_key = '|' ~ e.key ~ '|' -%}
-    {%- if ns.idl_key in ns.idl_done -%}
-      {%- continue -%}
-    {%- endif -%}
-    {%- set ns.idl_ready = true -%}
-    {%- for u in e.uses.types -%}
-      {%- set idl_used = '|' ~ u.key ~ '|' -%}
-      {%- if u.dependency == none and u.key != e.key -%}
-        {%- if not (idl_used in ns.idl_done) -%}
-          {%- set ns.idl_ready = false -%}
-        {%- endif -%}
-      {%- endif -%}
-    {%- endfor -%}
-    {%- if ns.idl_ready -%}
-      {%- set ns.idl_done = ns.idl_done ~ ns.idl_key -%}
-      {#- A recursive struct or union: declared first, for the sequences of it. -#}
-      {%- set idl_self = e.uses.types|selectattr('key', 'equalto', e.key)|length -%}
-      {%- if idl_self > 0 -%}
-        {%- with e = e %}{% include '_idl_forward.j2' %}{% endwith -%}
-      {%- endif -%}
-      {%- with e = e %}{% include '_idl_type_containers.j2' %}{% endwith -%}
-      {%- with e = e %}{% include '_idl_decl.j2' %}{% endwith -%}
-    {%- endif -%}
-  {%- endfor -%}
-{%- endfor -%}
-{#- Types naming each other: all declared first, then defined in their order. -#}
-{%- for e in idl_types -%}
-  {%- set ns.idl_key = '|' ~ e.key ~ '|' -%}
-  {%- if not (ns.idl_key in ns.idl_done) -%}
-    {%- with e = e %}{% include '_idl_forward.j2' %}{% endwith -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- for e in idl_types -%}
-  {%- set ns.idl_key = '|' ~ e.key ~ '|' -%}
-  {%- if not (ns.idl_key in ns.idl_done) -%}
-    {%- with e = e %}{% include '_idl_type_containers.j2' %}{% endwith -%}
-    {%- with e = e %}{% include '_idl_decl.j2' %}{% endwith -%}
-  {%- endif -%}
-{%- endfor %}
+{% set idl = namespace(declared=[]) %}
+{# Types of modules too, by their flat name (Core_Sensor_Mode). #}
+{% set idl_types = types + moduleTypes %}
+{% for pass in idl_types %}
+  {% for e in idl_types %}
+    {% if e.key in ns.done %}
+      {% continue %}
+    {% endif %}
+    {% set ns.ready = true %}
+    {% for u in e.uses.types %}
+      {% if u.dependency == none and u.key != e.key and u.key not in ns.done %}
+        {% set ns.ready = false %}
+      {% endif %}
+    {% endfor %}
+    {% if ns.ready %}
+      {% set ns.done = ns.done + [e.key] %}
+      {# A recursive struct or union: declared first, for the sequences of it. #}
+      {% if e.uses.types|selectattr('key', 'equalto', e.key)|length > 0 %}
+        {% with e = e %}{% include '_idl_forward.j2' %}{% endwith %}
+      {% endif %}
+      {% with e = e %}{% include '_idl_type_containers.j2' %}{% endwith %}
+      {% with e = e %}{% include '_idl_decl.j2' %}{% endwith %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+{# Types naming each other: all declared first, then defined in their order. #}
+{% for e in idl_types if e.key not in ns.done %}
+  {% with e = e %}{% include '_idl_forward.j2' %}{% endwith %}
+{% endfor %}
+{% for e in idl_types if e.key not in ns.done %}
+  {% with e = e %}{% include '_idl_type_containers.j2' %}{% endwith %}
+  {% with e = e %}{% include '_idl_decl.j2' %}{% endwith %}
+{% endfor %}
 {% for c in constants %}
-{% set idl_value -%}
-  {{- _idl_literal(v=c.value, t=c.type) -}}
-{%- endset +%}
+{% set idl_value = _idl_literal(v=c.value, t=c.type) +%}
 
 {{ c.description|doc_comment('    // ') }}
 {% if idl_value == '' %}
@@ -78,14 +64,14 @@
 {% endif %}
 {% endfor %}
 {% for i in interfaces %}
-{% for m in i.messages -%}
-  {%- for p in m.params -%}
-    {%- with t = p.type %}{% include '_idl_containers.j2' %}{% endwith -%}
-  {%- endfor -%}
-  {%- if m.returns -%}
-    {%- with t = m.returns %}{% include '_idl_containers.j2' %}{% endwith -%}
-  {%- endif -%}
-{%- endfor %}
+{% for m in i.messages %}
+  {% for p in m.params %}
+    {% with t = p.type %}{% include '_idl_containers.j2' %}{% endwith %}
+  {% endfor %}
+  {% if m.returns %}
+    {% with t = m.returns %}{% include '_idl_containers.j2' %}{% endwith %}
+  {% endif %}
+{% endfor %}
 
 {{ i.description|doc_comment('    // ') }}
     interface {{ _idl_id(name=i.name) }} {
@@ -95,20 +81,20 @@
 {% endfor %}
     };
 {% endfor %}
-{# Containers of the attributes and methods of the modules (their C++ types). -#}
-{%- for m in modules -%}
-  {%- for a in m.attributes -%}
-    {%- with t = a.type %}{% include '_idl_containers.j2' %}{% endwith -%}
-  {%- endfor -%}
-  {%- for x in m.methods -%}
-    {%- for p in x.params -%}
-      {%- with t = p.type %}{% include '_idl_containers.j2' %}{% endwith -%}
-    {%- endfor -%}
-    {%- if x.returns -%}
-      {%- with t = x.returns %}{% include '_idl_containers.j2' %}{% endwith -%}
-    {%- endif -%}
-  {%- endfor -%}
-{%- endfor %}
+{# Containers of the attributes and methods of the modules (their C++ types). #}
+{% for m in modules %}
+  {% for a in m.attributes %}
+    {% with t = a.type %}{% include '_idl_containers.j2' %}{% endwith %}
+  {% endfor %}
+  {% for x in m.methods %}
+    {% for p in x.params %}
+      {% with t = p.type %}{% include '_idl_containers.j2' %}{% endwith %}
+    {% endfor %}
+    {% if x.returns %}
+      {% with t = x.returns %}{% include '_idl_containers.j2' %}{% endwith %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
 {% endset %}
 {% set idl_text = idl_body|trim %}
 {% if idl_text != '' %}

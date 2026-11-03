@@ -2,9 +2,10 @@
 {#
   Source file of a module, relative to `src/`: `core/Sensor.cpp`. Parameter: e.
 #}
-{% for parent in e.namespace -%}
-  {%- set part = parent|snake -%}
-  {{- part ~ '/' -}}
-{%- endfor -%}
-{{- e.name ~ '.cpp' -}}
-{%+ endmacro %}
+{% filter inline %}
+{% for parent in e.namespace %}
+  {{ parent|snake }}/
+{% endfor %}
+{{ e.name }}.cpp
+{% endfilter %}
+{% endmacro %}

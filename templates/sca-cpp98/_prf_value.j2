@@ -2,6 +2,8 @@
 {#
   Text of a value of a PRF simple property. Parameter: v.
 #}
-{% set text = v ~ '' -%}
-{{- text|escape|string -}}
-{%+ endmacro %}
+{% set text = v ~ '' %}
+{% filter inline %}
+{{ text|escape|string }}
+{% endfilter %}
+{% endmacro %}

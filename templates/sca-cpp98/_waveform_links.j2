@@ -3,12 +3,14 @@
   Links between the components of the waveform (between top-level modules, binaries or not), as
   `link|from module|from port|to module|to port` entries separated by `;`.
 #}
-{% for s in systems -%}
-  {%- for c in s.connections -%}
-    {{- c.link.name ~ '|' ~ c.from.module ~ '|' ~ c.from.port ~ '|' ~ c.to.module ~ '|' ~ c.to.port ~ ';' -}}
-  {%- endfor -%}
-{%- endfor -%}
-{%- for r in remoteLinks -%}
-  {{- r.link.name ~ '|' ~ r.from.module ~ '|' ~ r.from.port ~ '|' ~ r.to.module ~ '|' ~ r.to.port ~ ';' -}}
-{%- endfor %}
-{%+ endmacro %}
+{% filter inline %}
+{% for s in systems %}
+  {% for c in s.connections %}
+    {{ c.link.name }}|{{ c.from.module }}|{{ c.from.port }}|{{ c.to.module }}|{{ c.to.port }};
+  {% endfor %}
+{% endfor %}
+{% for r in remoteLinks %}
+  {{ r.link.name }}|{{ r.from.module }}|{{ r.from.port }}|{{ r.to.module }}|{{ r.to.port }};
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

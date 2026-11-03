@@ -6,25 +6,16 @@
   Statements giving the `out` parameters of an operation an empty value (variable-length ones must
   be set before returning). Parameters: params, owner, pad (indentation).
 #}
-{% for p in params %}
-{% if p.direction == 'out' %}
-{% set kind -%}
-  {{- _cx_kind(t=p.type) -}}
-{%- endset -%}
-{%- set name -%}
-  {{- _cx_name(t=p.type, owner=owner) -}}
-{%- endset -%}
-{%- set id -%}
-  {{- _cx_id(name=p.name) -}}
-{%- endset %}
-
-{%- if kind == 'string' %}
+{% for p in params if p.direction == 'out' %}
+{% set kind = _cx_kind(t=p.type) %}
+{% set name = _cx_name(t=p.type, owner=owner) %}
+{% set id = _cx_id(name=p.name) %}
+{% if kind == 'string' %}
 {{ pad }}{{ id }} = ::CORBA::string_dup("");
 {% elif kind == 'variable' %}
 {{ pad }}{{ id }} = new {{ name }}();
 {% else %}
 {{ pad }}{{ id }} = {{ name }}();
 {% endif %}
-{% endif %}
 {% endfor %}
-{%+ endmacro %}
+{% endmacro %}

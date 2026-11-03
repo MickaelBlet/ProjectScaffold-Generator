@@ -6,27 +6,16 @@
   Parameter list: `in` by value for scalars (`const` when marked so), else `const T&`;
   `out` / `inout` as `T&`. Parameter: params.
 #}
-{% for p in params -%}
-  {%- set scalar -%}
-    {{- _scalar(t=p.type) -}}
-  {%- endset -%}
-  {%- if p.direction != 'in' -%}
-    {{- _type(t=p.type) -}}
-    {{- '&' -}}
-  {%- elif scalar == 'true' -%}
-    {%- if p.const -%}
-      {{- 'const ' -}}
-    {%- endif -%}
-    {{- _type(t=p.type) -}}
-  {%- else -%}
-    {{- 'const ' -}}
-    {{- _type(t=p.type) -}}
-    {{- '&' -}}
-  {%- endif -%}
-  {{- ' ' -}}
-  {{- _id(name=p.name) -}}
-  {%- if not loop.last -%}
-    {{- ', ' -}}
-  {%- endif -%}
-{%- endfor %}
-{%+ endmacro %}
+{% filter inline %}
+{% for p in params %}
+  {% if p.direction != 'in' %}
+    {{ _type(t=p.type) }}&
+  {% elif _scalar(t=p.type) == 'true' %}
+    {% if p.const %}const {% endif %}{{ _type(t=p.type) }}
+  {% else %}
+    const {{ _type(t=p.type) }}&
+  {% endif %}
+  {{ ' ' ~ _id(name=p.name) }}{% if not loop.last %}, {% endif %}
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

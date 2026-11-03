@@ -3,11 +3,11 @@
 {#
   C++ name of a member of an IDL scope (see _idl_member). Parameters: name, scope.
 #}
-{% set a = name|lower -%}
-{%- set b = scope|lower -%}
-{%- if a == b -%}
-  {{- name ~ '_' -}}
-{%- else -%}
-  {{- _cx_id(name=name) -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if name|lower == scope|lower %}
+  {{ name }}_
+{% else %}
+  {{ _cx_id(name=name) }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

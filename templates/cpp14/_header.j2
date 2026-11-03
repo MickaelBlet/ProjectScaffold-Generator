@@ -4,35 +4,24 @@
   Header of an entity, relative to `include/`: `robot/core/Sensor.hpp`, `robot/core/sensor/Mode.hpp`
   for a type of module `Core.Sensor`. Parameter: e.
 #}
-{% set root = project.ident|snake -%}
-{%- if e.entity == 'type' or e.entity == 'interface' -%}
-  {%- if e.dependency -%}
-    {{- e.dependency|snake -}}
-  {%- else -%}
-    {{- root -}}
-  {%- endif -%}
-  {%- if e.entity == 'type' and e.scope|length > 0 -%}
-    {#- A type of a module: beside the content of the module. -#}
-    {%- for part in e.scope -%}
-      {{- '/' -}}
-      {{- part|snake -}}
-    {%- endfor -%}
-    {{- '/' -}}
-  {%- elif e.entity == 'type' -%}
-    {{- '/types/' -}}
-  {%- else -%}
-    {{- '/interfaces/' -}}
-  {%- endif -%}
-  {{- _name(e=e) -}}
-{%- elif e.entity == 'module' -%}
-  {{- root -}}
-  {%- for parent in e.namespace -%}
-    {%- set part = parent|snake -%}
-    {{- '/' ~ part -}}
-  {%- endfor -%}
-  {{- '/' ~ e.name -}}
-{%- else -%}
-  {{- root ~ '/' ~ e.name -}}
-{%- endif -%}
-{{- '.hpp' -}}
-{%+ endmacro %}
+{% set root = project.ident|snake %}
+{% filter inline %}
+{% if e.entity == 'type' or e.entity == 'interface' %}
+  {{ e.dependency|snake if e.dependency else root }}
+  {% if e.entity == 'type' and e.scope|length > 0 %}
+    {# A type of a module: beside the content of the module. #}
+    {% for part in e.scope %}/{{ part|snake }}{% endfor %}/
+  {% elif e.entity == 'type' %}
+    /types/
+  {% else %}
+    /interfaces/
+  {% endif %}
+  {{ _name(e=e) }}
+{% elif e.entity == 'module' %}
+  {{ root }}{% for parent in e.namespace %}/{{ parent|snake }}{% endfor %}/{{ e.name }}
+{% else %}
+  {{ root }}/{{ e.name }}
+{% endif %}
+.hpp
+{% endfilter %}
+{% endmacro %}

@@ -3,10 +3,9 @@
 {#
   Arguments passing the parameters on: `reading, value`. Parameter: params.
 #}
-{% for p in params -%}
-  {{- _cx_id(name=p.name) -}}
-  {%- if not loop.last -%}
-    {{- ', ' -}}
-  {%- endif -%}
-{%- endfor %}
-{%+ endmacro %}
+{% filter inline %}
+{% for p in params %}
+  {{ _cx_id(name=p.name) }}{% if not loop.last %}, {% endif %}
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

@@ -46,8 +46,8 @@ enum class {{ _name(e=item) }} : {{ _primitive(name=item.underlying) }} {
 {% endfor %}
 };
 {% elif item.kind == 'bitmask' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
-{% set bits %}{{ _primitive(name=item.underlying) }}{% endset %}
+{% set name = _name(e=item) %}
+{% set bits = _primitive(name=item.underlying) %}
 enum class {{ name }} : {{ bits }} {
 {% for f in item.flags %}
     {{ _id(name=f.name) }} = {{ bits }}{1} << {{ f.bit }},
@@ -73,15 +73,15 @@ constexpr {{ name }}& operator^=({{ name }}& a, {{ name }} b) { return a = a ^ b
 /// True when every flag of `flags` is set in `value`.
 constexpr bool has({{ name }} value, {{ name }} flags) { return (value & flags) == flags; }
 {% elif item.kind == 'union' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
-{% set disc %}{{ _type(t=item.discriminator) }}{% endset %}
+{% set name = _name(e=item) %}
+{% set disc = _type(t=item.discriminator) %}
 class {{ name }} {
 public:
     /// Discriminator: selects the case held.
     {{ disc }} _d() const { return d_; }
 {% for c in item.cases %}
-{% set type %}{{ _type(t=c.type) }}{% endset %}
-{% set id %}{{ _id(name=c.name) }}{% endset %}
+{% set type = _type(t=c.type) %}
+{% set id = _id(name=c.name) %}
 {% set when %}{% for l in c.labels %}{{ _value(v=l, t=item.discriminator) }}, {% endfor %}{% if c.isDefault %}the values no case lists{% endif %}{% endset %}
 {# Held for these labels. #}
 

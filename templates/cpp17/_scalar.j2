@@ -3,16 +3,16 @@
   `true` for a type cheap to copy (passed and returned by value): numbers, bool, char, enums, bitmasks,
   aliases of those. Parameter: t.
 #}
-{% if t.kind == 'primitive' -%}
-  {%- if not (t.name == 'string' or t.name == 'bytes') -%}
-    {{- 'true' -}}
-  {%- endif -%}
-{%- elif t.kind == 'ref' -%}
-  {%- set def = typeByKey[t.key] -%}
-  {%- if def.kind == 'enum' or def.kind == 'bitmask' -%}
-    {{- 'true' -}}
-  {%- elif def.kind == 'alias' -%}
-    {{- scalar(t=def.type) -}}
-  {%- endif -%}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.kind == 'primitive' %}
+  {% if not (t.name == 'string' or t.name == 'bytes') %}true{% endif %}
+{% elif t.kind == 'ref' %}
+  {% set def = typeByKey[t.key] %}
+  {% if def.kind == 'enum' or def.kind == 'bitmask' %}
+    true
+  {% elif def.kind == 'alias' %}
+    {{ scalar(t=def.type) }}
+  {% endif %}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

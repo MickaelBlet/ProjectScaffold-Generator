@@ -1,20 +1,19 @@
-{% set ns = namespace() %}
+{% set ns = namespace(author='') %}
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE softpkg PUBLIC "-//JTRS//DTD SCA V2.2.2 SPD//EN" "softpkg.dtd">
 {% include '_xml_banner.j2' %}
-{% set root = project.ident|snake -%}
-{%- if item.binary -%}
-  {%- set exe = (root ~ '_' ~ item.binary)|snake -%}
-{%- else -%}
-  {%- set exe = root ~ '_app' -%}
-{%- endif -%}
-{%- set id = (root ~ '/components/' ~ item.name)|uuid -%}
-{%- set ns.author = '' -%}
-{%- for entry in project.metadata.items() -%}
-  {%- if entry[0] == 'author' -%}
-    {%- set ns.author = entry[1] -%}
-  {%- endif -%}
-{%- endfor %}
+{% set root = project.ident|snake %}
+{% if item.binary %}
+  {% set exe = (root ~ '_' ~ item.binary)|snake %}
+{% else %}
+  {% set exe = root ~ '_app' %}
+{% endif %}
+{% set id = (root ~ '/components/' ~ item.name)|uuid %}
+{% for entry in project.metadata.items() %}
+  {% if entry[0] == 'author' %}
+    {% set ns.author = entry[1] %}
+  {% endif %}
+{% endfor %}
 <softpkg id="DCE:{{ id }}" name="{{ item.name }}">
     <author>
 {% if ns.author != '' %}

@@ -4,37 +4,19 @@
   Python statement encoding value `v` of type `t` with writer `w`: `w.seq(v.path, data.encode_Vec3)`.
   Bounds are passed last (`w.string(v, 16)`). Parameters: t, v, w, prefix (`data.` outside data.py, else '').
 #}
-{% if t.kind == 'primitive' -%}
-  {{- w ~ '.' ~ t.name ~ '(' ~ v -}}
-  {%- if t.max is not none -%}
-    {{- ', ' ~ t.max -}}
-  {%- endif -%}
-  {{- ')' -}}
-{%- elif t.kind == 'ref' -%}
-  {{- prefix ~ 'encode_' ~ t.name ~ '(' ~ w ~ ', ' ~ v ~ ')' -}}
-{%- elif t.kind == 'array' -%}
-  {{- w ~ '.array(' ~ v ~ ', ' ~ t.size ~ ', ' -}}
-  {{- _py_encoder(t=t.of, prefix=prefix) -}}
-  {{- ')' -}}
-{%- elif t.kind == 'optional' -%}
-  {{- w ~ '.optional(' ~ v ~ ', ' -}}
-  {{- _py_encoder(t=t.of, prefix=prefix) -}}
-  {{- ')' -}}
-{%- elif t.kind == 'map' -%}
-  {{- w ~ '.map(' ~ v ~ ', ' -}}
-  {{- _py_encoder(t=t.key, prefix=prefix) -}}
-  {{- ', ' -}}
-  {{- _py_encoder(t=t.value, prefix=prefix) -}}
-  {%- if t.max is not none -%}
-    {{- ', ' ~ t.max -}}
-  {%- endif -%}
-  {{- ')' -}}
-{%- else -%}
-  {{- w ~ '.seq(' ~ v ~ ', ' -}}
-  {{- _py_encoder(t=t.of, prefix=prefix) -}}
-  {%- if t.max is not none -%}
-    {{- ', ' ~ t.max -}}
-  {%- endif -%}
-  {{- ')' -}}
-{%- endif %}
-{%+ endmacro %}
+{% filter inline %}
+{% if t.kind == 'primitive' %}
+  {{ w }}.{{ t.name }}({{ v }}{% if t.max is not none %}, {{ t.max }}{% endif %})
+{% elif t.kind == 'ref' %}
+  {{ prefix }}encode_{{ t.name }}({{ w }}, {{ v }})
+{% elif t.kind == 'array' %}
+  {{ w }}.array({{ v }}, {{ t.size }}, {{ _py_encoder(t=t.of, prefix=prefix) }})
+{% elif t.kind == 'optional' %}
+  {{ w }}.optional({{ v }}, {{ _py_encoder(t=t.of, prefix=prefix) }})
+{% elif t.kind == 'map' %}
+  {{ w }}.map({{ v }}, {{ _py_encoder(t=t.key, prefix=prefix) }}, {{ _py_encoder(t=t.value, prefix=prefix) }}{% if t.max is not none %}, {{ t.max }}{% endif %})
+{% else %}
+  {{ w }}.seq({{ v }}, {{ _py_encoder(t=t.of, prefix=prefix) }}{% if t.max is not none %}, {{ t.max }}{% endif %})
+{% endif %}
+{% endfilter %}
+{% endmacro %}

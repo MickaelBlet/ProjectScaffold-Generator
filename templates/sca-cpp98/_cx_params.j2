@@ -8,30 +8,22 @@
   `out` as `T&` for fixed-length types, `T_out` for variable-length ones, `CORBA::String_out`.
   Parameters: params, owner.
 #}
-{% for p in params -%}
-  {%- set kind -%}
-    {{- _cx_kind(t=p.type) -}}
-  {%- endset -%}
-  {%- set name -%}
-    {{- _cx_name(t=p.type, owner=owner) -}}
-  {%- endset -%}
-  {%- if p.direction == 'in' -%}
-    {{- _cx_in(t=p.type, owner=owner) -}}
-  {%- elif p.direction == 'inout' -%}
-    {{- name ~ '&' -}}
-  {%- else -%}
-    {%- if kind == 'string' -%}
-      {{- '::CORBA::String_out' -}}
-    {%- elif kind == 'variable' -%}
-      {{- name ~ '_out' -}}
-    {%- else -%}
-      {{- name ~ '&' -}}
-    {%- endif -%}
-  {%- endif -%}
-  {{- ' ' -}}
-  {{- _cx_id(name=p.name) -}}
-  {%- if not loop.last -%}
-    {{- ', ' -}}
-  {%- endif -%}
-{%- endfor %}
-{%+ endmacro %}
+{% filter inline %}
+{% for p in params %}
+  {% set kind = _cx_kind(t=p.type) %}
+  {% set name = _cx_name(t=p.type, owner=owner) %}
+  {% if p.direction == 'in' %}
+    {{ _cx_in(t=p.type, owner=owner) }}
+  {% elif p.direction == 'inout' %}
+    {{ name }}&
+  {% elif kind == 'string' %}
+    ::CORBA::String_out
+  {% elif kind == 'variable' %}
+    {{ name }}_out
+  {% else %}
+    {{ name }}&
+  {% endif %}
+  {{ ' ' ~ _cx_id(name=p.name) }}{% if not loop.last %}, {% endif %}
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

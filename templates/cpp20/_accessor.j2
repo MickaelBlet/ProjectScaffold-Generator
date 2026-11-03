@@ -3,9 +3,8 @@
   Accessor of a child module: `Sensor` -> `sensor`, `Operator` -> `operatorModule`.
   Its member is the accessor followed by `_`. Parameter: name.
 #}
-{% set accessor = name|lcfirst -%}
-{{- accessor -}}
-{%- if accessor in generator.reserved -%}
-  {{- 'Module' -}}
-{%- endif %}
-{%+ endmacro %}
+{% set accessor = name|lcfirst %}
+{% filter inline %}
+{{ accessor }}{% if accessor in generator.reserved %}Module{% endif %}
+{% endfilter %}
+{% endmacro %}

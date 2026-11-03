@@ -4,19 +4,12 @@
   of the client (where the caller connects) or of the server (where the callee listens), or the name
   of the shared memory. Parameters: r (with `link` and `settings`), side ('client' or 'server').
 #}
-{% if r.link.constraints.remote.transport == 'shm' -%}
-  {{- r.settings.name -}}
-{%- else -%}
-  {%- set at = r.settings.client -%}
-  {%- if side == 'server' -%}
-    {%- set at = r.settings.server -%}
-  {%- endif -%}
-  {%- if at.host != none -%}
-    {%- if ':' in at.host -%}
-      {{- '[' ~ at.host ~ ']:' ~ at.port -}}
-    {%- else -%}
-      {{- at.host ~ ':' ~ at.port -}}
-    {%- endif -%}
-  {%- endif -%}
-{%- endif %}
-{%+ endmacro %}
+{% set at = r.settings.server if side == 'server' else r.settings.client %}
+{% filter inline %}
+{% if r.link.constraints.remote.transport == 'shm' %}
+  {{ r.settings.name }}
+{% elif at.host != none %}
+  {% if ':' in at.host %}[{{ at.host }}]{% else %}{{ at.host }}{% endif %}:{{ at.port }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

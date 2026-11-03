@@ -1,35 +1,19 @@
 {% macro init(m=none) %}
 {% from '_accessor.j2' import accessor as _accessor %}
 {% from '_member.j2' import member as _member %}
-{% set ns = namespace() %}
+{% set ns = namespace(inits=[]) %}
 {#
   Member initializer list of a module's constructor: the servants of its provides ports, its
   abstract children (null until created), its attributes (value-initialized; the constructor sets
   their defaults), in the order they are declared. Parameter: m.
 #}
-{% set ns.inits = '' -%}
-{%- for p in m.ports -%}
-  {%- if p.role == 'in' and (p.interface and p.delegates|length == 0) -%}
-    {%- set ns.inits = ns.inits ~ '|' ~ p.name ~ 'In_(*this)' -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- for c in m.instances -%}
-  {%- if c.abstract -%}
-    {%- set accessor -%}
-      {{- _accessor(name=c.name) -}}
-    {%- endset -%}
-    {%- set ns.inits = ns.inits ~ '|' ~ accessor ~ '_(NULL)' -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- for a in m.attributes -%}
-  {%- if not a.static -%}
-    {%- set member -%}
-      {{- _member(name=a.name) -}}
-    {%- endset -%}
-    {%- set ns.inits = ns.inits ~ '|' ~ member ~ '()' -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- if ns.inits != '' -%}
-  {{- (' : ' ~ ns.inits)|replace('|', '', 1)|replace('|', ', ') -}}
-{%- endif %}
-{%+ endmacro %}
+{% for p in m.ports if p.role == 'in' and p.interface and p.delegates|length == 0 %}
+  {% set ns.inits = ns.inits + [p.name ~ 'In_(*this)'] %}
+{% endfor %}
+{% for c in m.instances if c.abstract %}
+  {% set ns.inits = ns.inits + [_accessor(name=c.name) ~ '_(NULL)'] %}
+{% endfor %}
+{% for a in m.attributes if not a.static %}
+  {% set ns.inits = ns.inits + [_member(name=a.name) ~ '()'] %}
+{% endfor %}
+{% if ns.inits %} : {{ ns.inits|join(', ') }}{% endif %}{% endmacro %}

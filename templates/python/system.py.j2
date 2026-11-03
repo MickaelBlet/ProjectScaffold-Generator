@@ -5,15 +5,10 @@
 {% from '_py_module_path.j2' import py_module_path as _py_module_path %}
 {% set ns = namespace() %}
 {% include '_py_banner.j2' %}
-{% set root = project.ident|snake -%}
-{%- set generated = 'tcp,udp,http,websocket,shm'|split(',')|select|list -%}
-{%- set faces = system.proxies|map(attribute='interface') -%}
-{%- set more = system.stubs|map(attribute='interface') -%}
-{%- set faces = (faces + more)|unique|list -%}
-{%- set module -%}
-  {%- set ns.file = system.name|snake -%}
-  {{- _py_id(name=ns.file) -}}
-{%- endset %}
+{% set root = project.ident|snake %}
+{% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm'] %}
+{% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
+{% set module = _py_id(name=system.name|snake) %}
 """{% if system.binary %}Binary {{ system.binary.name }} of {{ project.name }}: its top-level modules, wired together and to the other
 binaries{% else %}The top-level modules of {{ project.name }}, wired together{% endif %}.
 
@@ -32,7 +27,7 @@ from {{ _py_module_path(m=c) }} import {{ _py_class(e=c) }}
 from {{ root }} import links  # noqa: F401
 from {{ root }}.transport import Server
 {% for i in faces %}
-from {{ root }}.remote.{% set __capture %}{{ i.name|snake }}{% endset %}{% set ns.file = __capture %}{{ _py_id(name=ns.file) }} import {{ i.name }}Proxy, {{ i.name }}Stub  # noqa: F401
+from {{ root }}.remote.{{ _py_id(name=i.name|snake) }} import {{ i.name }}Proxy, {{ i.name }}Stub  # noqa: F401
 {% endfor %}
 {% else %}
 from {{ root }}.ports import OutPort  # noqa: F401

@@ -25,14 +25,13 @@ inline void decode(Reader& r, {{ _qualified(e=t) }}& v);
 {% endif %}
 {% endfor %}
 {% for t in remoteTypes %}
-
-{%- if t.kind == 'struct' or t.kind == 'exception' %}
+{% if t.kind == 'struct' or t.kind == 'exception' %}
 
 inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
 {
 {% for f in t.fields %}
-{% set __capture %}v.{{ _id(name=f.name) }}{% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=f.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = 'v.' ~ _id(name=f.name) %}
+{% set ns.check = _bounds(t=f.type, v=ns.value, depth=0) %}
 {% if ns.check != '' %}
     {{ ns.check }}
 {% endif %}
@@ -46,8 +45,8 @@ inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
 inline void decode(Reader& r, {{ _qualified(e=t) }}& v)
 {
 {% for f in t.fields %}
-{% set __capture %}v.{{ _id(name=f.name) }}{% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=f.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = 'v.' ~ _id(name=f.name) %}
+{% set ns.check = _bounds(t=f.type, v=ns.value, depth=0) %}
 {# Decoded, then checked. #}
     decode(r, {{ ns.value }});
 {% if ns.check != '' %}
@@ -65,7 +64,7 @@ inline void decode(Reader& r, {{ _qualified(e=t) }}& v)
 {% set ns.fallback = c %}
 {% endif %}
 {% endfor %}
-{% set disc %}{{ _type(t=t.discriminator) }}{% endset %}
+{% set disc = _type(t=t.discriminator) %}
 {# The discriminator, then the case it selects. #}
 
 inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
@@ -75,9 +74,9 @@ inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
 {% set ns.branch = 'if' %}
 {% for c in t.cases %}
 {% if c.labels|length > 0 %}
-{% set __capture %}{{ _labels(c=c, t=t.discriminator, d='d') }}{% endset %}{% set ns.test = __capture %}
-{% set __capture %}v.{{ _id(name=c.name) }}(){% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=c.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.test = _labels(c=c, t=t.discriminator, d='d') %}
+{% set ns.value = 'v.' ~ _id(name=c.name) ~ '()' %}
+{% set ns.check = _bounds(t=c.type, v=ns.value, depth=0) %}
 {# Its labels. #}
     {{ ns.branch }} ({{ ns.test }}) {
 {% if ns.check != '' %}
@@ -88,8 +87,8 @@ inline void encode(Writer& w, const {{ _qualified(e=t) }}& v)
 {% endif %}
 {% endfor %}
 {% if ns.fallback %}
-{% set __capture %}v.{{ _id(name=ns.fallback.name) }}(){% endset %}{% set ns.value = __capture %}
-{% set __capture %}{{ _bounds(t=ns.fallback.type, v=ns.value, depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.value = 'v.' ~ _id(name=ns.fallback.name) ~ '()' %}
+{% set ns.check = _bounds(t=ns.fallback.type, v=ns.value, depth=0) %}
 {% if ns.branch == 'if' %}
 {% if ns.check != '' %}
     {{ ns.check }}
@@ -115,8 +114,8 @@ inline void decode(Reader& r, {{ _qualified(e=t) }}& v)
 {% set ns.branch = 'if' %}
 {% for c in t.cases %}
 {% if c.labels|length > 0 %}
-{% set __capture %}{{ _labels(c=c, t=t.discriminator, d='d') }}{% endset %}{% set ns.test = __capture %}
-{% set __capture %}{{ _bounds(t=c.type, v='x', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.test = _labels(c=c, t=t.discriminator, d='d') %}
+{% set ns.check = _bounds(t=c.type, v='x', depth=0) %}
 {# Its labels. #}
     {{ ns.branch }} ({{ ns.test }}) {
         {{ _type(t=c.type) }} x{};
@@ -132,7 +131,7 @@ inline void decode(Reader& r, {{ _qualified(e=t) }}& v)
     } else {
 {% endif %}
 {% if ns.fallback %}
-{% set __capture %}{{ _bounds(t=ns.fallback.type, v='x', depth=0) }}{% endset %}{% set ns.check = __capture %}
+{% set ns.check = _bounds(t=ns.fallback.type, v='x', depth=0) %}
 {# The default case. #}
         {{ _type(t=ns.fallback.type) }} x{};
         decode(r, x);

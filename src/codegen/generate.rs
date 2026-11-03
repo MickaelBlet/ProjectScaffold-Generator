@@ -7,6 +7,7 @@ use minijinja::{AutoEscape, Environment, UndefinedBehavior, Value};
 use regex::Regex;
 
 use super::filters;
+use super::inline::inline_blocks;
 use super::sections::{DROP, place_markers, user_filter};
 use super::template_set::{TemplateSet, is_inside_path};
 
@@ -81,11 +82,13 @@ pub fn create_env(set: &TemplateSet, globals: &[(String, Value)]) -> Result<Envi
     env.set_unknown_method_callback(unknown_method);
     filters::register(&mut env);
     env.add_filter("user", user_filter);
+    // Its blocks are joined on one line when the templates are added (inline.rs).
+    env.add_filter("inline", |v: Value| v);
     for (k, v) in globals {
         env.add_global(k.clone(), v.clone());
     }
     for (name, text) in &set.files {
-        env.add_template_owned(name.clone(), text.clone()).map_err(|e| describe(&e))?;
+        env.add_template_owned(name.clone(), inline_blocks(text)).map_err(|e| describe(&e))?;
     }
     Ok(env)
 }

@@ -22,11 +22,11 @@
 {{ item.description|doc_comment }}{##}
 
 {% if item.kind == 'struct' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
+{% set name = _name(e=item) %}
 struct {{ name }} {
     /// Every field, defaulted: `{{ name }}()`, `{{ name }}(a, b)`.
     {%+ if item.fields|length == 1 %}explicit {% endif %}{{ name }}({% for f in item.fields %}{{ _input(t=f.type) }} {{ _id(name=f.name) }} = {% if f.hasDefault %}{{ _value(v=f.default, t=f.type) }}{% else %}{{ _type(t=f.type) }}(){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}){% if item.fields|length > 0 +%}
-        : {% for f in item.fields %}{% set __capture %}{{ _id(name=f.name) }}{% endset %}{% set ns.id = __capture %}{{ ns.id }}({{ ns.id }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif +%}
+        : {% for f in item.fields %}{% set ns.id = _id(name=f.name) %}{{ ns.id }}({{ ns.id }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif +%}
     {
     }
 {% for f in item.fields %}
@@ -38,7 +38,7 @@ struct {{ name }} {
     {%+ endfilter +%}
 };
 {% elif item.kind == 'exception' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
+{% set name = _name(e=item) %}
 struct {{ name }} : std::exception {
     {{ name }}(){% if item.fields|length > 0 +%}
         : {% for f in item.fields %}{{ _id(name=f.name) }}({% if f.hasDefault %}{{ _value(v=f.default, t=f.type) }}{% endif %}){% if not loop.last %}, {% endif %}{% endfor %}{% endif +%}
@@ -56,8 +56,8 @@ struct {{ name }} : std::exception {
     {%+ endfilter +%}
 };
 {% elif item.kind == 'enum' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
-{% set bits %}{{ _primitive(name=item.underlying) }}{% endset %}
+{% set name = _name(e=item) %}
+{% set bits = _primitive(name=item.underlying) %}
 /// Scoped enumeration (enum class of C++11): `{{ name }}::{{ _id(name=item['values'][0].name) }}` names a value, a {{ name }} holds one.
 struct {{ name }} {
     enum Value {
@@ -83,8 +83,8 @@ private:
     {{ bits }} value_;
 };
 {% elif item.kind == 'bitmask' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
-{% set bits %}{{ _primitive(name=item.underlying) }}{% endset %}
+{% set name = _name(e=item) %}
+{% set bits = _primitive(name=item.underlying) %}
 /// Flags: `{{ name }}::A | {{ name }}::B`; `{{ name }}()` has none.
 struct {{ name }} {
     enum Value {
@@ -126,8 +126,8 @@ inline bool operator<({{ name }} a, {{ name }} b) { return a.raw() < b.raw(); }
 /// True when every flag of `flags` is set in `value`.
 inline bool has({{ name }} value, {{ name }} flags) { return (value & flags) == flags; }
 {% elif item.kind == 'union' %}
-{% set name %}{{ _name(e=item) }}{% endset %}
-{% set disc %}{{ _type(t=item.discriminator) }}{% endset %}
+{% set name = _name(e=item) %}
+{% set disc = _type(t=item.discriminator) %}
 class {{ name }} {
 public:
 {% if item.cases|length > 0 and item.cases[0].label != none %}
@@ -139,9 +139,9 @@ public:
     /// Discriminator: selects the case held.
     {{ disc }} _d() const { return d_; }
 {% for c in item.cases %}
-{% set type %}{{ _type(t=c.type) }}{% endset %}
-{% set input %}{{ _input(t=c.type) }}{% endset %}
-{% set __capture %}{{ _id(name=c.name) }}{% endset %}{% set ns.id = __capture %}
+{% set type = _type(t=c.type) %}
+{% set input = _input(t=c.type) %}
+{% set ns.id = _id(name=c.name) %}
 {% set when %}{% for l in c.labels %}{{ _value(v=l, t=item.discriminator) }}, {% endfor %}{% if c.isDefault %}the values no case lists{% endif %}{% endset %}
 {% set label %}{% if c.label != none %} = {{ _value(v=c.label, t=item.discriminator) }}{% endif %}{% endset %}
 {# Held for these labels. #}

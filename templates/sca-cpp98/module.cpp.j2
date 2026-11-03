@@ -19,50 +19,35 @@
 {% from '_ns.j2' import ns as _ns %}
 {% from '_port_name.j2' import port_name as _port_name %}
 {% from '_qualified.j2' import qualified as _qualified %}
-{% set ns = namespace() %}
+{% set ns = namespace(baseComponent=false) %}
 {% include '_banner.j2' %}
-{% set m = item -%}
-{%- set root = project.ident|snake -%}
-{%- set class -%}
-  {{- _id(name=m.name) -}}
-{%- endset -%}
-{%- set component -%}
-  {{- _component(m=m) -}}
-{%- endset -%}
-{%- set ns.baseComponent = false -%}
-{%- for b in m.bases -%}
-  {%- set isComponent -%}
-    {{- _component(m=b) -}}
-  {%- endset -%}
-  {%- if isComponent == 'true' and ns.baseComponent == false -%}
-    {%- set ns.baseComponent = b -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- if ns.baseComponent -%}
-  {%- set base -%}
-    {{- _qualified(e=ns.baseComponent) -}}
-  {%- endset -%}
-{%- endif -%}
-{#- Properties: the component's own instance attributes. -#}
-{%- set properties = m.attributes|selectattr('static', 'equalto', false) -%}
-{%- set exposed -%}
-  {{- _exposed(m=m) -}}
-{%- endset -%}
-{%- set exposed = exposed|split(',')|select|list %}
+{% set m = item %}
+{% set root = project.ident|snake %}
+{% set class = _id(name=m.name) %}
+{% set component = _component(m=m) %}
+{% for b in m.bases %}
+  {% if _component(m=b) == 'true' and ns.baseComponent == false %}
+    {% set ns.baseComponent = b %}
+  {% endif %}
+{% endfor %}
+{% if ns.baseComponent %}
+  {% set base = _qualified(e=ns.baseComponent) %}
+{% endif %}
+{# Properties: the component's own instance attributes. #}
+{% set properties = m.attributes|selectattr('static', 'equalto', false) %}
+{% set exposed = _exposed(m=m)|split(',')|select|list %}
 #include <{{ _header(e=m) }}>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-{% set ns_ %}{{ _ns(e=m) }}{% endset +%}
+{% set ns_ = _ns(e=m) +%}
 {{ _namespace_open(ns_=ns_) }}{##}
 
 {{ class }}::{{ class }}(){{ _init(m=m) }}
 {
 {% for a in m.attributes %}
 {% if a.hasDefault and a.static == false %}
-{% set member -%}
-  {{- _member(name=a.name) -}}
-{%- endset %}
+{% set member = _member(name=a.name) %}
 {{ _cx_init(target=member, v=a.default, t=a.type, owner=root, pad='    ', depth=0) }}
 {%- endif %}
 {% endfor %}
@@ -116,9 +101,7 @@
 {% endfor %}
 {% for p in m.ports %}
 {% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
-{% set ifns -%}
-  {{- _iface_ns(i=p.interface) -}}
-{%- endset %}
+{% set ifns = _iface_ns(i=p.interface) %}
 {% for msg in p.interface.messages %}
 
 {{ _cx_ret(t=msg.returns, owner=ifns) }} {{ class }}::on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _cx_params(params=msg.params, owner=ifns) }})

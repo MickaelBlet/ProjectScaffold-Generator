@@ -5,10 +5,10 @@
   Expression reaching a port from the scope wiring it: `core().sensor().out()`; `skip` first
   modules of `via` left out (1: from the component holding the port). Parameters: x, skip.
 #}
-{% for child in x.via[skip:] -%}
-  {{- _accessor(name=child) -}}
-  {{- '().' -}}
-{%- endfor -%}
-{{- _id(name=x.port) -}}
-{{- '()' -}}
-{%+ endmacro %}
+{% filter inline %}
+{% for child in x.via[skip:] %}
+  {{ _accessor(name=child) }}().
+{% endfor %}
+{{ _id(name=x.port) }}()
+{% endfilter %}
+{% endmacro %}

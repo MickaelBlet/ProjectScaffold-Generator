@@ -1,13 +1,13 @@
 {% from '_header.j2' import header as _header %}
 {% from '_qualified.j2' import qualified as _qualified %}
 {% include '_banner.j2' %}
-{% if binary -%}
-  {%- set process = binary.name -%}
-  {%- set components = modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|selectattr('binary', 'equalto', binary.name) -%}
-{%- else -%}
-  {%- set process = project.name -%}
-  {%- set components = modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|selectattr('binary', 'none') -%}
-{%- endif %}
+{% if binary %}
+  {% set process = binary.name %}
+  {% set components = modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|selectattr('binary', 'equalto', binary.name) %}
+{% else %}
+  {% set process = project.name %}
+  {% set components = modules|selectattr('depth', 'equalto', 0)|selectattr('abstract', 'equalto', false)|selectattr('binary', 'none') %}
+{% endif %}
 {% if binary %}
 // Executable of binary {{ binary.name }}: its SCA components in one process, bound in the naming
 // service by their usage names, where the waveform (SAD) finds them, until SIGINT or SIGTERM.

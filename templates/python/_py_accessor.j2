@@ -3,6 +3,4 @@
 {#
   Attribute holding a child module: `Sensor` -> `sensor`, `Import` -> `import_`. Parameter: name.
 #}
-{% set accessor = name|lcfirst -%}
-{{- _py_id(name=accessor) -}}
-{%+ endmacro %}
+{{ _py_id(name=name|lcfirst) }}{% endmacro %}

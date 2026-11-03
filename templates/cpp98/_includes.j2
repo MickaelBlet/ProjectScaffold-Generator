@@ -5,66 +5,51 @@
   `#include` lines of an entity: the standard headers of what it uses, then the headers of the
   types, interfaces, bases and modules it uses. Parameter: e.
 #}
-{% set root = project.ident|snake -%}
-{%- set ns.std = '' -%}
-{%- set ns.own = '' -%}
-{%- for b in e.uses.builtins -%}
-  {%- if b == 'int8' or b == 'int16' or b == 'int32' or b == 'int64' or b == 'uint8' or b == 'uint16' or b == 'uint32' or b == 'uint64' -%}
-    {%- set ns.std = ns.std ~ '<stdint.h>,' -%}
-  {%- elif b == 'bytes' -%}
-    {%- set ns.std = ns.std ~ '<stdint.h>,<vector>,' -%}
-  {%- elif b == 'string' or b == 'vector' or b == 'list' or b == 'set' or b == 'map' -%}
-    {%- set ns.std = ns.std ~ '<' ~ b ~ '>,' -%}
-  {%- elif b == 'variant' -%}
-    {%- set ns.std = ns.std ~ '<stdexcept>,' -%}
-  {%- elif b == 'exception' -%}
-    {%- set ns.std = ns.std ~ '<exception>,' -%}
-  {%- endif -%}
-{%- endfor -%}
-{%- for t in e.uses.types -%}
-  {%- set header -%}
-    {{- _header(e=t) -}}
-  {%- endset -%}
-  {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
-{%- endfor -%}
-{%- if e.entity == 'module' -%}
-  {%- for base in e.bases -%}
-    {%- set header -%}
-      {{- _header(e=base) -}}
-    {%- endset -%}
-    {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
-  {%- endfor -%}
-  {%- for p in e.ports -%}
-    {%- if p.interface -%}
-      {%- set header -%}
-        {{- _header(e=p.interface) -}}
-      {%- endset -%}
-      {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
-      {%- if p.role == 'out' -%}
-        {%- set ns.own = ns.own ~ '<' ~ root ~ '/ports.hpp>,' -%}
-      {%- endif -%}
-    {%- endif -%}
-  {%- endfor -%}
-{%- endif -%}
-{#- Optional, Array and Make (default values) in every header. -#}
-{%- set ns.std = ns.std ~ '<scaffold/support.hpp>,' -%}
-{%- if e.entity == 'module' or e.entity == 'system' -%}
-  {%- for c in e.instances -%}
-    {%- set header -%}
-      {{- _header(e=c) -}}
-    {%- endset -%}
-    {%- set ns.own = ns.own ~ '<' ~ header ~ '>,' -%}
-    {%- if c.abstract -%}
-      {%- set ns.std = ns.std ~ '<cstddef>,' -%}
-    {%- endif -%}
-  {%- endfor -%}
-{%- endif -%}
-{%- set self_ -%}
-  {{- _header(e=e) -}}
-{%- endset -%}
-{%- set self_ = '<' ~ self_ ~ '>' -%}
-{%- set ns.std = ns.std|split(',')|select|list|unique|list|sort -%}
-{%- set ns.own = ns.own|split(',')|select|list|unique|list|sort %}
+{% set root = project.ident|snake %}
+{% set ns.std = [] %}
+{% set ns.own = [] %}
+{% for b in e.uses.builtins %}
+  {% if b in ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'] %}
+    {% set ns.std = ns.std + ['<stdint.h>'] %}
+  {% elif b == 'bytes' %}
+    {% set ns.std = ns.std + ['<stdint.h>', '<vector>'] %}
+  {% elif b in ['string', 'vector', 'list', 'set', 'map'] %}
+    {% set ns.std = ns.std + ['<' ~ b ~ '>'] %}
+  {% elif b == 'variant' %}
+    {% set ns.std = ns.std + ['<stdexcept>'] %}
+  {% elif b == 'exception' %}
+    {% set ns.std = ns.std + ['<exception>'] %}
+  {% endif %}
+{% endfor %}
+{% for t in e.uses.types %}
+  {% set ns.own = ns.own + ['<' ~ _header(e=t) ~ '>'] %}
+{% endfor %}
+{% if e.entity == 'module' %}
+  {% for base in e.bases %}
+    {% set ns.own = ns.own + ['<' ~ _header(e=base) ~ '>'] %}
+  {% endfor %}
+  {% for p in e.ports %}
+    {% if p.interface %}
+      {% set ns.own = ns.own + ['<' ~ _header(e=p.interface) ~ '>'] %}
+      {% if p.role == 'out' %}
+        {% set ns.own = ns.own + ['<' ~ root ~ '/ports.hpp>'] %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{# Optional, Array and Make (default values) in every header. #}
+{% set ns.std = ns.std + ['<scaffold/support.hpp>'] %}
+{% if e.entity == 'module' or e.entity == 'system' %}
+  {% for c in e.instances %}
+    {% set ns.own = ns.own + ['<' ~ _header(e=c) ~ '>'] %}
+    {% if c.abstract %}
+      {% set ns.std = ns.std + ['<cstddef>'] %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% set self_ = '<' ~ _header(e=e) ~ '>' %}
+{% set ns.std = ns.std|unique|list|sort %}
+{% set ns.own = ns.own|unique|list|sort %}
 {% for header in ns.std %}
 #include {{ header }}
 {% endfor %}

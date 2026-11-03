@@ -2,5 +2,5 @@
 {% include '_py_banner.j2' %}
 """Proxies, handlers and stubs of the interfaces of the links between binaries."""
 {% for i in remoteInterfaces %}
-from .{% set module %}{{ i.name|snake }}{% endset %}{{ _py_id(name=module) }} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
+from .{{ _py_id(name=i.name|snake) }} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
 {% endfor %}
