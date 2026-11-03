@@ -6,6 +6,7 @@ A template set is plain files, editable at will: everything specific to the targ
 - [User sections and whitespace](#user-sections-and-whitespace)
 - [Variables](#variables)
 - [Filters](#filters)
+- [Example context](#example-context)
 - [Partials of the C++ sets](#partials-of-the-c-sets)
 - [From Liquid](#from-liquid)
 
@@ -22,7 +23,7 @@ outputs:
   - template: module.hpp.j2
     each: modules # Jinja expression: one file per item, bound to `item` (`as:` renames it)
     when: item.kind != 'interface' # optional Jinja condition
-    path: "{% from '_header.j2' import header as _header %}include/{{ _header(e=item) }}"
+    path: "{% from '_header.j2' import header as _header %}include/{{ _header(entity=item) }}"
   - template: CMakeLists.txt.j2
     path: CMakeLists.txt
     comment: '#'
@@ -40,10 +41,10 @@ Template and partial paths are relative to the manifest and stay inside its dire
 
   ```jinja
   {% filter inline %}
-  {% if t.kind == 'map' %}
-    std::map<{{ type(t=t.key) }}, {{ type(t=t.value) }}>
+  {% if type_reference.kind == 'map' %}
+    std::map<{{ type(type_reference=type_reference.key) }}, {{ type(type_reference=type_reference.value) }}>
   {% else %}
-    std::{{ t.kind }}<{{ type(t=t.of) }}>
+    std::{{ type_reference.kind }}<{{ type(type_reference=type_reference.of) }}>
   {% endif %}
   {% endfilter %}
   ```
@@ -99,20 +100,70 @@ Besides [MiniJinja's](https://docs.rs/minijinja/latest/minijinja/filters/):
 | `replace(old, new, count)`                      | Jinja's, with an optional count                                             |
 | `inline`                                        | `{% filter inline %}`: the block's text on one line (see above)             |
 
+## Example context
+
+`scaffold-gen <project file> --dump-context` prints the whole context of a project as JSON (every variable above, with every value present): the reference when writing a template. Excerpt from `tests/fixtures/plant.scaffold.yaml`, trimmed, in YAML:
+
+```yaml
+project: {name: Plant Demo, ident: Plant_Demo, description: '', metadata: {}}
+types:
+  - entity: type
+    name: Reading
+    description: One sample
+    kind: struct # enum, bitmask, union, alias, exception, primitive (custom)
+    key: Reading
+    scope: [] # path of its module for a type of a module
+    flatName: Reading
+    dependency: null # name of the dependency for its types (in allTypes)
+    uses: {types: [{entity: type, name: State, ...}], builtins: [float64, int32, map, optional, string, uint64]}
+    fields:
+      - name: value
+        type: {kind: primitive, name: float64, max: null} # a type reference
+        hasDefault: true
+        default: 1.5 # as written in the project file
+      - name: state
+        type: {kind: ref, name: State, typeKind: enum, key: State, dependency: null, scope: [], flatName: State}
+        hasDefault: true
+        default: On
+      - name: tags
+        type: {kind: map, key: {kind: primitive, name: string, max: null}, value: {kind: primitive, name: int32, max: null}, max: null}
+        hasDefault: false
+  - {entity: type, name: State, kind: enum, underlying: int8, values: [{name: Off, value: -1}, {name: On, value: 1}], ...}
+modules:
+  - entity: module
+    name: Sensor
+    path: Plant.Sensor
+    namespace: [Plant]
+    parent: Plant
+    depth: 1
+    binary: null
+    kind: class
+    abstract: false
+    bases: [{entity: module, name: Device, path: Device, ...}]
+    attributes: [] # name, type, default, static, const, access
+    methods: [{name: run, params: [], inputs: [], outputs: [], returns: null, raises: [], access: public, virtual: true, pure: true, override: false, static: false, const: false}]
+    ports: [] # name, role (in / out), interface, delegates
+    children: [] # instances: the modules it holds; connections: links wired inside it
+```
+
+Type references (`field.type`, `param.type`, `method.returns`…) have a `kind`: `primitive` (`name`, bound `max`), `ref` (a user type: `key` into `typeByKey`, `typeKind`, `dependency`, `scope`, `flatName`), `optional`, `vector`, `list`, `set` (`of`, `max`), `array` (`of`, `size`), `map` (`key`, `value`, `max`). A connection (`modules[].connections`, `systems[].connections`) has its `link` (name, `constraints`) and `from` / `to` (`via`: the child modules on the way, `module`, `port`); a link between binaries (`remoteLinks`) its `link`, `interface`, `from` / `to` with their `binary`, and `settings` (the transport's resolved `client`, `server`... addresses).
+
 ## Partials of the C++ sets
 
-In [`templates/cpp17`](../templates/cpp17), the `_*.j2` partials hold one macro each, which spells the C++ of the model; the other templates import and call them: `{% from '_type.j2' import type as _type %}` then `{{ _type(t=field.type) }}`.
+In [`templates/cpp17`](../templates/cpp17), the `_*.j2` partials hold one macro each, which spells the C++ of the model; the other templates import and call them: `{% from '_type.j2' import type as _type %}` then `{{ _type(type_reference=field.type) }}`. Each partial starts with a comment giving what it spells, its parameters and an example of them with the result; each output template with the file it generates, the `item` it receives (an example taken from a real project) and the globals it reads.
 
 | Partials                                                         | Spell                      |
 | ---------------------------------------------------------------- | -------------------------- |
 | `_type`                                                          | type references            |
 | `_value`                                                         | default values as literals |
-| `_params`, `_input`, `_scalar`                                   | parameter passing          |
-| `_name`, `_id`, `_accessor`, `_member`                           | names                      |
-| `_ns`, `_qualified`, `_header`, `_source`                        | namespaces and files       |
+| `_parameters`, `_arguments`, `_input`, `_scalar`                 | parameter passing          |
+| `_name`, `_identifier`, `_accessor`, `_member`                   | names                      |
+| `_cpp_namespace`, `_qualified_name`, `_header`, `_source`        | namespaces and files       |
 | `_includes`, `_endpoint`                                         | wiring expressions         |
 | `_address`, `_address_variable`, `_generated_transport`          | links between binaries     |
 | `_py_type`, `_py_value`, `_py_zero`, `_py_encode`, `_py_decode`… | the Python peers           |
+
+The other C++ sets (`cpp20`, `cpp14`, `cpp11`, `cpp98`) and `python` still use the earlier short names (`_id(name=…)`, `_type(t=…)`, `_header(e=…)`, `_ns`, `_params`, `_py_ref`…).
 
 ## From Liquid
 

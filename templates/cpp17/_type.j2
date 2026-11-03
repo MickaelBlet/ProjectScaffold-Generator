@@ -1,26 +1,35 @@
-{% macro type(t=none) %}
-{% from '_id.j2' import id as _id %}
+{% macro type(type_reference=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_primitive.j2' import primitive as _primitive %}
 {#
-  C++ spelling of a type reference: `std::map<std::string, ::common::Pose>`, `::robot::core::sensor::Mode`
-  for a type of a module; `void` for none.
-  Parameter: t.
+  C++ spelling of a type reference; `void` for no type. A user type is fully qualified: its project's
+  namespace, then the path of its module for a type of a module.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+      Or none.
+  Examples (project Robot):
+    type_reference: {kind: map, key: {kind: primitive, name: string}, value: {kind: ref, name: Pose, dependency: Common, scope: []}}
+      -> std::map<std::string, ::common::Pose>
+    type_reference: {kind: ref, name: Mode, dependency: null, scope: [Core, Sensor]}
+      -> ::robot::core::sensor::Mode
 #}
 {% filter inline %}
-{% if t == none %}
+{% if type_reference == none %}
   void
-{% elif t.kind == 'primitive' %}
-  {{ _primitive(name=t.name) }}
-{% elif t.kind == 'ref' %}
-  ::{{ (t.dependency or project.ident)|snake }}
-  {% for part in t.scope %}::{{ part|snake }}{% endfor %}
-  ::{{ _id(name=t.name) }}
-{% elif t.kind == 'array' %}
-  std::array<{{ type(t=t.of) }}, {{ t.size }}>
-{% elif t.kind == 'map' %}
-  std::map<{{ type(t=t.key) }}, {{ type(t=t.value) }}>
+{% elif type_reference.kind == 'primitive' %}
+  {{ _primitive(name=type_reference.name) }}
+{% elif type_reference.kind == 'ref' %}
+  ::{{ (type_reference.dependency or project.ident)|snake }}
+  {% for part in type_reference.scope %}::{{ part|snake }}{% endfor %}
+  ::{{ _identifier(name=type_reference.name) }}
+{% elif type_reference.kind == 'array' %}
+  std::array<{{ type(type_reference=type_reference.of) }}, {{ type_reference.size }}>
+{% elif type_reference.kind == 'map' %}
+  std::map<{{ type(type_reference=type_reference.key) }}, {{ type(type_reference=type_reference.value) }}>
 {% else %}
-  std::{{ t.kind }}<{{ type(t=t.of) }}>
+  std::{{ type_reference.kind }}<{{ type(type_reference=type_reference.of) }}>
 {% endif %}
 {% endfilter %}
 {% endmacro %}

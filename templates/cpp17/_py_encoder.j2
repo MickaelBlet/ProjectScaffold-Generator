@@ -1,16 +1,26 @@
-{% macro py_encoder(t=none, prefix=none) %}
+{% macro py_encoder(type_reference=none, prefix=none) %}
 {% from '_py_encode.j2' import py_encode as _py_encode %}
 {#
-  Python function `(writer, value)` encoding a type: `Writer.int32`, `data.encode_Pose`, a lambda.
-  Parameters: t, prefix.
+  Python function `(writer, value)` encoding a type: a `Writer` method, an `encode_<Type>` function of
+  data.py, or a lambda for containers and bounded primitives.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+    prefix: `data.` outside data.py, else ''.
+  Examples (prefix: data.):
+    type_reference: {kind: primitive, name: int32, max: null}   -> Writer.int32
+    type_reference: {kind: ref, name: Pose}                     -> data.encode_Pose
+    type_reference: {kind: optional, of: {kind: primitive, name: bool, max: null}}
+      -> lambda w, v: w.optional(v, Writer.bool)
 #}
 {% filter inline %}
-{% if t.kind == 'primitive' and t.max is none %}
-  Writer.{{ t.name }}
-{% elif t.kind == 'ref' %}
-  {{ prefix }}encode_{{ t.name }}
+{% if type_reference.kind == 'primitive' and type_reference.max is none %}
+  Writer.{{ type_reference.name }}
+{% elif type_reference.kind == 'ref' %}
+  {{ prefix }}encode_{{ type_reference.name }}
 {% else %}
-  lambda w, v: {{ _py_encode(t=t, v='v', w='w', prefix=prefix) }}
+  lambda w, v: {{ _py_encode(type_reference=type_reference, expression='v', writer='w', prefix=prefix) }}
 {% endif %}
 {% endfilter %}
 {% endmacro %}

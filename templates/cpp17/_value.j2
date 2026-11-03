@@ -1,81 +1,93 @@
-{% macro value(v=none, t=none) %}
-{% from '_id.j2' import id as _id %}
+{% macro value(model_value=none, type_reference=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_type.j2' import type as _type %}
-{% set ns = namespace() %}
+{% set state = namespace() %}
 {#
-  C++ literal of a default value of the model (as in the YAML file) of type t.
-  Parameters: v, t.
+  C++ literal of a value of the model (a default value or a constant, as written in the YAML file) of a
+  given type: enums by enumerator, bitmasks as or-ed flags, unions through a lambda setting their case,
+  structs as braced lists of all their fields (the value's, else the field's default, else `{}`).
+  Parameters:
+    model_value: the value as read from the project file (number, string, list, mapping).
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+  Examples (project Plant):
+    model_value: 1.5, type_reference: {kind: primitive, name: float64}  -> 1.5
+    model_value: On, type_reference: {kind: ref, name: State, key: State, typeKind: enum, scope: []}
+      -> ::plant_demo::State::On
+    model_value: {a: 1}, type_reference: {kind: map, key: {kind: primitive, name: string}, value: {kind: primitive, name: int32}}
+      -> { {"a", 1} }
 #}
 {% filter inline %}
-{% if t.kind == 'primitive' %}
-  {% if t.name == 'bool' %}
-    {% if v == true or v == 'true' %}true{% else %}false{% endif %}
-  {% elif t.name == 'char' %}
-    '{{ v|replace('\\', '\\\\')|replace("'", "\\'") }}'
-  {% elif t.name == 'string' %}
-    "{{ v|replace('\\', '\\\\')|replace('"', '\\"')|replace('\n', '\\n')|replace('\t', '\\t') }}"
-  {% elif t.name == 'bytes' %}
+{% if type_reference.kind == 'primitive' %}
+  {% if type_reference.name == 'bool' %}
+    {% if model_value == true or model_value == 'true' %}true{% else %}false{% endif %}
+  {% elif type_reference.name == 'char' %}
+    '{{ model_value|replace('\\', '\\\\')|replace("'", "\\'") }}'
+  {% elif type_reference.name == 'string' %}
+    "{{ model_value|replace('\\', '\\\\')|replace('"', '\\"')|replace('\n', '\\n')|replace('\t', '\\t') }}"
+  {% elif type_reference.name == 'bytes' %}
     {# The text's characters, one byte each. #}
     {
-    {% for ch in v|split('')|select %}
-      '{{ ch|replace('\\', '\\\\')|replace("'", "\\'") }}'{% if not loop.last %}, {% endif %}
+    {% for character in model_value|split('')|select %}
+      '{{ character|replace('\\', '\\\\')|replace("'", "\\'") }}'{% if not loop.last %}, {% endif %}
     {% endfor %}
     }
-  {% elif t.name == 'float32' or t.name == 'float64' %}
-    {% set number = v ~ '' %}
+  {% elif type_reference.name == 'float32' or type_reference.name == 'float64' %}
+    {% set number = model_value ~ '' %}
     {{ number }}
     {% if not ('.' in number or 'e' in number) %}.0{% endif %}
-    {% if t.name == 'float32' %}f{% endif %}
-  {% elif t.name == 'int64' %}
-    {{ v }}LL
-  {% elif t.name == 'uint64' %}
-    {{ v }}ULL
-  {% elif t.name == 'uint32' %}
-    {{ v }}U
+    {% if type_reference.name == 'float32' %}f{% endif %}
+  {% elif type_reference.name == 'int64' %}
+    {{ model_value }}LL
+  {% elif type_reference.name == 'uint64' %}
+    {{ model_value }}ULL
+  {% elif type_reference.name == 'uint32' %}
+    {{ model_value }}U
   {% else %}
-    {{ v }}
+    {{ model_value }}
   {% endif %}
-{% elif t.kind == 'optional' %}
-  {% if v == none %}std::nullopt{% else %}{{ value(v=v, t=t.of) }}{% endif %}
-{% elif t.kind == 'array' or t.kind == 'vector' or t.kind == 'list' or t.kind == 'set' %}
+{% elif type_reference.kind == 'optional' %}
+  {% if model_value == none %}std::nullopt{% else %}{{ value(model_value=model_value, type_reference=type_reference.of) }}{% endif %}
+{% elif type_reference.kind == 'array' or type_reference.kind == 'vector' or type_reference.kind == 'list' or type_reference.kind == 'set' %}
   {
-  {% for item in v %}
-    {{ value(v=item, t=t.of) }}{% if not loop.last %}, {% endif %}
+  {% for item in model_value %}
+    {{ value(model_value=item, type_reference=type_reference.of) }}{% if not loop.last %}, {% endif %}
   {% endfor %}
   }
-{% elif t.kind == 'map' %}
+{% elif type_reference.kind == 'map' %}
   {
-  {% for entry in v.items() %}
-    { {{- value(v=entry[0], t=t.key) }}, {{ value(v=entry[1], t=t.value) -}} }
+  {% for entry in model_value.items() %}
+    { {{- value(model_value=entry[0], type_reference=type_reference.key) }}, {{ value(model_value=entry[1], type_reference=type_reference.value) -}} }
     {% if not loop.last %}, {% endif %}
   {% endfor %}
   }
-{% elif t.kind == 'ref' %}
-  {% set def = typeByKey[t.key] %}
-  {% if def.kind == 'enum' %}
-    {{ _type(t=t) }}::{{ _id(name=v) }}
-  {% elif def.kind == 'bitmask' %}
+{% elif type_reference.kind == 'ref' %}
+  {% set definition = typeByKey[type_reference.key] %}
+  {% if definition.kind == 'enum' %}
+    {{ _type(type_reference=type_reference) }}::{{ _identifier(name=model_value) }}
+  {% elif definition.kind == 'bitmask' %}
     {# The flags of the list, or no flag. #}
-    {% if v|length == 0 %}{{ _type(t=t) }}{}{% endif %}
-    {% for flag in v %}
-      {{ _type(t=t) }}::{{ _id(name=flag) }}{% if not loop.last %} | {% endif %}
+    {% if model_value|length == 0 %}{{ _type(type_reference=type_reference) }}{}{% endif %}
+    {% for flag in model_value %}
+      {{ _type(type_reference=type_reference) }}::{{ _identifier(name=flag) }}{% if not loop.last %} | {% endif %}
     {% endfor %}
-  {% elif def.kind == 'union' %}
+  {% elif definition.kind == 'union' %}
     {# The case of the one-entry mapping, set by a lambda. #}
-    {% for entry in v.items() %}
-      {% set ns.c = def.cases|selectattr('name', 'equalto', entry[0])|first %}
-      [] { {{ _type(t=t) }} u; u.{{ _id(name=ns.c.name) }}({{ value(v=entry[1], t=ns.c.type) }}); return u; }()
+    {% for entry in model_value.items() %}
+      {% set state.union_case = definition.cases|selectattr('name', 'equalto', entry[0])|first %}
+      [] { {{ _type(type_reference=type_reference) }} u; u.{{ _identifier(name=state.union_case.name) }}({{ value(model_value=entry[1], type_reference=state.union_case.type) }}); return u; }()
     {% endfor %}
-  {% elif def.kind == 'alias' %}
-    {{ value(v=v, t=def.type) }}
-  {% elif def.kind == 'struct' %}
+  {% elif definition.kind == 'alias' %}
+    {{ value(model_value=model_value, type_reference=definition.type) }}
+  {% elif definition.kind == 'struct' %}
     {# Fields in order: the value's, else the field's default, else value-initialized. #}
-    {{ _type(t=t) }}{
-    {% for f in def.fields %}
-      {% if f.name in v %}
-        {{ value(v=v[f.name], t=f.type) }}
-      {% elif f.hasDefault %}
-        {{ value(v=f.default, t=f.type) }}
+    {{ _type(type_reference=type_reference) }}{
+    {% for field in definition.fields %}
+      {% if field.name in model_value %}
+        {{ value(model_value=model_value[field.name], type_reference=field.type) }}
+      {% elif field.hasDefault %}
+        {{ value(model_value=field.default, type_reference=field.type) }}
       {% else %}
         {}
       {% endif %}
@@ -84,7 +96,7 @@
     }
   {% else %}
     {# Custom primitive: the value is written as it is (a string is a C++ expression). #}
-    {{ v }}
+    {{ model_value }}
   {% endif %}
 {% endif %}
 {% endfilter %}

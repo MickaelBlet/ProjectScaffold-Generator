@@ -1,41 +1,51 @@
-{% macro py_type(t=none, prefix=none) %}
-{% from '_py_ref.j2' import py_ref as _py_ref %}
+{% macro py_type(type_reference=none, prefix=none) %}
+{% from '_py_reference.j2' import py_reference as _py_reference %}
 {#
-  Python type hint of a type reference: `Dict[str, List[data.Pose]]`; `None` for none. Aliases are
-  spelled as the type they stand for. Parameters: t, prefix (`data.` outside data.py, else '').
+  Python type hint of a type reference; aliases spelled as the type they stand for, custom primitives
+  as `Any`; `None` for no type.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+      Or none.
+    prefix: `data.` outside data.py, else ''.
+  Example:
+    type_reference: {kind: map, key: {kind: primitive, name: string}, value: {kind: vector, of: {kind: ref, name: Pose, flatName: Pose, scope: []}}}
+    prefix: data.
+    -> Dict[str, List[data.Pose]]
 #}
 {% filter inline %}
-{% if t == none %}
+{% if type_reference == none %}
   None
-{% elif t.kind == 'primitive' %}
-  {% if t.name == 'bool' %}
+{% elif type_reference.kind == 'primitive' %}
+  {% if type_reference.name == 'bool' %}
     bool
-  {% elif t.name == 'char' or t.name == 'string' %}
+  {% elif type_reference.name == 'char' or type_reference.name == 'string' %}
     str
-  {% elif t.name == 'float32' or t.name == 'float64' %}
+  {% elif type_reference.name == 'float32' or type_reference.name == 'float64' %}
     float
-  {% elif t.name == 'bytes' %}
+  {% elif type_reference.name == 'bytes' %}
     bytes
   {% else %}
     int
   {% endif %}
-{% elif t.kind == 'ref' %}
-  {% set def = typeByKey[t.key] %}
-  {% if def.kind == 'alias' %}
-    {{ py_type(t=def.type, prefix=prefix) }}
-  {% elif def.kind == 'primitive' %}
+{% elif type_reference.kind == 'ref' %}
+  {% set definition = typeByKey[type_reference.key] %}
+  {% if definition.kind == 'alias' %}
+    {{ py_type(type_reference=definition.type, prefix=prefix) }}
+  {% elif definition.kind == 'primitive' %}
     Any
   {% else %}
-    {{ _py_ref(t=t, prefix=prefix) }}
+    {{ _py_reference(type_reference=type_reference, prefix=prefix) }}
   {% endif %}
-{% elif t.kind == 'optional' %}
-  Optional[{{ py_type(t=t.of, prefix=prefix) }}]
-{% elif t.kind == 'set' %}
-  Set[{{ py_type(t=t.of, prefix=prefix) }}]
-{% elif t.kind == 'map' %}
-  Dict[{{ py_type(t=t.key, prefix=prefix) }}, {{ py_type(t=t.value, prefix=prefix) }}]
+{% elif type_reference.kind == 'optional' %}
+  Optional[{{ py_type(type_reference=type_reference.of, prefix=prefix) }}]
+{% elif type_reference.kind == 'set' %}
+  Set[{{ py_type(type_reference=type_reference.of, prefix=prefix) }}]
+{% elif type_reference.kind == 'map' %}
+  Dict[{{ py_type(type_reference=type_reference.key, prefix=prefix) }}, {{ py_type(type_reference=type_reference.value, prefix=prefix) }}]
 {% else %}
-  List[{{ py_type(t=t.of, prefix=prefix) }}]
+  List[{{ py_type(type_reference=type_reference.of, prefix=prefix) }}]
 {% endif %}
 {% endfilter %}
 {% endmacro %}

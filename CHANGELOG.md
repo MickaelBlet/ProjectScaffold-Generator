@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `cpp17` templates easier to follow: no abbreviated names (variables and macro parameters spelled out: `_type(type_reference=…)`, `_header(entity=…)`; partials `_ns`, `_id`, `_args`, `_params`, `_qualified`, `_main`, `_py_id`, `_py_ref` renamed `_cpp_namespace`, `_identifier`, `_arguments`, `_parameters`, `_qualified_name`, `_main_path`, `_py_identifier`, `_py_reference`), each partial and output template commented with what it does and an example of its input; the context is documented with an example in [Writing templates › Example context](docs/templates.md#example-context). Generated code is unchanged. Template sets copied from `cpp17` before keep working (they hold their own partials).
 - Built-in template sets rewritten for reading: macros spell their C++ / Python as plain text in `{% filter inline %}` blocks (new: the block's text is joined on one line, see _Writing templates_), lists instead of comma-joined strings, no capture blocks. Generated code is unchanged.
 - The JSON Schemas come from the `viewer` submodule (ProjectScaffold-Viewer) instead of a copy in `schema/`: clone with `--recurse-submodules` (or `git submodule update --init`) to build.
 - The generator is written in Rust: `scaffold-gen` is one static executable (no Node), built-in templates included, built by `scripts/build_cli.sh` (`cargo build`); same command line, same messages, same generated code.

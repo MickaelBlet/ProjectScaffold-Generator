@@ -1,13 +1,24 @@
+{#
+  Generates src/[<binary>/]main.cpp: main() creating the system of the binary and, when the binary serves
+  calls from others, waiting for SIGINT / SIGTERM.
+  Rendered (manifest.yaml): once per entry of `systems`, as `system`, when `modules` is not empty.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    system:
+      name: ServerSystem
+      binary: {name: Server}
+      stubs: [{link: {name: echo_tcp, ...}, ...}, ...]
+  Also reads: project.ident.
+#}
 {% from '_header.j2' import header as _header %}
-{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% include '_banner.j2' %}
-#include <{{ _header(e=system) }}>
+#include <{{ _header(entity=system) }}>
 {% filter user('includes') +%}
 {% endfilter +%}
 
 int main(int argc, char** argv)
 {
-    {{ _qualified(e=system) }} system;
+    {{ _qualified_name(entity=system) }} system;
     {%+ filter user('main') +%}
     (void)argc;
     (void)argv;

@@ -1,6 +1,12 @@
 {% macro member(name=none) %}
 {#
-  Data member holding an attribute or an out port: `rateHz` -> `rateHz_`. Parameter: name.
+  C++ data member holding an attribute or an out port: the name followed by `_` (`Member_` for C++
+  keywords).
+  Parameters:
+    name: the attribute's or port's name.
+  Examples:
+    name: rateHz  -> rateHz_
+    name: class   -> classMember_
 #}
 {% filter inline %}
 {{ name }}{% if name in generator.reserved %}Member{% endif %}_

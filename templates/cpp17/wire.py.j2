@@ -1,3 +1,10 @@
+{#
+  Generates python/<project>/wire.py: the wire format (Reader, Writer, request / reply frames) shared with
+  include/<project>/remote/wire.hpp; the two must change together.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input: none beyond the banner.
+  Also reads: project.ident.
+#}
 {% include '_py_banner.j2' %}
 """Wire format of the calls between binaries, as include/{{ project.ident|snake }}/remote/wire.hpp.
 

@@ -1,7 +1,17 @@
+{#
+  Generates include/<project>/types.hpp: includes every type header of the project at once.
+  Rendered once (manifest.yaml), when `types` is not empty.
+  Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
+    types:
+      - {entity: type, kind: enum, name: State, scope: []}
+      - {entity: type, kind: struct, name: Reading, scope: []}
+      - {entity: type, kind: alias, name: Readings, scope: []}
+      - {entity: type, kind: primitive, name: Handle, scope: []}
+#}
 {% from '_header.j2' import header as _header %}
 {% include '_banner.j2' %}
 #pragma once
 
-{% for t in types %}
-#include <{{ _header(e=t) }}>
+{% for user_type in types %}
+#include <{{ _header(entity=user_type) }}>
 {% endfor %}

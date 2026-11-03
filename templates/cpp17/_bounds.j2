@@ -1,31 +1,42 @@
-{% macro bounds(t=none, v=none, depth=none) %}
+{% macro bounds(type_reference=none, expression=none, depth=none) %}
 {#
-  C++ statements, on one line, checking the bounds of value `v` of type `t` (`string<16>`,
-  `vector<T, 8>`, through aliases; structs check their own fields): nothing when unbounded.
-  Parameters: t, v, depth (of the loops, from 0).
+  C++ statements, on one line, checking the bounds of a value (`string<16>`, `vector<T, 8>`, through
+  aliases, optionals and the elements of containers; structs check their own fields): nothing when
+  unbounded. Elements are visited with `for` loops over variables `x0_`, `x1_`... (one per depth).
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+    expression: the C++ expression of the value (`value.name`, `*value`...).
+    depth: depth of the loops, 0 at the top.
+  Example:
+    type_reference: {kind: vector, max: 8, of: {kind: primitive, name: string, max: 16}}
+    expression: names
+    depth: 0
+    -> checkBound(names, 8); for (const auto& x0_ : names) { checkBound(x0_, 16); }
 #}
-{% set item = 'x' ~ depth ~ '_' %}
-{% set next = depth + 1 %}
+{% set element_variable = 'x' ~ depth ~ '_' %}
+{% set next_depth = depth + 1 %}
 {% filter inline %}
-{% if t.kind == 'primitive' %}
-  {% if t.max is not none %}checkBound({{ v }}, {{ t.max }});{% endif %}
-{% elif t.kind == 'ref' %}
-  {% if t.typeKind == 'alias' %}{{ bounds(t=typeByKey[t.key].type, v=v, depth=depth) }}{% endif %}
-{% elif t.kind == 'optional' %}
-  {% set inner = bounds(t=t.of, v='*' ~ v, depth=depth) %}
-  {% if inner != '' %}if ({{ v }}) { {{ inner }} }{% endif %}
+{% if type_reference.kind == 'primitive' %}
+  {% if type_reference.max is not none %}checkBound({{ expression }}, {{ type_reference.max }});{% endif %}
+{% elif type_reference.kind == 'ref' %}
+  {% if type_reference.typeKind == 'alias' %}{{ bounds(type_reference=typeByKey[type_reference.key].type, expression=expression, depth=depth) }}{% endif %}
+{% elif type_reference.kind == 'optional' %}
+  {% set inner_checks = bounds(type_reference=type_reference.of, expression='*' ~ expression, depth=depth) %}
+  {% if inner_checks != '' %}if ({{ expression }}) { {{ inner_checks }} }{% endif %}
 {% else %}
   {# map, array, vector, list, set: the size, then each element #}
-  {% set sized = t.max is not none and t.kind != 'array' %}
-  {% if t.kind == 'map' %}
-    {% set inner = bounds(t=t.key, v=item ~ '.first', depth=next) ~ bounds(t=t.value, v=item ~ '.second', depth=next) %}
+  {% set has_size_bound = type_reference.max is not none and type_reference.kind != 'array' %}
+  {% if type_reference.kind == 'map' %}
+    {% set inner_checks = bounds(type_reference=type_reference.key, expression=element_variable ~ '.first', depth=next_depth) ~ bounds(type_reference=type_reference.value, expression=element_variable ~ '.second', depth=next_depth) %}
   {% else %}
-    {% set inner = bounds(t=t.of, v=item, depth=next) %}
+    {% set inner_checks = bounds(type_reference=type_reference.of, expression=element_variable, depth=next_depth) %}
   {% endif %}
-  {% if sized %}checkBound({{ v }}, {{ t.max }});{% endif %}
-  {% if inner != '' %}
-    {% if sized %}{{ ' ' }}{% endif %}
-    for (const auto& {{ item }} : {{ v }}) { {{ inner }} }
+  {% if has_size_bound %}checkBound({{ expression }}, {{ type_reference.max }});{% endif %}
+  {% if inner_checks != '' %}
+    {% if has_size_bound %}{{ ' ' }}{% endif %}
+    for (const auto& {{ element_variable }} : {{ expression }}) { {{ inner_checks }} }
   {% endif %}
 {% endif %}
 {% endfilter %}

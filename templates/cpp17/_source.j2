@@ -1,9 +1,14 @@
-{% macro source(e=none) %}
+{% macro source(entity=none) %}
 {#
-  Source file of a module or the system, relative to `src/`: `core/Sensor.cpp`. Parameter: e.
+  Source file of a module or the system, relative to `src/`: in the directories of the module's
+  namespace.
+  Parameters:
+    entity: a module (`name`, `namespace`) or a system (`name`).
+  Example:
+    entity: {entity: module, name: Sensor, namespace: [Core]}  -> core/Sensor.cpp
 #}
 {% filter inline %}
-{% if e.entity == 'module' %}{% for parent in e.namespace %}{{ parent|snake }}/{% endfor %}{% endif %}
-{{ e.name }}.cpp
+{% if entity.entity == 'module' %}{% for parent in entity.namespace %}{{ parent|snake }}/{% endfor %}{% endif %}
+{{ entity.name }}.cpp
 {% endfilter %}
 {% endmacro %}

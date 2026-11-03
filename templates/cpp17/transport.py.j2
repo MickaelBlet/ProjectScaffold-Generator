@@ -1,3 +1,9 @@
+{#
+  Generates python/<project>/transport.py: the transports (tcp, udp, http, websocket, shm) and the Caller /
+  Server on top of them, speaking as remote/transport.cpp does; the two must change together.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input: none (the file does not read the project).
+#}
 {% include '_py_banner.j2' %}
 """Transports of the calls between binaries: tcp, udp, http, websocket and shm, as
 src/remote/transport.cpp (standard library only; shm: POSIX)."""

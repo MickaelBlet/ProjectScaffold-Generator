@@ -1,3 +1,12 @@
+{#
+  Generates python/<project>/__init__.py: the docstring of the Python package standing in for the binaries.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    project:
+      name: Relay
+      ident: Relay
+      description: Two binaries calling each other over every generated transport (tests/remote)
+#}
 {% include '_py_banner.j2' %}
 """Python peers of the binaries of {{ project.name }}{% if project.description != '' %}: {{ project.description }}{% endif %}.
 

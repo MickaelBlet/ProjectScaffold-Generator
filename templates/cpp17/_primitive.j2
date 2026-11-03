@@ -1,6 +1,12 @@
 {% macro primitive(name=none) %}
 {#
-  C++ type of a primitive of the model. Parameter: name.
+  C++ type of a primitive of the model; a custom primitive (declared by the project) is written as is.
+  Parameters:
+    name: the primitive's name (int8..uint64, float32, float64, string, bytes, bool, char, or custom).
+  Examples:
+    name: uint16  -> std::uint16_t
+    name: float64 -> double
+    name: bytes   -> std::vector<std::uint8_t>
 #}
 {% filter inline %}
 {% if name in ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'] %}

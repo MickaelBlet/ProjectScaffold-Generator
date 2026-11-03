@@ -1,15 +1,24 @@
-{% from '_args.j2' import args as _args %}
+{#
+  Generates include/<project>/remote/<Interface>Stub.hpp: receives the calls of an interface from another
+  binary, decodes the inputs, calls the bound local port and encodes the result, the outputs or the
+  declared exceptions.
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
+  Example input: same `item` as proxy.hpp.j2 (an interface with its messages, each with
+  params/inputs/outputs/returns/raises; a message is dispatched by its index in `item.messages`).
+  Also reads: project.ident.
+#}
+{% from '_arguments.j2' import arguments as _arguments %}
 {% from '_bounds.j2' import bounds as _bounds %}
 {% from '_header.j2' import header as _header %}
-{% from '_id.j2' import id as _id %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_name.j2' import name as _name %}
-{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
-{% set ns = namespace() %}
+{% set state = namespace() %}
 {% include '_banner.j2' %}
 #pragma once
 
-#include <{{ _header(e=item) }}>
+#include <{{ _header(entity=item) }}>
 #include <{{ project.ident|snake }}/remote/codec.hpp>
 #include <{{ project.ident|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
@@ -17,7 +26,7 @@
 
 namespace {{ project.ident|snake }}::remote {
 
-/// Receives the calls of {{ _name(e=item) }} from another binary and makes them on the
+/// Receives the calls of {{ _name(entity=item) }} from another binary and makes them on the
 /// port bound. The calls come on the threads of the transport: several at once over tcp, http and
 /// websocket (one per connection).
 class {{ item.name }}Stub {
@@ -27,7 +36,7 @@ public:
     {{ item.name }}Stub& operator=(const {{ item.name }}Stub&) = delete;
     ~{{ item.name }}Stub() { server_.reset(); }
 
-    void bind({{ _qualified(e=item) }}& target) { target_ = &target; }
+    void bind({{ _qualified_name(entity=item) }}& target) { target_ = &target; }
 
     /// Receives the calls over `transport`, at `address`; `capacity`: bytes of each ring of shm.
     void serve(const std::string& transport, const std::string& address,
@@ -43,53 +52,55 @@ public:
         return respond(frame, [this](std::uint16_t message_, Reader& reader_, [[maybe_unused]] Writer& writer_) {
             if (!target_) throw Error("{{ item.name }}Stub not bound");
             switch (message_) {
-{% for msg in item.messages %}
+{# One switch case per message number: decode inputs, call the target, encode result and outputs. #}
+{% for message in item.messages %}
             case {{ loop.index0 }}: {
-{% for p in msg.params %}
-                {{ _type(t=p.type) }} {{ _id(name=p.name) }}{};
+{% for parameter in message.params %}
+                {{ _type(type_reference=parameter.type) }} {{ _identifier(name=parameter.name) }}{};
 {% endfor %}
-{% for p in msg.inputs %}
-{% set ns.value = _id(name=p.name) %}
-{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
+{% for parameter in message.inputs %}
+{% set state.expression = _identifier(name=parameter.name) %}
+{% set state.bounds_check = _bounds(type_reference=parameter.type, expression=state.expression, depth=0) %}
 {# Decoded, then checked. #}
-                decode(reader_, {{ ns.value }});
-{% if ns.check != '' %}
-                {{ ns.check }}
+                decode(reader_, {{ state.expression }});
+{% if state.bounds_check != '' %}
+                {{ state.bounds_check }}
 {% endif %}
 {% endfor %}
                 reader_.end();
-{% set call %}
-{% if msg.returns %}
-{% set ns.check = _bounds(t=msg.returns, v='result_', depth=0) %}
-{% if ns.check != '' %}
-                const auto result_ = target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }});
-                {{ ns.check }}
+{# The call and the encoding of its reply, indented below when the message has declared exceptions to catch. #}
+{% set call_statements %}
+{% if message.returns %}
+{% set state.bounds_check = _bounds(type_reference=message.returns, expression='result_', depth=0) %}
+{% if state.bounds_check != '' %}
+                const auto result_ = target_->{{ _identifier(name=message.name) }}({{ _arguments(parameter_list=message.params) }});
+                {{ state.bounds_check }}
                 encode(writer_, result_);
 {% else %}
-                encode(writer_, target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }}));
+                encode(writer_, target_->{{ _identifier(name=message.name) }}({{ _arguments(parameter_list=message.params) }}));
 {% endif %}
 {% else %}
-                target_->{{ _id(name=msg.name) }}({{ _args(params=msg.params) }});
+                target_->{{ _identifier(name=message.name) }}({{ _arguments(parameter_list=message.params) }});
 {% endif %}
-{% for p in msg.outputs %}
-{% set ns.value = _id(name=p.name) %}
-{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
-{% if ns.check != '' %}
-                {{ ns.check }}
+{% for parameter in message.outputs %}
+{% set state.expression = _identifier(name=parameter.name) %}
+{% set state.bounds_check = _bounds(type_reference=parameter.type, expression=state.expression, depth=0) %}
+{% if state.bounds_check != '' %}
+                {{ state.bounds_check }}
 {% endif %}
-                encode(writer_, {{ ns.value }});
+                encode(writer_, {{ state.expression }});
 {% endfor %}
 {% endset %}
-{% if msg.raises|length > 0 %}
+{% if message.raises|length > 0 %}
                 try {
-{{ '    ' ~ call.rstrip()|replace('\n', '\n    ') }}
-{% for r in msg.raises %}
-                } catch (const {{ _type(t=r) }}& e) {
+{{ '    ' ~ call_statements.rstrip()|replace('\n', '\n    ') }}
+{% for exception_type in message.raises %}
+                } catch (const {{ _type(type_reference=exception_type) }}& e) {
                     throw raised({{ loop.index0 }}, e);
 {% endfor %}
                 }
 {% else %}
-{{ call.rstrip() }}
+{{ call_statements.rstrip() }}
 {% endif %}
                 return true;
             }
@@ -104,7 +115,7 @@ public:
     {%+ endfilter +%}
 
 private:
-    {{ _qualified(e=item) }}* target_ = nullptr;
+    {{ _qualified_name(entity=item) }}* target_ = nullptr;
     std::unique_ptr<Server> server_;
     {%+ filter user('private') +%}
     {%+ endfilter +%}

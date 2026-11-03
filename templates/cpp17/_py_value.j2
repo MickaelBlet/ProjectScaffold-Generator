@@ -1,77 +1,89 @@
-{% macro py_value(v=none, t=none, prefix=none) %}
-{% from '_py_id.j2' import py_id as _py_id %}
-{% from '_py_ref.j2' import py_ref as _py_ref %}
-{% set ns = namespace() %}
+{% macro py_value(model_value=none, type_reference=none, prefix=none) %}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
+{% from '_py_reference.j2' import py_reference as _py_reference %}
+{% set state = namespace() %}
 {#
-  Python literal of a default value of the model (as in the YAML file) of type t.
-  Parameters: v, t, prefix.
+  Python literal of a value of the model (a default value or a constant, as written in the YAML file)
+  of a given type: enums by member, unions by their case's first label, structs by keyword arguments
+  (the fields not given keep their defaults).
+  Parameters:
+    model_value: the value as read from the project file (number, string, list, mapping).
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+    prefix: `data.` outside data.py, else ''.
+  Examples:
+    model_value: On, type_reference: {kind: ref, name: State, key: State, flatName: State, scope: []}, prefix: data.
+      -> data.State.On
+    model_value: {a: 1}, type_reference: {kind: map, key: {kind: primitive, name: string}, value: {kind: primitive, name: int32}}
+      -> {'a': 1}
 #}
 {% filter inline %}
-{% if t.kind == 'primitive' %}
-  {% if t.name == 'bool' %}
-    {% if v == true or v == 'true' %}True{% else %}False{% endif %}
-  {% elif t.name == 'char' or t.name == 'string' or t.name == 'bytes' %}
-    {% if t.name == 'bytes' %}b{% endif %}
-    '{{ (v ~ '')|replace('\\', '\\\\')|replace("'", "\\'")|replace('\n', '\\n')|replace('\t', '\\t') }}'
-  {% elif t.name == 'float32' or t.name == 'float64' %}
-    {% set number = v ~ '' %}
+{% if type_reference.kind == 'primitive' %}
+  {% if type_reference.name == 'bool' %}
+    {% if model_value == true or model_value == 'true' %}True{% else %}False{% endif %}
+  {% elif type_reference.name == 'char' or type_reference.name == 'string' or type_reference.name == 'bytes' %}
+    {% if type_reference.name == 'bytes' %}b{% endif %}
+    '{{ (model_value ~ '')|replace('\\', '\\\\')|replace("'", "\\'")|replace('\n', '\\n')|replace('\t', '\\t') }}'
+  {% elif type_reference.name == 'float32' or type_reference.name == 'float64' %}
+    {% set number = model_value ~ '' %}
     {{ number }}{% if not ('.' in number or 'e' in number) %}.0{% endif %}
   {% else %}
-    {{ v }}
+    {{ model_value }}
   {% endif %}
-{% elif t.kind == 'optional' %}
-  {% if v == none %}None{% else %}{{ py_value(v=v, t=t.of, prefix=prefix) }}{% endif %}
-{% elif t.kind == 'set' %}
-  {% if v|length == 0 %}
+{% elif type_reference.kind == 'optional' %}
+  {% if model_value == none %}None{% else %}{{ py_value(model_value=model_value, type_reference=type_reference.of, prefix=prefix) }}{% endif %}
+{% elif type_reference.kind == 'set' %}
+  {% if model_value|length == 0 %}
     set()
   {% else %}
     {
-    {% for item in v %}
-      {{ py_value(v=item, t=t.of, prefix=prefix) }}{% if not loop.last %}, {% endif %}
+    {% for item in model_value %}
+      {{ py_value(model_value=item, type_reference=type_reference.of, prefix=prefix) }}{% if not loop.last %}, {% endif %}
     {% endfor %}
     }
   {% endif %}
-{% elif t.kind == 'array' or t.kind == 'vector' or t.kind == 'list' %}
+{% elif type_reference.kind == 'array' or type_reference.kind == 'vector' or type_reference.kind == 'list' %}
   [
-  {% for item in v %}
-    {{ py_value(v=item, t=t.of, prefix=prefix) }}{% if not loop.last %}, {% endif %}
+  {% for item in model_value %}
+    {{ py_value(model_value=item, type_reference=type_reference.of, prefix=prefix) }}{% if not loop.last %}, {% endif %}
   {% endfor %}
   ]
-{% elif t.kind == 'map' %}
+{% elif type_reference.kind == 'map' %}
   {
-  {% for entry in v.items() %}
-    {{ py_value(v=entry[0], t=t.key, prefix=prefix) }}: {{ py_value(v=entry[1], t=t.value, prefix=prefix) }}
+  {% for entry in model_value.items() %}
+    {{ py_value(model_value=entry[0], type_reference=type_reference.key, prefix=prefix) }}: {{ py_value(model_value=entry[1], type_reference=type_reference.value, prefix=prefix) }}
     {% if not loop.last %}, {% endif %}
   {% endfor %}
   }
-{% elif t.kind == 'ref' %}
-  {% set def = typeByKey[t.key] %}
-  {% if def.kind == 'enum' %}
-    {{ _py_ref(t=t, prefix=prefix) }}.{{ _py_id(name=v) }}
-  {% elif def.kind == 'union' %}
+{% elif type_reference.kind == 'ref' %}
+  {% set definition = typeByKey[type_reference.key] %}
+  {% if definition.kind == 'enum' %}
+    {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=model_value) }}
+  {% elif definition.kind == 'union' %}
     {# The case of the one-entry mapping, with its first label. #}
-    {% for entry in v.items() %}
-      {% set c = def.cases|selectattr('name', 'equalto', entry[0])|first %}
-      {{ _py_ref(t=t, prefix=prefix) }}(
-      {% if c.label == none %}None{% else %}{{ py_value(v=c.label, t=def.discriminator, prefix=prefix) }}{% endif %}
-      , {{ py_value(v=entry[1], t=c.type, prefix=prefix) }})
+    {% for entry in model_value.items() %}
+      {% set union_case = definition.cases|selectattr('name', 'equalto', entry[0])|first %}
+      {{ _py_reference(type_reference=type_reference, prefix=prefix) }}(
+      {% if union_case.label == none %}None{% else %}{{ py_value(model_value=union_case.label, type_reference=definition.discriminator, prefix=prefix) }}{% endif %}
+      , {{ py_value(model_value=entry[1], type_reference=union_case.type, prefix=prefix) }})
     {% endfor %}
-  {% elif def.kind == 'bitmask' %}
-    {% if v|length == 0 %}{{ _py_ref(t=t, prefix=prefix) }}(0){% endif %}
-    {% for flag in v %}
-      {{ _py_ref(t=t, prefix=prefix) }}.{{ _py_id(name=flag) }}{% if not loop.last %} | {% endif %}
+  {% elif definition.kind == 'bitmask' %}
+    {% if model_value|length == 0 %}{{ _py_reference(type_reference=type_reference, prefix=prefix) }}(0){% endif %}
+    {% for flag in model_value %}
+      {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=flag) }}{% if not loop.last %} | {% endif %}
     {% endfor %}
-  {% elif def.kind == 'alias' %}
-    {{ py_value(v=v, t=def.type, prefix=prefix) }}
-  {% elif def.kind == 'struct' %}
+  {% elif definition.kind == 'alias' %}
+    {{ py_value(model_value=model_value, type_reference=definition.type, prefix=prefix) }}
+  {% elif definition.kind == 'struct' %}
     {# The fields given; the others keep their defaults. #}
-    {{ _py_ref(t=t, prefix=prefix) }}(
-    {% for f in def.fields if f.name in v and v[f.name] != none %}
-      {{ _py_id(name=f.name) }}={{ py_value(v=v[f.name], t=f.type, prefix=prefix) }}{% if not loop.last %}, {% endif %}
+    {{ _py_reference(type_reference=type_reference, prefix=prefix) }}(
+    {% for field in definition.fields if field.name in model_value and model_value[field.name] != none %}
+      {{ _py_identifier(name=field.name) }}={{ py_value(model_value=model_value[field.name], type_reference=field.type, prefix=prefix) }}{% if not loop.last %}, {% endif %}
     {% endfor %}
     )
   {% else %}
-    {{ v }}
+    {{ model_value }}
   {% endif %}
 {% endif %}
 {% endfilter %}

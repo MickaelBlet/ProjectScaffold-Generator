@@ -1,3 +1,11 @@
+{#
+  Generates include/<project>/remote/transport.hpp: Channel/Server interfaces, the transport factories
+  (tcp, udp, http, websocket, shm; implemented in src/remote/transport.cpp) and Caller, which numbers the
+  calls and decodes the replies for the proxies.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input: none, the file is the same for every project but for its namespace.
+  Also reads: project.ident.
+#}
 {% include '_banner.j2' %}
 #pragma once
 

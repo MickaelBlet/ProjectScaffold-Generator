@@ -1,11 +1,16 @@
-{% macro endpoint(x=none) %}
+{% macro endpoint(link_end=none) %}
 {% from '_accessor.j2' import accessor as _accessor %}
-{% from '_id.j2' import id as _id %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {#
-  Expression reaching a port from the scope wiring it: `core().sensor().out()`. Parameter: x.
+  C++ expression reaching a port from the module (or system) wiring it: the accessors of the child
+  modules on the way, then the port's accessor.
+  Parameters:
+    link_end: the `from` or `to` of a connection (`via`: child modules on the way, `port`).
+  Example:
+    link_end: {via: [Core, Sensor], module: Robot.Core.Sensor, port: out}  -> core().sensor().out()
 #}
 {% filter inline %}
-{% for child in x.via %}{{ _accessor(name=child) }}().{% endfor %}
-{{ _id(name=x.port) }}()
+{% for child in link_end.via %}{{ _accessor(name=child) }}().{% endfor %}
+{{ _identifier(name=link_end.port) }}()
 {% endfilter %}
 {% endmacro %}

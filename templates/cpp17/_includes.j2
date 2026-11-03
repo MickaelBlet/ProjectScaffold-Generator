@@ -1,58 +1,69 @@
-{% macro includes(e=none) %}
+{% macro includes(entity=none) %}
 {% from '_header.j2' import header as _header %}
-{% set ns = namespace() %}
+{% set state = namespace() %}
 {#
-  `#include` lines of an entity: the standard headers of what it uses, then the headers of the
-  types, interfaces, bases and modules it uses. Parameter: e.
+  `#include` lines of an entity: the standard headers of the primitives and containers it uses, then
+  the headers of the user types, interfaces, base modules, child modules it uses, each once, sorted,
+  without its own header.
+  Parameters:
+    entity: a type, interface, module or system (`uses.builtins`, `uses.types`; for a module `bases`,
+      `ports` with their `interface` and `role`; for a module or system `instances`).
+  Example (project Plant):
+    entity:
+      entity: type
+      name: Reading
+      uses: {builtins: [float64, map, string], types: [{entity: type, name: State, scope: []}]}
+    -> #include <cstdint>  #include <map>  #include <string>  #include <plant_demo/types/State.hpp>
+       (one per line)
 #}
-{% set root = project.ident|snake %}
-{% set ns.std = [] %}
-{% set ns.own = [] %}
-{% for b in e.uses.builtins %}
-  {% if b in ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'] %}
-    {% set ns.std = ns.std + ['<cstdint>'] %}
-  {% elif b == 'bytes' %}
-    {% set ns.std = ns.std + ['<cstdint>', '<vector>'] %}
-  {% elif b in ['string', 'array', 'vector', 'list', 'set', 'optional', 'map'] %}
-    {% set ns.std = ns.std + ['<' ~ b ~ '>'] %}
-  {% elif b == 'variant' %}
-    {% set ns.std = ns.std + ['<utility>', '<variant>'] %}
-  {% elif b == 'exception' %}
-    {% set ns.std = ns.std + ['<exception>'] %}
+{% set project_directory = project.ident|snake %}
+{% set state.standard_headers = [] %}
+{% set state.project_headers = [] %}
+{% for builtin in entity.uses.builtins %}
+  {% if builtin in ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'] %}
+    {% set state.standard_headers = state.standard_headers + ['<cstdint>'] %}
+  {% elif builtin == 'bytes' %}
+    {% set state.standard_headers = state.standard_headers + ['<cstdint>', '<vector>'] %}
+  {% elif builtin in ['string', 'array', 'vector', 'list', 'set', 'optional', 'map'] %}
+    {% set state.standard_headers = state.standard_headers + ['<' ~ builtin ~ '>'] %}
+  {% elif builtin == 'variant' %}
+    {% set state.standard_headers = state.standard_headers + ['<utility>', '<variant>'] %}
+  {% elif builtin == 'exception' %}
+    {% set state.standard_headers = state.standard_headers + ['<exception>'] %}
   {% endif %}
 {% endfor %}
-{% for t in e.uses.types %}
-  {% set ns.own = ns.own + ['<' ~ _header(e=t) ~ '>'] %}
+{% for used_type in entity.uses.types %}
+  {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=used_type) ~ '>'] %}
 {% endfor %}
-{% if e.entity == 'module' %}
-  {% for base in e.bases %}
-    {% set ns.own = ns.own + ['<' ~ _header(e=base) ~ '>'] %}
+{% if entity.entity == 'module' %}
+  {% for base in entity.bases %}
+    {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=base) ~ '>'] %}
   {% endfor %}
-  {% for p in e.ports %}
-    {% if p.interface %}
-      {% set ns.own = ns.own + ['<' ~ _header(e=p.interface) ~ '>'] %}
-      {% if p.role == 'out' %}
-        {% set ns.own = ns.own + ['<' ~ root ~ '/ports.hpp>'] %}
+  {% for port in entity.ports %}
+    {% if port.interface %}
+      {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=port.interface) ~ '>'] %}
+      {% if port.role == 'out' %}
+        {% set state.project_headers = state.project_headers + ['<' ~ project_directory ~ '/ports.hpp>'] %}
       {% endif %}
     {% endif %}
   {% endfor %}
 {% endif %}
-{% if e.entity == 'module' or e.entity == 'system' %}
-  {% for c in e.instances %}
-    {% set ns.own = ns.own + ['<' ~ _header(e=c) ~ '>'] %}
-    {% if c.abstract %}
-      {% set ns.std = ns.std + ['<memory>'] %}
+{% if entity.entity == 'module' or entity.entity == 'system' %}
+  {% for instance in entity.instances %}
+    {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=instance) ~ '>'] %}
+    {% if instance.abstract %}
+      {% set state.standard_headers = state.standard_headers + ['<memory>'] %}
     {% endif %}
   {% endfor %}
 {% endif %}
-{% set self_ = '<' ~ _header(e=e) ~ '>' %}
-{% set ns.std = ns.std|unique|list|sort %}
-{% set ns.own = ns.own|unique|list|sort %}
-{% for header in ns.std %}
+{% set own_header = '<' ~ _header(entity=entity) ~ '>' %}
+{% set state.standard_headers = state.standard_headers|unique|list|sort %}
+{% set state.project_headers = state.project_headers|unique|list|sort %}
+{% for header in state.standard_headers %}
 #include {{ header }}
 {% endfor %}
-{% for header in ns.own %}
-{% if header != self_ %}
+{% for header in state.project_headers %}
+{% if header != own_header %}
 #include {{ header }}
 {% endif %}
 {% endfor %}

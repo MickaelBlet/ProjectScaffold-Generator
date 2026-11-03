@@ -3,14 +3,14 @@
   Wiring of a link inside a module or the system, with its constraints as a comment. Included
   (not rendered): its user section belongs to the including file. Parameter: connection.
 #}
-{% set l = connection.link %}
-{% set k = l.constraints %}
-{% set wiring = _endpoint(x=connection.from) ~ '.connect(' ~ _endpoint(x=connection.to) ~ ');' %}
-    // {{ l.name }}: {{ l.from.module }}:{{ l.from.port }} -> {{ l.to.module }}:{{ l.to.port }}, {{ k.direction }}, {{ k.performance.class }}{% if k.performance.maxLatencyMs %}, max {{ k.performance.maxLatencyMs }} ms{% endif %}{% if k.performance.rateHz %}, {{ k.performance.rateHz }} Hz{% endif %}{% if k.ack.required %}, ack{% if k.ack.timeoutMs %} within {{ k.ack.timeoutMs }} ms{% endif %}{% endif +%}
-{{ l.description|doc_comment('    // ') }}
-{% if k.remote.enabled %}
-    {%+ filter user('link.' ~ l.name) +%}
-    // Remote over {{ k.remote.transport|default('an unset transport', true) }}: replace with a proxy of that transport.
+{% set link = connection.link %}
+{% set constraints = link.constraints %}
+{% set wiring = _endpoint(link_end=connection.from) ~ '.connect(' ~ _endpoint(link_end=connection.to) ~ ');' %}
+    // {{ link.name }}: {{ link.from.module }}:{{ link.from.port }} -> {{ link.to.module }}:{{ link.to.port }}, {{ constraints.direction }}, {{ constraints.performance.class }}{% if constraints.performance.maxLatencyMs %}, max {{ constraints.performance.maxLatencyMs }} ms{% endif %}{% if constraints.performance.rateHz %}, {{ constraints.performance.rateHz }} Hz{% endif %}{% if constraints.ack.required %}, ack{% if constraints.ack.timeoutMs %} within {{ constraints.ack.timeoutMs }} ms{% endif %}{% endif +%}
+{{ link.description|doc_comment('    // ') }}
+{% if constraints.remote.enabled %}
+    {%+ filter user('link.' ~ link.name) +%}
+    // Remote over {{ constraints.remote.transport|default('an unset transport', true) }}: replace with a proxy of that transport.
     {{ wiring }}
     {%+ endfilter +%}
 {% else %}

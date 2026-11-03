@@ -1,121 +1,150 @@
+{#
+  Generates include/<project>/<namespace>/<Module>.hpp: the class of one module (class, abstract class or
+  interface class): constructor, port accessors, instances of child modules, attributes, and the adapters
+  that route the calls received by `in` ports to `on<Port><Message>` methods.
+  Rendered (manifest.yaml): once per entry of `modules`, as `item`.
+  Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
+    item:
+      entity: module
+      name: Plant
+      kind: class
+      abstract: false
+      isBase: false
+      namespace: []
+      bases: []
+      methods: []
+      attributes: []
+      ports:
+        - name: feed
+          role: in
+          interface: {entity: interface, name: Sink, messages: [{name: push, ...}]}
+          delegates: [{via: [Group, Filter], module: Plant.Group.Filter, port: in}]
+        - {name: out, role: out, interface: {entity: interface, name: Sink, ...}, delegates: [{via: [Group], module: Plant.Group, port: out}]}
+      instances: [{entity: module, name: Sensor, abstract: false, ...}, {name: Store, ...}, {name: Group, ...}]
+  Also reads: project.ident.
+#}
 {% from '_accessor.j2' import accessor as _accessor %}
-{% from '_args.j2' import args as _args %}
+{% from '_arguments.j2' import arguments as _arguments %}
+{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
 {% from '_endpoint.j2' import endpoint as _endpoint %}
-{% from '_id.j2' import id as _id %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
 {% from '_member.j2' import member as _member %}
 {% from '_members.j2' import members as _members %}
 {% from '_name.j2' import name as _name %}
-{% from '_ns.j2' import ns as _ns %}
-{% from '_params.j2' import params as _params %}
-{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_parameters.j2' import parameters as _parameters %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
 {% from '_value.j2' import value as _value %}
 {% include '_banner.j2' %}
 #pragma once
-{% set m = item %}
+{% set module = item %}
 {% set root = project.ident|snake %}
-{% set class = _name(e=m) %}
-{% set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length %}
-{# Names given by the model: attribute accessors do not take them. #}
-{% set names = m.methods|map(attribute='name')|list + m.ports|map(attribute='name')|list %}
+{% set class = _name(entity=module) %}
+{% set virtuals = module.methods|selectattr('virtual', 'equalto', true)|length %}
+{# Names given by the model: attribute accessors (see _members) do not take them. #}
+{% set names = module.methods|map(attribute='name')|list + module.ports|map(attribute='name')|list %}
 {% set polymorphic = false %}
-{% if m.abstract or m.isBase or virtuals > 0 or m.bases|length > 0 %}
+{% if module.abstract or module.isBase or virtuals > 0 or module.bases|length > 0 %}
   {% set polymorphic = true %}
 {% endif %}
 
 
-{{ _includes(e=m) }}
+{{ _includes(entity=module) }}
 {%- filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ _ns(e=m) }} {
+namespace {{ _cpp_namespace(entity=module) }} {
 
-{{ m.description|doc_comment }}
-class {{ class }}{% if m.bases|length > 0 %} : {% for b in m.bases %}public {{ _qualified(e=b) }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %} {
+{{ module.description|doc_comment }}
+class {{ class }}{% if module.bases|length > 0 %} : {% for base in module.bases %}public {{ _qualified_name(entity=base) }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %} {
 public:
-{% if m.kind == 'interface' %}
+{% if module.kind == 'interface' %}
     {{ class }}() = default;
     virtual ~{{ class }}() = default;
 {% else %}
     {{ class }}();
-    {%+ if m.bases|length > 0 %}~{{ class }}() override;{% elif polymorphic %}virtual ~{{ class }}();{% else %}~{{ class }}();{% endif +%}
+    {%+ if module.bases|length > 0 %}~{{ class }}() override;{% elif polymorphic %}virtual ~{{ class }}();{% else %}~{{ class }}();{% endif +%}
 {% endif %}
     {{ class }}(const {{ class }}&) = delete;
     {{ class }}& operator=(const {{ class }}&) = delete;
-{% for p in m.ports %}
-{% if p.interface %}
+{% for port in module.ports %}
+{# A port without interface is only documented by its name: nothing to generate. #}
+{% if port.interface %}
 
-    /// {{ p.role }} port {{ p.name }}: {{ p.interface.name }}{% if p.delegates|length > 0 %} ({% if p.role == 'in' %}handled by{% else %}sent by{% endif %} {% for d in p.delegates %}{{ d.module }}:{{ d.port }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif +%}
-{{ p.description|doc_comment('    /// ') }}
-{% if p.role == 'out' %}
-    ::{{ root }}::OutPort<{{ _qualified(e=p.interface) }}>& {{ _id(name=p.name) }}() { return {{ _member(name=p.name) }}; }
-{% elif p.delegates|length > 0 %}
-    {{ _qualified(e=p.interface) }}& {{ _id(name=p.name) }}() { return {{ _endpoint(x=p.delegates[0]) }}; }
+    /// {{ port.role }} port {{ port.name }}: {{ port.interface.name }}{% if port.delegates|length > 0 %} ({% if port.role == 'in' %}handled by{% else %}sent by{% endif %} {% for delegate in port.delegates %}{{ delegate.module }}:{{ delegate.port }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif +%}
+{{ port.description|doc_comment('    /// ') }}
+{% if port.role == 'out' %}
+    ::{{ root }}::OutPort<{{ _qualified_name(entity=port.interface) }}>& {{ _identifier(name=port.name) }}() { return {{ _member(name=port.name) }}; }
+{% elif port.delegates|length > 0 %}
+    {{ _qualified_name(entity=port.interface) }}& {{ _identifier(name=port.name) }}() { return {{ _endpoint(link_end=port.delegates[0]) }}; }
 {% else %}
-    {{ _qualified(e=p.interface) }}& {{ _id(name=p.name) }}() { return {{ p.name }}In_; }
+    {{ _qualified_name(entity=port.interface) }}& {{ _identifier(name=port.name) }}() { return {{ port.name }}In_; }
 {% endif %}
 {% endif %}
 {% endfor %}
-{% if m.instances|length > 0 %}
+{# Accessors of the child modules. An abstract child is held by pointer: the user creates it. #}
+{% if module.instances|length > 0 %}
 
-{% for c in m.instances %}
-    {{ _qualified(e=c) }}& {{ _accessor(name=c.name) }}() { return {% if c.abstract %}*{% endif %}{{ _accessor(name=c.name) }}_; }
+{% for instance in module.instances %}
+    {{ _qualified_name(entity=instance) }}& {{ _accessor(name=instance.name) }}() { return {% if instance.abstract %}*{% endif %}{{ _accessor(name=instance.name) }}_; }
 {% endfor %}
 {% endif %}
-{{ _members(m=m, names=names, access='public') }}{##}
+{{ _members(module=module, names=names, access='public') }}{##}
 
     {%+ filter user('public') +%}
     {%+ endfilter +%}
 
 protected:
-{% for p in m.ports %}
-{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
-    // Calls received by in port {{ p.name }}.
-{% for msg in p.interface.messages %}
-    {{ _type(t=msg.returns) }} on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _params(params=msg.params) }});
+{# Handlers of the calls received by the `in` ports the module implements itself (no delegate). #}
+{% for port in module.ports %}
+{% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
+    // Calls received by in port {{ port.name }}.
+{% for message in port.interface.messages %}
+    {{ _type(type_reference=message.returns) }} on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _parameters(parameter_list=message.params) }});
 {% endfor %}
 {% endif %}
 {% endfor %}
-{{ _members(m=m, names=names, access='protected') }}{##}
+{{ _members(module=module, names=names, access='protected') }}{##}
     {%+ filter user('protected') +%}
     {%+ endfilter +%}
 
 private:
-{% for p in m.ports %}
-{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
-{% set adapter = p.name|ucfirst ~ 'In' %}
-    class {{ adapter }} final : public {{ _qualified(e=p.interface) }} {
+{# Per `in` port: an adapter forwarding the interface calls to the handlers above; per `out` port: the OutPort. #}
+{% for port in module.ports %}
+{% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
+{% set adapter = port.name|ucfirst ~ 'In' %}
+    class {{ adapter }} final : public {{ _qualified_name(entity=port.interface) }} {
     public:
         explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
-{% for msg in p.interface.messages %}
-        {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }}) override
+{% for message in port.interface.messages %}
+        {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameter_list=message.params) }}) override
         {
-            return owner_.on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _args(params=msg.params) }});
+            return owner_.on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _arguments(parameter_list=message.params) }});
         }
 {% endfor %}
 
     private:
         {{ class }}& owner_;
     };
-    {{ adapter }} {{ p.name }}In_{*this};
-{% elif p.role == 'out' and p.interface %}
-    ::{{ root }}::OutPort<{{ _qualified(e=p.interface) }}> {{ _member(name=p.name) }};
+    {{ adapter }} {{ port.name }}In_{*this};
+{% elif port.role == 'out' and port.interface %}
+    ::{{ root }}::OutPort<{{ _qualified_name(entity=port.interface) }}> {{ _member(name=port.name) }};
 {% endif %}
 {% endfor %}
-{% for c in m.instances %}
-{% if c.abstract %}
-    std::unique_ptr<{{ _qualified(e=c) }}> {{ _accessor(name=c.name) }}_; // abstract: created in the constructor
+{% for instance in module.instances %}
+{% if instance.abstract %}
+    std::unique_ptr<{{ _qualified_name(entity=instance) }}> {{ _accessor(name=instance.name) }}_; // abstract: created in the constructor
 {% else %}
-    {{ _qualified(e=c) }} {{ _accessor(name=c.name) }}_;
+    {{ _qualified_name(entity=instance) }} {{ _accessor(name=instance.name) }}_;
 {% endif %}
 {% endfor %}
-{% for a in m.attributes %}
-    {%+ if a.static %}inline static {% endif %}{% if a.const %}const {% endif %}{{ _type(t=a.type) }} {{ _member(name=a.name) }}{% if a.hasDefault %} = {{ _value(v=a.default, t=a.type) }}{% else %}{}{% endif %};
+{% for attribute in module.attributes %}
+    {%+ if attribute.static %}inline static {% endif %}{% if attribute.const %}const {% endif %}{{ _type(type_reference=attribute.type) }} {{ _member(name=attribute.name) }}{% if attribute.hasDefault %} = {{ _value(model_value=attribute.default, type_reference=attribute.type) }}{% else %}{}{% endif %};
 {% endfor %}
-{{ _members(m=m, names=names, access='private') }}{##}
+{{ _members(module=module, names=names, access='private') }}{##}
     {%+ filter user('private') +%}
     {%+ endfilter +%}
 };
 
-} // namespace {{ _ns(e=m) }}
+} // namespace {{ _cpp_namespace(entity=module) }}

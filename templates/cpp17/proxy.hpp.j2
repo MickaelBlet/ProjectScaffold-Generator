@@ -1,15 +1,34 @@
+{#
+  Generates include/<project>/remote/<Interface>Proxy.hpp: implementation of an interface living in another
+  binary; each method encodes its inputs, sends them through a Caller and decodes the outputs.
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    item:
+      entity: interface
+      name: Echo
+      messages:
+        - name: scale
+          params:
+            - {name: v, type: {kind: ref, name: Vec3, typeKind: struct, key: Vec3, scope: [], flatName: Vec3}, direction: inout}
+            - {name: factor, type: {kind: primitive, name: float64, max: null}, direction: in}
+          inputs: [v, factor]     # the `in` and `inout` parameters, as above
+          outputs: [v]            # the `out` and `inout` parameters
+          returns: {kind: primitive, name: bool, max: null}
+          raises: []
+  Also reads: project.ident.
+#}
 {% from '_bounds.j2' import bounds as _bounds %}
 {% from '_header.j2' import header as _header %}
-{% from '_id.j2' import id as _id %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_name.j2' import name as _name %}
-{% from '_params.j2' import params as _params %}
-{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_parameters.j2' import parameters as _parameters %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
-{% set ns = namespace() %}
+{% set state = namespace() %}
 {% include '_banner.j2' %}
 #pragma once
 
-#include <{{ _header(e=item) }}>
+#include <{{ _header(entity=item) }}>
 #include <{{ project.ident|snake }}/remote/codec.hpp>
 #include <{{ project.ident|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
@@ -17,9 +36,9 @@
 
 namespace {{ project.ident|snake }}::remote {
 
-/// {{ _name(e=item) }} of another binary: each call is encoded and sent over the channel
+/// {{ _name(entity=item) }} of another binary: each call is encoded and sent over the channel
 /// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
-class {{ item.name }}Proxy final : public {{ _qualified(e=item) }} {
+class {{ item.name }}Proxy final : public {{ _qualified_name(entity=item) }} {
 public:
     /// Sends the calls over `channel`; `ack`: every call waits for its reply, within `timeout`.
     void open(std::unique_ptr<Channel> channel, bool ack = false,
@@ -27,47 +46,48 @@ public:
     {
         caller_.open(std::move(channel), ack, timeout);
     }
-{% for msg in item.messages %}
-{% set call %}{% if msg.raises|length > 0 %}callRaising<{% for r in msg.raises %}{{ _type(t=r) }}{% if not loop.last %}, {% endif %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endset %}
+{# One overriding method per message; its index in the interface is the message number on the wire. #}
+{% for message in item.messages %}
+{% set call_prefix %}{% if message.raises|length > 0 %}callRaising<{% for exception_type in message.raises %}{{ _type(type_reference=exception_type) }}{% if not loop.last %}, {% endif %}{% endfor %}>(caller_, {% else %}caller_.call({% endif %}{% endset %}
 {# Declared exceptions thrown as such. #}
 
-    {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }}) override
+    {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameter_list=message.params) }}) override
     {
         Writer request_;
-{% for p in msg.inputs %}
-{% set ns.value = _id(name=p.name) %}
-{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
-{% if ns.check != '' %}
-        {{ ns.check }}
+{% for parameter in message.inputs %}
+{% set state.expression = _identifier(name=parameter.name) %}
+{% set state.bounds_check = _bounds(type_reference=parameter.type, expression=state.expression, depth=0) %}
+{% if state.bounds_check != '' %}
+        {{ state.bounds_check }}
 {% endif %}
-        encode(request_, {{ ns.value }});
+        encode(request_, {{ state.expression }});
 {% endfor %}
-{% if msg.returns or msg.outputs|length > 0 %}
-        const Bytes reply_ = {{ call }}{{ loop.index0 }}, request_.bytes(), true);
+{% if message.returns or message.outputs|length > 0 %}
+        const Bytes reply_ = {{ call_prefix }}{{ loop.index0 }}, request_.bytes(), true);
         Reader reader_(reply_);
-{% if msg.returns %}
-        {{ _type(t=msg.returns) }} result_{};
+{% if message.returns %}
+        {{ _type(type_reference=message.returns) }} result_{};
         decode(reader_, result_);
-{% set ns.check = _bounds(t=msg.returns, v='result_', depth=0) %}
-{% if ns.check != '' %}
-        {{ ns.check }}
+{% set state.bounds_check = _bounds(type_reference=message.returns, expression='result_', depth=0) %}
+{% if state.bounds_check != '' %}
+        {{ state.bounds_check }}
 {% endif %}
 {% endif %}
-{% for p in msg.outputs %}
-{% set ns.value = _id(name=p.name) %}
-{% set ns.check = _bounds(t=p.type, v=ns.value, depth=0) %}
+{% for parameter in message.outputs %}
+{% set state.expression = _identifier(name=parameter.name) %}
+{% set state.bounds_check = _bounds(type_reference=parameter.type, expression=state.expression, depth=0) %}
 {# Decoded, then checked. #}
-        decode(reader_, {{ ns.value }});
-{% if ns.check != '' %}
-        {{ ns.check }}
+        decode(reader_, {{ state.expression }});
+{% if state.bounds_check != '' %}
+        {{ state.bounds_check }}
 {% endif %}
 {% endfor %}
         reader_.end();
-{% if msg.returns %}
+{% if message.returns %}
         return result_;
 {% endif %}
 {% else %}
-        {{ call }}{{ loop.index0 }}, request_.bytes(), false);
+        {{ call_prefix }}{{ loop.index0 }}, request_.bytes(), false);
 {% endif %}
     }
 {% endfor %}

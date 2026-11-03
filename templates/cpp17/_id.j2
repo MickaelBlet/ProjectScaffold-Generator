@@ -1,9 +1,0 @@
-{% macro id(name=none) %}
-{#
-  A model name as a C++ identifier: reserved words (manifest `reserved`) get a trailing `_`.
-  Parameter: name.
-#}
-{% filter inline %}
-{{ name }}{% if name in generator.reserved %}_{% endif %}
-{% endfilter %}
-{% endmacro %}

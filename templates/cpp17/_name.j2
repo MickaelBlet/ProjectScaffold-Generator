@@ -1,9 +1,14 @@
-{% macro name(e=none) %}
-{% from '_id.j2' import id as _id %}
+{% macro name(entity=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {#
-  Class name of a type, interface (`I` + name), module or the system. Parameter: e.
+  C++ class name of an entity: interfaces get an `I` prefix; the others their name as an identifier.
+  Parameters:
+    entity: a type, interface, module or system (`entity`, `name`).
+  Examples:
+    entity: {entity: interface, name: Lifecycle} -> ILifecycle
+    entity: {entity: type, name: Reading}        -> Reading
 #}
 {% filter inline %}
-{% if e.entity == 'interface' %}I{{ e.name }}{% else %}{{ _id(name=e.name) }}{% endif %}
+{% if entity.entity == 'interface' %}I{{ entity.name }}{% else %}{{ _identifier(name=entity.name) }}{% endif %}
 {% endfilter %}
 {% endmacro %}

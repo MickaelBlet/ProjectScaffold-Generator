@@ -1,0 +1,14 @@
+{% macro main_path(system=none) %}
+{#
+  Source file of the `main` of a system, relative to `src/`: in the directory of its binary when the
+  project has binaries.
+  Parameters:
+    system: an entry of `systems` (`binary`: none, or the binary with its `name`).
+  Examples:
+    system: {binary: null}            -> main.cpp
+    system: {binary: {name: Onboard}} -> onboard/main.cpp
+#}
+{% filter inline %}
+{% if system.binary %}{{ system.binary.name|snake }}/{% endif %}main.cpp
+{% endfilter %}
+{% endmacro %}

@@ -1,9 +1,25 @@
+{#
+  Generates python/<project>/remote/<interface>.py: Proxy (calls another binary), Handler (receives the calls)
+  and Stub (decodes the frames into Handler calls) of one interface used by a remote link.
+  Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    item:
+      entity: interface
+      name: Echo
+      description: Every call sends its arguments back
+      messages:
+        - name: sum
+          inputs:  [{name: values, type: {kind: vector, of: {kind: primitive, name: int32, max: null}, max: null}}]
+          outputs: [{name: total, type: {kind: primitive, name: int64, max: null}, direction: out}]
+          returns: null
+          raises: []
+#}
 {% from '_py_decode.j2' import py_decode as _py_decode %}
 {% from '_py_encode.j2' import py_encode as _py_encode %}
-{% from '_py_id.j2' import py_id as _py_id %}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
 {% from '_py_results.j2' import py_results as _py_results %}
 {% from '_py_type.j2' import py_type as _py_type %}
-{% set ns = namespace() %}
+{% set state = namespace() %}
 {% include '_py_banner.j2' %}
 """Calls of interface {{ item.name }} between binaries: {{ item.name }}Proxy makes them on another binary,
 {{ item.name }}Stub receives them and makes them on its {{ item.name }}Handler.
@@ -41,30 +57,31 @@ class {{ item.name }}Proxy:
 
     def close(self) -> None:
         self._caller.close()
-{% for msg in item.messages %}
-{% set raises %}{% if msg.raises|length > 0 %}, ({% for r in msg.raises %}_data.decode_{{ r.name }}{% if loop.length == 1 %},{% elif loop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endset %}
+{# Proxy: one method per message of the interface, numbered by its position. #}
+{% for message in item.messages %}
+{% set raises %}{% if message.raises|length > 0 %}, ({% for exception in message.raises %}_data.decode_{{ exception.name }}{% if loop.length == 1 %},{% elif loop.last == false %}, {% endif %}{% endfor %}){% endif %}{% endset %}
 {# The decoders of its declared exceptions. #}
 
-    def {{ _py_id(name=msg.name) }}(self{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}: {{ _py_type(t=p.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(msg=msg, what='hint', prefix='_data.') }}:
-{{ msg.description|doc_comment('        # ') }}
+    def {{ _py_identifier(name=message.name) }}(self{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}: {{ _py_type(type_reference=parameter.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(message=message, what='hint', prefix='_data.') }}:
+{{ message.description|doc_comment('        # ') }}
         _w = Writer()
-{% for p in msg.inputs %}
-{% set ns.value = _py_id(name=p.name) %}
-{% set ns.statement = _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') %}
-        {{ ns.statement }}
+{% for parameter in message.inputs %}
+{% set state.expression = _py_identifier(name=parameter.name) %}
+{% set state.statement = _py_encode(type_reference=parameter.type, expression=state.expression, writer='_w', prefix='_data.') %}
+        {{ state.statement }}
 {% endfor %}
-{% if msg.returns or msg.outputs|length > 0 %}
+{% if message.returns or message.outputs|length > 0 %}
         _r = self._caller.call({{ loop.index0 }}, _w, True{{ raises }})
-{% set ns.k = 0 %}
-{% if msg.returns %}
-        _v0 = {{ _py_decode(t=msg.returns, r='_r', prefix='_data.') }}
-{% set ns.k = 1 %}
+{% set state.output_offset = 0 %}
+{% if message.returns %}
+        _v0 = {{ _py_decode(type_reference=message.returns, reader='_r', prefix='_data.') }}
+{% set state.output_offset = 1 %}
 {% endif %}
-{% for p in msg.outputs %}
-        _v{{ (loop.index0 + ns.k) }} = {{ _py_decode(t=p.type, r='_r', prefix='_data.') }}
+{% for parameter in message.outputs %}
+        _v{{ (loop.index0 + state.output_offset) }} = {{ _py_decode(type_reference=parameter.type, reader='_r', prefix='_data.') }}
 {% endfor %}
         _r.end()
-        return {{ _py_results(msg=msg, what='names') }}
+        return {{ _py_results(message=message, what='names') }}
 {% else %}
         self._caller.call({{ loop.index0 }}, _w, False{{ raises }})
 {% endif %}
@@ -77,13 +94,14 @@ class {{ item.name }}Proxy:
 class {{ item.name }}Handler:
     """Calls of {{ item.name }} received from another binary: override its methods. The defaults log the
     call and give back default values (inout parameters unchanged)."""
-{% for msg in item.messages %}
+{# Handler: default implementations logging the call. #}
+{% for message in item.messages %}
 
-    def {{ _py_id(name=msg.name) }}(self{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}: {{ _py_type(t=p.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(msg=msg, what='hint', prefix='_data.') }}:
-{{ msg.description|doc_comment('        # ') }}
-        _log.info('{{ item.name }}.{{ msg.name }}({% for p in msg.inputs %}%r{% if not loop.last %}, {% endif %}{% endfor %})'{% for p in msg.inputs %}, {{ _py_id(name=p.name) }}{% endfor %})
-{% if msg.returns or msg.outputs|length > 0 %}
-        return {{ _py_results(msg=msg, what='zero', prefix='_data.') }}
+    def {{ _py_identifier(name=message.name) }}(self{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}: {{ _py_type(type_reference=parameter.type, prefix='_data.') }}{% endfor %}) -> {{ _py_results(message=message, what='hint', prefix='_data.') }}:
+{{ message.description|doc_comment('        # ') }}
+        _log.info('{{ item.name }}.{{ message.name }}({% for parameter in message.inputs %}%r{% if not loop.last %}, {% endif %}{% endfor %})'{% for parameter in message.inputs %}, {{ _py_identifier(name=parameter.name) }}{% endfor %})
+{% if message.returns or message.outputs|length > 0 %}
+        return {{ _py_results(message=message, what='zero', prefix='_data.') }}
 {% endif %}
 {% endfor %}
 
@@ -108,34 +126,35 @@ class {{ item.name }}Stub:
 
     def _handle(self, _message: int, _r: Reader, _w: Writer) -> bool:
         _h = self.handler
-{% for msg in item.messages %}
+{# Stub: dispatch on the message number: decode the inputs, call the handler, encode the results. #}
+{% for message in item.messages %}
         if _message == {{ loop.index0 }}:
-{% for p in msg.inputs %}
-            {{ _py_id(name=p.name) }} = {{ _py_decode(t=p.type, r='_r', prefix='_data.') }}
+{% for parameter in message.inputs %}
+            {{ _py_identifier(name=parameter.name) }} = {{ _py_decode(type_reference=parameter.type, reader='_r', prefix='_data.') }}
 {% endfor %}
             _r.end()
-{% set call %}{% if msg.returns or msg.outputs|length > 0 %}{{ _py_results(msg=msg, what='names') }} = {% endif %}_h.{{ _py_id(name=msg.name) }}({% for p in msg.inputs %}{{ _py_id(name=p.name) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endset %}
-{% if msg.raises|length > 0 %}
+{% set call %}{% if message.returns or message.outputs|length > 0 %}{{ _py_results(message=message, what='names') }} = {% endif %}_h.{{ _py_identifier(name=message.name) }}({% for parameter in message.inputs %}{{ _py_identifier(name=parameter.name) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endset %}
+{% if message.raises|length > 0 %}
             try:
                 {{ call }}
-{% for r in msg.raises %}
-            except _data.{{ _py_id(name=r.name) }} as _e:
-                raise raised({{ loop.index0 }}, _data.encode_{{ r.name }}, _e) from None
+{% for exception in message.raises %}
+            except _data.{{ _py_identifier(name=exception.name) }} as _e:
+                raise raised({{ loop.index0 }}, _data.encode_{{ exception.name }}, _e) from None
 {% endfor %}
 {% else %}
             {{ call }}
 {% endif %}
-{% set ns.k = 0 %}
-{% if msg.returns %}
-{% set ns.statement = _py_encode(t=msg.returns, v='_v0', w='_w', prefix='_data.') %}
-            {{ ns.statement }}
-{% set ns.k = 1 %}
+{% set state.output_offset = 0 %}
+{% if message.returns %}
+{% set state.statement = _py_encode(type_reference=message.returns, expression='_v0', writer='_w', prefix='_data.') %}
+            {{ state.statement }}
+{% set state.output_offset = 1 %}
 {% endif %}
-{% for p in msg.outputs %}
-{% set i = (loop.index0 + ns.k) %}
-{% set ns.value = '_v' ~ i %}
-{% set ns.statement = _py_encode(t=p.type, v=ns.value, w='_w', prefix='_data.') %}
-            {{ ns.statement }}
+{% for parameter in message.outputs %}
+{% set index = (loop.index0 + state.output_offset) %}
+{% set state.expression = '_v' ~ index %}
+{% set state.statement = _py_encode(type_reference=parameter.type, expression=state.expression, writer='_w', prefix='_data.') %}
+            {{ state.statement }}
 {% endfor %}
             return True
 {% endfor %}

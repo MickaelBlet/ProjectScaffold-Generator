@@ -1,74 +1,102 @@
+{#
+  Generates src/<System>.cpp: the constructor of the system (creation of abstract modules, wiring of its
+  connections, opening of the proxies and stubs of links to other binaries) and its destructor.
+  Rendered (manifest.yaml): once per entry of `systems`, as `system`, when `modules` is not empty.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    system:
+      name: ClientSystem
+      instances: [{entity: module, name: Caller, abstract: false, ...}]
+      connections: []
+      proxies:
+        - link:
+            name: echo_tcp
+            description: ''
+            constraints:
+              ack: {required: true, timeoutMs: 2000}
+              remote: {enabled: true, transport: tcp, settings: {...}}
+          local: {via: [Caller], module: Caller, port: tcp}
+          peer: {binary: Server, module: Service, port: tcp}
+          settings: {client: {host: 127.0.0.1, port: 47210}, path: null, capacity: null, ...}
+      stubs: [{link: {name: status, ...}, local: {...}, peer: {...}, settings: {...}}]
+      external: []
+#}
 {% from '_accessor.j2' import accessor as _accessor %}
 {% from '_address.j2' import address as _address %}
 {% from '_address_variable.j2' import address_variable as _address_variable %}
+{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
 {% from '_endpoint.j2' import endpoint as _endpoint %}
 {% from '_generated_transport.j2' import generated_transport as _generated_transport %}
 {% from '_header.j2' import header as _header %}
-{% from '_ns.j2' import ns as _ns %}
 {% from '_settings.j2' import settings as _settings %}
-{% set ns = namespace() %}
+{% set state = namespace() %}
 {% include '_banner.j2' %}
-#include <{{ _header(e=system) }}>
+#include <{{ _header(entity=system) }}>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ _ns(e=system) }} {
+namespace {{ _cpp_namespace(entity=system) }} {
 
 {{ system.name }}::{{ system.name }}()
 {
-{% for c in system.instances %}
-{% if c.abstract %}
-    {%+ filter user('create.' ~ c.name) +%}
-    // {{ _accessor(name=c.name) }}_ = std::make_unique<ConcreteClass>();
+{# Abstract top-level modules are created by the user, in a section named after them. #}
+{% for instance in system.instances %}
+{% if instance.abstract %}
+    {%+ filter user('create.' ~ instance.name) +%}
+    // {{ _accessor(name=instance.name) }}_ = std::make_unique<ConcreteClass>();
     {%+ endfilter +%}
 {% endif %}
 {% endfor %}
-{% for c in system.connections %}
-    {% with connection = c %}{% include '_connection.j2' %}{% endwith %}
+{# Links between top-level modules of this system (see _connection.j2). #}
+{% for connection in system.connections %}
+    {% include '_connection.j2' %}
 {% endfor %}
-{% for r in system.proxies %}
-{% set ns.transport = r.link.constraints.remote.transport|default('an unset transport', true) %}
-    // {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ ns.transport }}
-{{ r.link.description|doc_comment('    // ') }}
-    {{ _endpoint(x=r.local) }}.connect({{ r.link.name|camel }}Proxy_);
-{% set ns.generated = _generated_transport(transport=r.link.constraints.remote.transport) %}
-{% if ns.generated == 'true' %}
-    {{ r.link.name|camel }}Proxy_.open(remote::connect("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='client') }}", "{{ _address(r=r, side='client') }}"){% if r.settings.path is not none %}, "{{ r.settings.path }}"{% endif %}),
-        {{ r.link.constraints.ack.required|lower }}, std::chrono::milliseconds({{ r.link.constraints.ack.timeoutMs|default(5000, true) }}));
+{# Client side of a link to another binary: connect the local out port to a proxy. A built-in transport
+   opens the channel; any other one is left to the user section `link.<name>`. #}
+{% for remote_link in system.proxies %}
+{% set state.transport = remote_link.link.constraints.remote.transport|default('an unset transport', true) %}
+    // {{ remote_link.link.name }}: {{ remote_link.local.module }}:{{ remote_link.local.port }} -> binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} over {{ state.transport }}
+{{ remote_link.link.description|doc_comment('    // ') }}
+    {{ _endpoint(link_end=remote_link.local) }}.connect({{ remote_link.link.name|camel }}Proxy_);
+{% set state.has_generated_transport = _generated_transport(transport=remote_link.link.constraints.remote.transport) %}
+{% if state.has_generated_transport == 'true' %}
+    {{ remote_link.link.name|camel }}Proxy_.open(remote::connect("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='client') }}", "{{ _address(remote_link=remote_link, side='client') }}"){% if remote_link.settings.path is not none %}, "{{ remote_link.settings.path }}"{% endif %}),
+        {{ remote_link.link.constraints.ack.required|lower }}, std::chrono::milliseconds({{ remote_link.link.constraints.ack.timeoutMs|default(5000, true) }}));
 {% endif %}
-    {%+ filter user('link.' ~ r.link.name) +%}
-{% if not (ns.generated == 'true') %}
-    // Open {{ r.link.name|camel }}Proxy_ with a remote::Channel to binary {{ r.peer.binary }} over {{ ns.transport }}.
-{% set ns.settings = _settings(s=r.link.constraints.remote.settings) +%}
-{% if ns.settings != '' %}
-    // Settings: {{ ns.settings }}.
-{% endif %}
-{% endif %}
-    {%+ endfilter +%}
-{% endfor %}
-{% for r in system.stubs %}
-{% set ns.transport = r.link.constraints.remote.transport|default('an unset transport', true) %}
-    // {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ ns.transport }}
-{{ r.link.description|doc_comment('    // ') }}
-    {{ r.link.name|camel }}Stub_.bind({{ _endpoint(x=r.local) }});
-{% set ns.generated = _generated_transport(transport=r.link.constraints.remote.transport) %}
-{% if ns.generated == 'true' %}
-    {{ r.link.name|camel }}Stub_.serve("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='server') }}", "{{ _address(r=r, side='server') }}"){% if r.settings.capacity is not none %}, {{ r.settings.capacity }}{% endif %});
-{% endif %}
-    {%+ filter user('link.' ~ r.link.name) +%}
-{% if not (ns.generated == 'true') %}
-    // Receive the calls of binary {{ r.peer.binary }} over {{ ns.transport }} into {{ r.link.name|camel }}Stub_.dispatch().
-{% set ns.settings = _settings(s=r.link.constraints.remote.settings) +%}
-{% if ns.settings != '' %}
-    // Settings: {{ ns.settings }}.
+    {%+ filter user('link.' ~ remote_link.link.name) +%}
+{% if not (state.has_generated_transport == 'true') %}
+    // Open {{ remote_link.link.name|camel }}Proxy_ with a remote::Channel to binary {{ remote_link.peer.binary }} over {{ state.transport }}.
+{% set state.settings_text = _settings(remote_settings=remote_link.link.constraints.remote.settings) +%}
+{% if state.settings_text != '' %}
+    // Settings: {{ state.settings_text }}.
 {% endif %}
 {% endif %}
     {%+ endfilter +%}
 {% endfor %}
-{% for e in system.external %}
-    // {{ e.link.name }}: {{ e.link.from.project|default(project.ident, true) }}.{{ e.link.from.module }}:{{ e.link.from.port }} -> {{ e.link.to.project|default(project.ident, true) }}.{{ e.link.to.module }}:{{ e.link.to.port }}
-    {%+ filter user('external.' ~ e.link.name) +%}
-    // Other project: connect {{ _endpoint(x=e.local) }} through a transport{% if e.link.constraints.remote.transport is not none %} ({{ e.link.constraints.remote.transport }}){% endif %}.
+{# Server side: a stub bound to the local in port receives the calls of the other binary. #}
+{% for remote_link in system.stubs %}
+{% set state.transport = remote_link.link.constraints.remote.transport|default('an unset transport', true) %}
+    // {{ remote_link.link.name }}: binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} -> {{ remote_link.local.module }}:{{ remote_link.local.port }} over {{ state.transport }}
+{{ remote_link.link.description|doc_comment('    // ') }}
+    {{ remote_link.link.name|camel }}Stub_.bind({{ _endpoint(link_end=remote_link.local) }});
+{% set state.has_generated_transport = _generated_transport(transport=remote_link.link.constraints.remote.transport) %}
+{% if state.has_generated_transport == 'true' %}
+    {{ remote_link.link.name|camel }}Stub_.serve("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='server') }}", "{{ _address(remote_link=remote_link, side='server') }}"){% if remote_link.settings.capacity is not none %}, {{ remote_link.settings.capacity }}{% endif %});
+{% endif %}
+    {%+ filter user('link.' ~ remote_link.link.name) +%}
+{% if not (state.has_generated_transport == 'true') %}
+    // Receive the calls of binary {{ remote_link.peer.binary }} over {{ state.transport }} into {{ remote_link.link.name|camel }}Stub_.dispatch().
+{% set state.settings_text = _settings(remote_settings=remote_link.link.constraints.remote.settings) +%}
+{% if state.settings_text != '' %}
+    // Settings: {{ state.settings_text }}.
+{% endif %}
+{% endif %}
+    {%+ endfilter +%}
+{% endfor %}
+{# Links to another project: only a comment and a user section, no transport is known. #}
+{% for external in system.external %}
+    // {{ external.link.name }}: {{ external.link.from.project|default(project.ident, true) }}.{{ external.link.from.module }}:{{ external.link.from.port }} -> {{ external.link.to.project|default(project.ident, true) }}.{{ external.link.to.module }}:{{ external.link.to.port }}
+    {%+ filter user('external.' ~ external.link.name) +%}
+    // Other project: connect {{ _endpoint(link_end=external.local) }} through a transport{% if external.link.constraints.remote.transport is not none %} ({{ external.link.constraints.remote.transport }}){% endif %}.
     {%+ endfilter +%}
 {% endfor %}
     {%+ filter user('constructor') +%}
@@ -84,4 +112,4 @@ namespace {{ _ns(e=system) }} {
 {% filter user('end') +%}
 {% endfilter +%}
 
-} // namespace {{ _ns(e=system) }}
+} // namespace {{ _cpp_namespace(entity=system) }}

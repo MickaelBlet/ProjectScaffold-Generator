@@ -1,0 +1,18 @@
+{% macro py_reference(type_reference=none, prefix=none) %}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
+{#
+  Python name of a user type: its class in data.py, or for a type of a module its flat name in
+  module_types.py.
+  Parameters:
+    type_reference: a type reference of kind ref (`flatName`, `scope`).
+    prefix: `data.` outside data.py and module_types.py, else ''.
+  Examples:
+    type_reference: {kind: ref, name: Pose, flatName: Pose, scope: []}, prefix: data.  -> data.Pose
+    type_reference: {kind: ref, name: Mode, flatName: Core_Sensor_Mode, scope: [Core, Sensor]}, prefix: data.
+      -> module_types.Core_Sensor_Mode
+#}
+{% filter inline %}
+{% if type_reference.scope|length > 0 and prefix != '' %}module_types.{% else %}{{ prefix }}{% endif %}
+{{ _py_identifier(name=type_reference.flatName) }}
+{% endfilter %}
+{% endmacro %}

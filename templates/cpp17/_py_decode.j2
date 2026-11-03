@@ -1,24 +1,34 @@
-{% macro py_decode(t=none, r=none, prefix=none) %}
+{% macro py_decode(type_reference=none, reader=none, prefix=none) %}
 {% from '_py_decoder.j2' import py_decoder as _py_decoder %}
 {#
-  Python expression decoding a value of type `t` with reader `r`: `r.seq(data.decode_Vec3)`.
-  Parameters: t, r, prefix.
+  Python expression decoding a value with a wire.py `Reader`; bounds passed last.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+    reader: the Python expression of the reader (`r`).
+    prefix: `data.` outside data.py, else ''.
+  Example:
+    type_reference: {kind: vector, max: null, of: {kind: ref, name: Vec3}}
+    reader: r
+    prefix: data.
+    -> r.seq(data.decode_Vec3)
 #}
 {% filter inline %}
-{% if t.kind == 'primitive' %}
-  {{ r }}.{{ t.name }}({{ t.max }})
-{% elif t.kind == 'ref' %}
-  {{ prefix }}decode_{{ t.name }}({{ r }})
-{% elif t.kind == 'array' %}
-  {{ r }}.array({{ t.size }}, {{ _py_decoder(t=t.of, prefix=prefix) }})
-{% elif t.kind == 'optional' %}
-  {{ r }}.optional({{ _py_decoder(t=t.of, prefix=prefix) }})
-{% elif t.kind == 'set' %}
-  {{ r }}.set({{ _py_decoder(t=t.of, prefix=prefix) }}{% if t.max is not none %}, {{ t.max }}{% endif %})
-{% elif t.kind == 'map' %}
-  {{ r }}.map({{ _py_decoder(t=t.key, prefix=prefix) }}, {{ _py_decoder(t=t.value, prefix=prefix) }}{% if t.max is not none %}, {{ t.max }}{% endif %})
+{% if type_reference.kind == 'primitive' %}
+  {{ reader }}.{{ type_reference.name }}({{ type_reference.max }})
+{% elif type_reference.kind == 'ref' %}
+  {{ prefix }}decode_{{ type_reference.name }}({{ reader }})
+{% elif type_reference.kind == 'array' %}
+  {{ reader }}.array({{ type_reference.size }}, {{ _py_decoder(type_reference=type_reference.of, prefix=prefix) }})
+{% elif type_reference.kind == 'optional' %}
+  {{ reader }}.optional({{ _py_decoder(type_reference=type_reference.of, prefix=prefix) }})
+{% elif type_reference.kind == 'set' %}
+  {{ reader }}.set({{ _py_decoder(type_reference=type_reference.of, prefix=prefix) }}{% if type_reference.max is not none %}, {{ type_reference.max }}{% endif %})
+{% elif type_reference.kind == 'map' %}
+  {{ reader }}.map({{ _py_decoder(type_reference=type_reference.key, prefix=prefix) }}, {{ _py_decoder(type_reference=type_reference.value, prefix=prefix) }}{% if type_reference.max is not none %}, {{ type_reference.max }}{% endif %})
 {% else %}
-  {{ r }}.seq({{ _py_decoder(t=t.of, prefix=prefix) }}{% if t.max is not none %}, {{ t.max }}{% endif %})
+  {{ reader }}.seq({{ _py_decoder(type_reference=type_reference.of, prefix=prefix) }}{% if type_reference.max is not none %}, {{ type_reference.max }}{% endif %})
 {% endif %}
 {% endfilter %}
 {% endmacro %}

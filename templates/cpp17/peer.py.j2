@@ -1,13 +1,29 @@
-{% from '_py_id.j2' import py_id as _py_id %}
+{#
+  Generates python/<project>/peers/<binary>.py: a Python peer standing in for one binary, to test the others:
+  serves the calls the binary receives (stubs) and makes those it sends (proxies).
+  Rendered (manifest.yaml): once per entry of `systems` that has proxies or stubs, as `system`.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    system:
+      binary: {name: Server, description: ''}
+      stubs:
+        - link: {name: echo_tcp, constraints: {remote: {transport: tcp}}}
+          interface: {name: Echo}
+          peer: {binary: Client, module: Caller, port: tcp}
+          local: {module: Service, port: tcp}
+      proxies: []
+  Also reads: project.ident, project.name.
+#}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
 {% include '_py_banner.j2' %}
-{% set ns_ = project.ident|snake %}
+{% set module_name = project.ident|snake %}
 {% set binary = system.binary.name %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
+{# Transports the Python peers implement; the others are left to the user. #}
 {% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm'] %}
 """Stands in for binary {{ binary }} of {{ project.name }}, to test the other binaries: serves the calls
 {{ binary }} receives, makes those it sends.
 
-    python -m {{ ns_ }}.peers.{{ binary|snake }}    # from the python/ directory; Ctrl-C stops
+    python -m {{ module_name }}.peers.{{ binary|snake }}    # from the python/ directory; Ctrl-C stops
 """
 from __future__ import annotations
 
@@ -17,8 +33,8 @@ from typing import List, Optional
 
 from .. import links
 from ..transport import Server
-{% for i in faces %}
-from ..remote.{{ _py_id(name=i.name|snake) }} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
+{% for interface in faces %}
+from ..remote.{{ _py_identifier(name=interface.name|snake) }} import {{ interface.name }}Handler, {{ interface.name }}Proxy, {{ interface.name }}Stub
 {% endfor %}
 {% filter user('imports') +%}
 {% endfilter +%}
@@ -29,21 +45,23 @@ class {{ binary }}Peer:
     """Binary {{ binary }}: one handler per link it receives (default: logging ones), one proxy per link it
     calls (connecting on the first call). serve() starts receiving, close() stops."""
 
-    def __init__(self{% for r in system.stubs %}{% if r.link.constraints.remote.transport in generated %}, {{ _py_id(name=r.link.name) }}: Optional[{{ r.interface.name }}Handler] = None{% endif %}{% endfor %}) -> None:
-{% for r in system.stubs %}
-        # {{ r.link.name }}: binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} -> {{ r.local.module }}:{{ r.local.port }} over {{ r.link.constraints.remote.transport }}
-{% if r.link.constraints.remote.transport in generated %}
-        self.{{ r.link.name }}_handler = {{ _py_id(name=r.link.name) }} if {{ _py_id(name=r.link.name) }} is not None else {{ r.interface.name }}Handler()
+    def __init__(self{% for remote_link in system.stubs %}{% if remote_link.link.constraints.remote.transport in generated %}, {{ _py_identifier(name=remote_link.link.name) }}: Optional[{{ remote_link.interface.name }}Handler] = None{% endif %}{% endfor %}) -> None:
+{# One handler attribute per link received by the binary. #}
+{% for remote_link in system.stubs %}
+        # {{ remote_link.link.name }}: binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} -> {{ remote_link.local.module }}:{{ remote_link.local.port }} over {{ remote_link.link.constraints.remote.transport }}
+{% if remote_link.link.constraints.remote.transport in generated %}
+        self.{{ remote_link.link.name }}_handler = {{ _py_identifier(name=remote_link.link.name) }} if {{ _py_identifier(name=remote_link.link.name) }} is not None else {{ remote_link.interface.name }}Handler()
 {% else %}
-        # Transport not generated: receive its frames into {{ r.interface.name }}Stub(handler) yourself.
+        # Transport not generated: receive its frames into {{ remote_link.interface.name }}Stub(handler) yourself.
 {% endif %}
 {% endfor %}
-{% for r in system.proxies %}
-        # {{ r.link.name }}: {{ r.local.module }}:{{ r.local.port }} -> binary {{ r.peer.binary }}, {{ r.peer.module }}:{{ r.peer.port }} over {{ r.link.constraints.remote.transport }}
-{% if r.link.constraints.remote.transport in generated %}
-        self.{{ r.link.name }} = {{ r.interface.name }}Proxy.connect(links.{{ r.link.name|constant }})
+{# One connected proxy attribute per link called by the binary. #}
+{% for remote_link in system.proxies %}
+        # {{ remote_link.link.name }}: {{ remote_link.local.module }}:{{ remote_link.local.port }} -> binary {{ remote_link.peer.binary }}, {{ remote_link.peer.module }}:{{ remote_link.peer.port }} over {{ remote_link.link.constraints.remote.transport }}
+{% if remote_link.link.constraints.remote.transport in generated %}
+        self.{{ remote_link.link.name }} = {{ remote_link.interface.name }}Proxy.connect(links.{{ remote_link.link.name|constant }})
 {% else %}
-        # Transport not generated: give {{ r.interface.name }}Proxy a Channel of your own.
+        # Transport not generated: give {{ remote_link.interface.name }}Proxy a Channel of your own.
 {% endif %}
 {% endfor %}
         self._servers: List[Server] = []
@@ -54,9 +72,10 @@ class {{ binary }}Peer:
         """Starts receiving the calls of the other binaries."""
         if not self._servers:
             self._servers = [
-{% for r in system.stubs %}
-{% if r.link.constraints.remote.transport in generated %}
-                {{ r.interface.name }}Stub.serve(links.{{ r.link.name|constant }}, self.{{ r.link.name }}_handler),
+{# One server per received link, each feeding its stub. #}
+{% for remote_link in system.stubs %}
+{% if remote_link.link.constraints.remote.transport in generated %}
+                {{ remote_link.interface.name }}Stub.serve(links.{{ remote_link.link.name|constant }}, self.{{ remote_link.link.name }}_handler),
 {% endif %}
 {% endfor %}
             ]
@@ -66,9 +85,10 @@ class {{ binary }}Peer:
         for server in self._servers:
             server.close()
         self._servers = []
-{% for r in system.proxies %}
-{% if r.link.constraints.remote.transport in generated %}
-        self.{{ r.link.name }}.close()
+{# Proxies are closed with the peer. #}
+{% for remote_link in system.proxies %}
+{% if remote_link.link.constraints.remote.transport in generated %}
+        self.{{ remote_link.link.name }}.close()
 {% endif %}
 {% endfor %}
 

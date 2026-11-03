@@ -1,2 +1,8 @@
+{#
+  Generates python/<project>/peers/__init__.py: the docstring of the package of the Python peers.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input: none beyond the banner (project.ident: Relay).
+  Also reads: project.ident.
+#}
 {% include '_py_banner.j2' %}
 """One peer per binary, standing in for it: `python -m {{ project.ident|snake }}.peers.<binary>`."""

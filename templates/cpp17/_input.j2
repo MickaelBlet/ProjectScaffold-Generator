@@ -1,10 +1,17 @@
-{% macro input(t=none) %}
+{% macro input(type_reference=none) %}
 {% from '_scalar.j2' import scalar as _scalar %}
 {% from '_type.j2' import type as _type %}
 {#
-  Type of a value read only: `T` for scalars, else `const T&`. Parameter: t.
+  C++ type of a value read only: by value for scalars (see _scalar.j2), else by const reference.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+  Examples:
+    type_reference: {kind: primitive, name: float64}  -> double
+    type_reference: {kind: primitive, name: string}   -> const std::string&
 #}
 {% filter inline %}
-{% if _scalar(t=t) == 'true' %}{{ _type(t=t) }}{% else %}const {{ _type(t=t) }}&{% endif %}
+{% if _scalar(type_reference=type_reference) == 'true' %}{{ _type(type_reference=type_reference) }}{% else %}const {{ _type(type_reference=type_reference) }}&{% endif %}
 {% endfilter %}
 {% endmacro %}

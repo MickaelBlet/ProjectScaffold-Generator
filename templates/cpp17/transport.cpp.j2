@@ -1,3 +1,10 @@
+{#
+  Generates src/remote/transport.cpp: POSIX implementation of the transports declared in transport.hpp
+  (tcp, udp, http, websocket, shm), speaking the same protocol as the Python peers (transport.py).
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input: none, the file is the same for every project but for its namespace.
+  Also reads: project.ident.
+#}
 {% include '_banner.j2' %}
 #include <{{ project.ident|snake }}/remote/transport.hpp>
 

@@ -1,13 +1,23 @@
-{% macro py_labels(c=none, t=none, d=none, prefix=none) %}
+{% macro py_labels(union_case=none, discriminator_type=none, discriminator=none, prefix=none) %}
 {% from '_py_value.j2' import py_value as _py_value %}
 {#
-  Python test of discriminator `d` against the labels of a union case: `d in (1, 2)`.
-  Parameters: c (the case), t (the discriminator type), d (expression), prefix.
+  Python test of a union's discriminator against the labels of one of its cases (a tuple, even of one).
+  Parameters:
+    union_case: a case of a union (`labels`: values of the discriminator type).
+    discriminator_type: the union's `discriminator` (a type reference).
+    discriminator: the Python expression of the discriminator.
+    prefix: `data.` outside data.py, else ''.
+  Example:
+    union_case: {name: reason, labels: [Degraded]}
+    discriminator_type: {kind: ref, name: Health, typeKind: enum, flatName: Health, scope: []}
+    discriminator: self.d
+    prefix: ''
+    -> self.d in (Health.Degraded, )
 #}
 {% filter inline %}
-{{ d }} in (
-{% for l in c.labels %}
-  {{ _py_value(v=l, t=t, prefix=prefix) }}{% if loop.length == 1 or not loop.last %}, {% endif %}
+{{ discriminator }} in (
+{% for label in union_case.labels %}
+  {{ _py_value(model_value=label, type_reference=discriminator_type, prefix=prefix) }}{% if loop.length == 1 or not loop.last %}, {% endif %}
 {% endfor %}
 )
 {% endfilter %}

@@ -1,0 +1,29 @@
+{% macro parameters(parameter_list=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
+{% from '_scalar.j2' import scalar as _scalar %}
+{% from '_type.j2' import type as _type %}
+{#
+  C++ parameter list of a message or method: `in` parameters by value for scalars (`const` when marked
+  so), else by const reference; `out` / `inout` by reference.
+  Parameters:
+    parameter_list: the `params` (`name`, `type`, `direction`, `const`).
+  Example:
+    parameter_list:
+      - {name: target, type: {kind: ref, name: Pose, key: Pose, typeKind: struct, dependency: Common, scope: []}, direction: in, const: false}
+      - {name: speed, type: {kind: primitive, name: float64}, direction: in, const: true}
+      - {name: reached, type: {kind: primitive, name: bool}, direction: out, const: false}
+    -> const ::common::Pose& target, const double speed, bool& reached
+#}
+{% filter inline %}
+{% for parameter in parameter_list %}
+  {% if parameter.direction != 'in' %}
+    {{ _type(type_reference=parameter.type) }}&
+  {% elif _scalar(type_reference=parameter.type) == 'true' %}
+    {% if parameter.const %}const {% endif %}{{ _type(type_reference=parameter.type) }}
+  {% else %}
+    const {{ _type(type_reference=parameter.type) }}&
+  {% endif %}
+  {{ ' ' ~ _identifier(name=parameter.name) }}{% if not loop.last %}, {% endif %}
+{% endfor %}
+{% endfilter %}
+{% endmacro %}

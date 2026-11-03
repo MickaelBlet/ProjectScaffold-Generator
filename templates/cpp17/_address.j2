@@ -1,15 +1,23 @@
-{% macro address(r=none, side=none) %}
+{% macro address(remote_link=none, side=none) %}
 {#
-  Address of a link between binaries (C++ and Python alike), from its resolved settings: `host:port`
-  of the client (where the caller connects) or of the server (where the callee listens), or the name
-  of the shared memory. Parameters: r (with `link` and `settings`), side ('client' or 'server').
+  Address of a link between binaries (C++ and Python alike), from its resolved settings: `host:port` of
+  the client (where the caller connects) or of the server (where the callee listens), IPv6 hosts in
+  brackets; the name of the shared memory for transport shm; empty when the host is not set.
+  Parameters:
+    remote_link: an entry of `remoteLinks` (`link` with its `constraints.remote.transport`, `settings`).
+    side: 'client' or 'server'.
+  Example:
+    remote_link:
+      link: {name: supervise_camera, constraints: {remote: {transport: tcp}}}
+      settings: {client: {host: 192.168.1.20, port: 5600}, server: {host: 0.0.0.0, port: 5600}, name: null}
+    side: client  -> 192.168.1.20:5600
 #}
-{% set at = r.settings.server if side == 'server' else r.settings.client %}
+{% set endpoint_settings = remote_link.settings.server if side == 'server' else remote_link.settings.client %}
 {% filter inline %}
-{% if r.link.constraints.remote.transport == 'shm' %}
-  {{ r.settings.name }}
-{% elif at.host != none %}
-  {% if ':' in at.host %}[{{ at.host }}]{% else %}{{ at.host }}{% endif %}:{{ at.port }}
+{% if remote_link.link.constraints.remote.transport == 'shm' %}
+  {{ remote_link.settings.name }}
+{% elif endpoint_settings.host != none %}
+  {% if ':' in endpoint_settings.host %}[{{ endpoint_settings.host }}]{% else %}{{ endpoint_settings.host }}{% endif %}:{{ endpoint_settings.port }}
 {% endif %}
 {% endfilter %}
 {% endmacro %}

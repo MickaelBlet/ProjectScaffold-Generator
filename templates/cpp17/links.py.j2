@@ -1,3 +1,23 @@
+{#
+  Generates python/<project>/links.py: one `Link` per remote link (transport, addresses, settings, ack), as
+  the C++ side knows them.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    remoteLinks:
+      - index: 0
+        link:
+          name: echo_tcp
+          description: ''
+          constraints:
+            ack: {required: true, timeoutMs: 2000}
+            remote:
+              transport: tcp
+              settings: {client: {host: 127.0.0.1, port: 47210}, server: {host: 0.0.0.0, port: 47210}}
+        interface: {name: Echo}
+        from: {binary: Client, module: Caller, port: tcp}
+        to: {binary: Server, module: Service, port: tcp}
+        settings: {path: null, capacity: null, options: []}
+#}
 {% from '_address.j2' import address as _address %}
 {% from '_address_variable.j2' import address_variable as _address_variable %}
 {% from '_settings.j2' import settings as _settings %}
@@ -44,10 +64,11 @@ class Link(NamedTuple):
     def server_address(self) -> str:
         return os.environ.get(self.server_variable) or self.server_default
 
-{% for r in remoteLinks %}
+{# One Link constant per remote link; `options` is the free settings as a dict literal. #}
+{% for remote_link in remoteLinks %}
 
-{{ r.link.description|doc_comment('# ') }}
-{{ r.link.name|constant }} = Link('{{ r.link.name }}', {{ r.index }}, '{{ r.interface.name }}', '{{ r.link.constraints.remote.transport }}', '{{ _address_variable(r=r, side='client') }}', '{{ _address(r=r, side='client') }}', '{{ _address_variable(r=r, side='server') }}', '{{ _address(r=r, side='server') }}', '{{ r.settings.path|default('/', true) }}', {{ r.settings.capacity|default(1048576, true) }}, '{{ _settings(s=r.link.constraints.remote.settings) }}', { {%- for o in r.settings.options %}'{{ o.name }}': '{{ o.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if r.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(r.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ r.from.binary }}', '{{ r.to.binary }}')
+{{ remote_link.link.description|doc_comment('# ') }}
+{{ remote_link.link.name|constant }} = Link('{{ remote_link.link.name }}', {{ remote_link.index }}, '{{ remote_link.interface.name }}', '{{ remote_link.link.constraints.remote.transport }}', '{{ _address_variable(remote_link=remote_link, side='client') }}', '{{ _address(remote_link=remote_link, side='client') }}', '{{ _address_variable(remote_link=remote_link, side='server') }}', '{{ _address(remote_link=remote_link, side='server') }}', '{{ remote_link.settings.path|default('/', true) }}', {{ remote_link.settings.capacity|default(1048576, true) }}, '{{ _settings(remote_settings=remote_link.link.constraints.remote.settings) }}', { {%- for option in remote_link.settings.options %}'{{ option.name }}': '{{ option.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if remote_link.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(remote_link.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ remote_link.from.binary }}', '{{ remote_link.to.binary }}')
 {% endfor %}
 
-LINKS: List[Link] = [{% for r in remoteLinks %}{{ r.link.name|constant }}{% if not loop.last %}, {% endif %}{% endfor %}]
+LINKS: List[Link] = [{% for remote_link in remoteLinks %}{{ remote_link.link.name|constant }}{% if not loop.last %}, {% endif %}{% endfor %}]

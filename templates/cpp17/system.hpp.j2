@@ -1,27 +1,49 @@
+{#
+  Generates include/<project>/<System>.hpp: the class instantiating the top-level modules of one binary
+  (or of the whole project), plus the proxies and stubs of its links with other binaries.
+  Rendered (manifest.yaml): once per entry of `systems`, as `system`, when `modules` is not empty.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    system:
+      name: ClientSystem
+      binary: {name: Client, description: ''}
+      instances: [{entity: module, name: Caller, abstract: false, ...}]
+      proxies:
+        - link: {name: echo_tcp, ...}
+          local: {via: [Caller], module: Caller, port: tcp}
+          peer: {binary: Server, module: Service, port: tcp}
+          interface: {entity: interface, name: Echo, ...}
+      stubs:
+        - link: {name: status, ...}
+          local: {via: [Caller], module: Caller, port: status}
+          peer: {binary: Server, module: Service, port: status}
+          interface: {entity: interface, name: Status, ...}
+  Also reads: project.ident, project.name, project.description.
+#}
 {% from '_accessor.j2' import accessor as _accessor %}
+{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
 {% from '_includes.j2' import includes as _includes %}
-{% from '_ns.j2' import ns as _ns %}
-{% from '_qualified.j2' import qualified as _qualified %}
-{% set ns = namespace() %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
+{% set state = namespace() %}
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(e=system) -}}
-{% set ns.remote = [] %}
-{% for r in system.proxies %}
-  {% set ns.remote = ns.remote + [r.interface.name ~ 'Proxy'] %}
+{{ _includes(entity=system) -}}
+{# Headers of the proxy and stub classes this system needs, once each and sorted. #}
+{% set state.remote_headers = [] %}
+{% for remote_link in system.proxies %}
+  {% set state.remote_headers = state.remote_headers + [remote_link.interface.name ~ 'Proxy'] %}
 {% endfor %}
-{% for r in system.stubs %}
-  {% set ns.remote = ns.remote + [r.interface.name ~ 'Stub'] %}
+{% for remote_link in system.stubs %}
+  {% set state.remote_headers = state.remote_headers + [remote_link.interface.name ~ 'Stub'] %}
 {% endfor %}
-{% set ns.remote = ns.remote|unique|list|sort %}
-{% for r in ns.remote %}
-#include <{{ project.ident|snake }}/remote/{{ r }}.hpp>
+{% set state.remote_headers = state.remote_headers|unique|list|sort %}
+{% for remote_link in state.remote_headers %}
+#include <{{ project.ident|snake }}/remote/{{ remote_link }}.hpp>
 {% endfor %}
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ _ns(e=system) }} {
+namespace {{ _cpp_namespace(entity=system) }} {
 
 {{ project.description|doc_comment }}
 {% if system.binary %}
@@ -38,29 +60,31 @@ public:
     {{ system.name }}(const {{ system.name }}&) = delete;
     {{ system.name }}& operator=(const {{ system.name }}&) = delete;
 
-{% for c in system.instances %}
-    {{ _qualified(e=c) }}& {{ _accessor(name=c.name) }}() { return {% if c.abstract %}*{% endif %}{{ _accessor(name=c.name) }}_; }
+{# Accessors of the top-level modules. #}
+{% for instance in system.instances %}
+    {{ _qualified_name(entity=instance) }}& {{ _accessor(name=instance.name) }}() { return {% if instance.abstract %}*{% endif %}{{ _accessor(name=instance.name) }}_; }
 {% endfor %}
 
     {%+ filter user('public') +%}
     {%+ endfilter +%}
 
 private:
-{% for c in system.instances %}
-{% if c.abstract %}
-    std::unique_ptr<{{ _qualified(e=c) }}> {{ _accessor(name=c.name) }}_; // abstract: created in the constructor
+{% for instance in system.instances %}
+{% if instance.abstract %}
+    std::unique_ptr<{{ _qualified_name(entity=instance) }}> {{ _accessor(name=instance.name) }}_; // abstract: created in the constructor
 {% else %}
-    {{ _qualified(e=c) }} {{ _accessor(name=c.name) }}_;
+    {{ _qualified_name(entity=instance) }} {{ _accessor(name=instance.name) }}_;
 {% endif %}
 {% endfor %}
-{% for r in system.proxies %}
-    remote::{{ r.interface.name }}Proxy {{ r.link.name|camel }}Proxy_; // {{ r.link.name }}, to binary {{ r.peer.binary }}
+{# One proxy per link sending calls to another binary, one stub per link receiving them. #}
+{% for remote_link in system.proxies %}
+    remote::{{ remote_link.interface.name }}Proxy {{ remote_link.link.name|camel }}Proxy_; // {{ remote_link.link.name }}, to binary {{ remote_link.peer.binary }}
 {% endfor %}
-{% for r in system.stubs %}
-    remote::{{ r.interface.name }}Stub {{ r.link.name|camel }}Stub_; // {{ r.link.name }}, from binary {{ r.peer.binary }}
+{% for remote_link in system.stubs %}
+    remote::{{ remote_link.interface.name }}Stub {{ remote_link.link.name|camel }}Stub_; // {{ remote_link.link.name }}, from binary {{ remote_link.peer.binary }}
 {% endfor %}
     {%+ filter user('private') +%}
     {%+ endfilter +%}
 };
 
-} // namespace {{ _ns(e=system) }}
+} // namespace {{ _cpp_namespace(entity=system) }}

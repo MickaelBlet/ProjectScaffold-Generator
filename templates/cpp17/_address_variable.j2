@@ -1,9 +1,15 @@
-{% macro address_variable(r=none, side=none) %}
+{% macro address_variable(remote_link=none, side=none) %}
 {#
-  Environment variable overriding the address of a link between binaries: `ROVER_SUPERVISE_CAMERA` on
-  the client side, `ROVER_SUPERVISE_CAMERA_LISTEN` on the server side. Parameters: r, side.
+  Environment variable overriding the address of a link between binaries: the project and link names in
+  upper case, `_LISTEN` appended on the server side.
+  Parameters:
+    remote_link: an entry of `remoteLinks` (`link.name`).
+    side: 'client' or 'server'.
+  Example (project Rover):
+    remote_link: {link: {name: supervise_camera}}
+    side: server  -> ROVER_SUPERVISE_CAMERA_LISTEN
 #}
 {% filter inline %}
-{{ (project.ident|constant ~ '_' ~ r.link.name)|constant }}{% if side == 'server' %}_LISTEN{% endif %}
+{{ (project.ident|constant ~ '_' ~ remote_link.link.name)|constant }}{% if side == 'server' %}_LISTEN{% endif %}
 {% endfilter %}
 {% endmacro %}

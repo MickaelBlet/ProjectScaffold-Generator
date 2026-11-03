@@ -1,16 +1,25 @@
-{% macro py_decoder(t=none, prefix=none) %}
+{% macro py_decoder(type_reference=none, prefix=none) %}
 {% from '_py_decode.j2' import py_decode as _py_decode %}
 {#
-  Python function `(reader) -> value` decoding a type: `Reader.int32`, `data.decode_Pose`, a lambda.
-  Parameters: t, prefix.
+  Python function `(reader) -> value` decoding a type: a `Reader` method, a `decode_<Type>` function of
+  data.py, or a lambda for containers and bounded primitives.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+    prefix: `data.` outside data.py, else ''.
+  Examples (prefix: data.):
+    type_reference: {kind: primitive, name: int32, max: null}   -> Reader.int32
+    type_reference: {kind: ref, name: Pose}                     -> data.decode_Pose
+    type_reference: {kind: primitive, name: string, max: 16}    -> lambda r: r.string(16)
 #}
 {% filter inline %}
-{% if t.kind == 'primitive' and t.max is none %}
-  Reader.{{ t.name }}
-{% elif t.kind == 'ref' %}
-  {{ prefix }}decode_{{ t.name }}
+{% if type_reference.kind == 'primitive' and type_reference.max is none %}
+  Reader.{{ type_reference.name }}
+{% elif type_reference.kind == 'ref' %}
+  {{ prefix }}decode_{{ type_reference.name }}
 {% else %}
-  lambda r: {{ _py_decode(t=t, r='r', prefix=prefix) }}
+  lambda r: {{ _py_decode(type_reference=type_reference, reader='r', prefix=prefix) }}
 {% endif %}
 {% endfilter %}
 {% endmacro %}

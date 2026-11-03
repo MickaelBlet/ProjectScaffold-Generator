@@ -1,22 +1,33 @@
-{% macro settings(s=none) %}
-{% set ns = namespace(parts=[]) %}
+{% macro settings(remote_settings=none) %}
+{% set state = namespace(parts=[]) %}
 {#
-  Settings of a link's transport set in the project, as text: `broker 10.0.0.1:1883, topic rover, qos=1`
-  (empty when none). Parameter: s (a link's `constraints.remote.settings`).
+  Transport settings of a link set in the project, as text for a comment: client / server / broker
+  addresses, the other settings set, then the options; empty when none is set.
+  Parameters:
+    remote_settings: a link's `constraints.remote.settings` (`client`, `server`, `broker`: host and port;
+      `path`, `name`, `capacity`, `socket`, `topic`, `interface`, `id`, `device`, `baud`; `options`).
+  Example:
+    remote_settings:
+      client: {host: null, port: null}
+      server: {host: null, port: null}
+      broker: {host: 10.0.0.1, port: 1883}
+      topic: rover
+      options: [{name: qos, value: 1}]
+    -> broker 10.0.0.1:1883, topic rover, qos=1
 #}
-{% for e in ['client', 'server', 'broker'] %}
-  {% set at = s[e] if e in s else none %}
-  {% if at.host != none or at.port != none %}
-    {% set ns.parts = ns.parts + [e ~ ' ' ~ at.host ~ ':' ~ at.port] %}
+{% for role in ['client', 'server', 'broker'] %}
+  {% set endpoint_settings = remote_settings[role] if role in remote_settings else none %}
+  {% if endpoint_settings.host != none or endpoint_settings.port != none %}
+    {% set state.parts = state.parts + [role ~ ' ' ~ endpoint_settings.host ~ ':' ~ endpoint_settings.port] %}
   {% endif %}
 {% endfor %}
-{% for k in ['path', 'name', 'capacity', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
-  {% set v = s[k] if k in s else none %}
-  {% if v != none %}
-    {% set ns.parts = ns.parts + [k ~ ' ' ~ v] %}
+{% for key in ['path', 'name', 'capacity', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
+  {% set setting_value = remote_settings[key] if key in remote_settings else none %}
+  {% if setting_value != none %}
+    {% set state.parts = state.parts + [key ~ ' ' ~ setting_value] %}
   {% endif %}
 {% endfor %}
-{% for o in s.options %}
-  {% set ns.parts = ns.parts + [o.name ~ '=' ~ o.value] %}
+{% for option in remote_settings.options %}
+  {% set state.parts = state.parts + [option.name ~ '=' ~ option.value] %}
 {% endfor %}
-{{ ns.parts|join(', ') }}{% endmacro %}
+{{ state.parts|join(', ') }}{% endmacro %}

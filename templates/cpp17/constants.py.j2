@@ -1,12 +1,25 @@
-{% from '_py_id.j2' import py_id as _py_id %}
+{#
+  Generates python/<project>/constants.py: the project constants whose types the Python peers have.
+  Rendered once (manifest.yaml), when `remoteLinks` and `remoteConstants` are not empty.
+  Example input (trimmed):
+    project: {name: Relay}
+    remoteConstants:
+      - entity: constant
+        name: Greeting
+        description: ''
+        type: {kind: primitive, name: string, max: null}
+        value: hello
+#}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
 {% from '_py_value.j2' import py_value as _py_value %}
 {% include '_py_banner.j2' %}
 """Constants of {{ project.name }}, those whose types the Python peers have (data.py)."""
 from __future__ import annotations
 
 from . import data  # noqa: F401 - types of the values
-{% for c in remoteConstants %}
+{# One module-level value per constant used by the remote types. #}
+{% for constant in remoteConstants %}
 
-{{ c.description|doc_comment('# ') }}
-{{ _py_id(name=c.name) }} = {{ _py_value(v=c.value, t=c.type, prefix='data.') }}
+{{ constant.description|doc_comment('# ') }}
+{{ _py_identifier(name=constant.name) }} = {{ _py_value(model_value=constant.value, type_reference=constant.type, prefix='data.') }}
 {% endfor %}

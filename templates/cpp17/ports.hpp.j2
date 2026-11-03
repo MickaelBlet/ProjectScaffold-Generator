@@ -1,3 +1,10 @@
+{#
+  Generates include/<project>/ports.hpp: the OutPort template that out ports of modules are made of.
+  Rendered once (manifest.yaml), when `modules` is not empty.
+  Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
+    modules: [{entity: module, name: Plant, kind: class, ...}, ...]
+  Only reads project.ident (the namespace); the content does not depend on the project.
+#}
 {% include '_banner.j2' %}
 #pragma once
 

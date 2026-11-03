@@ -1,0 +1,14 @@
+{% macro identifier(name=none) %}
+{#
+  A name of the model as a C++ identifier: names that are C++ keywords (manifest `reserved`) get a
+  trailing `_`.
+  Parameters:
+    name: a name of the model.
+  Examples:
+    name: speed    -> speed
+    name: delete   -> delete_
+#}
+{% filter inline %}
+{{ name }}{% if name in generator.reserved %}_{% endif %}
+{% endfilter %}
+{% endmacro %}

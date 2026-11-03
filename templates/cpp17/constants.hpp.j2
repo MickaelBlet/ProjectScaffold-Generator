@@ -1,4 +1,17 @@
-{% from '_id.j2' import id as _id %}
+{#
+  Generates include/<project>/constants.hpp: the constants of the project, as inline variables of its namespace.
+  Rendered once (manifest.yaml), when `constants` is not empty.
+  Example input (from tests/fixtures/relay.scaffold.yaml, trimmed):
+    constantsFile: {entity: constants, name: constants, uses: {types: [], builtins: [uint8]}}
+    constants:
+      - entity: constant
+        name: MaxNames
+        description: Most names of Names
+        type: {kind: primitive, name: uint8, max: null}
+        value: 3
+  Also reads: project.ident.
+#}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
 {% from '_scalar.j2' import scalar as _scalar %}
 {% from '_type.j2' import type as _type %}
@@ -6,17 +19,17 @@
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(e=constantsFile) }}
+{{ _includes(entity=constantsFile) }}
 {%- filter user('includes') +%}
 {% endfilter +%}
 
 namespace {{ project.ident|snake }} {
-{% for c in constants %}
-{% set scalar = _scalar(t=c.type) %}
+{% for constant in constants %}
+{% set scalar = _scalar(type_reference=constant.type) %}
 {# Numbers, enums and bitmasks are constexpr. #}
 
-{{ c.description|doc_comment }}
-inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(t=c.type) }} {{ _id(name=c.name) }} = {{ _value(v=c.value, t=c.type) }};
+{{ constant.description|doc_comment }}
+inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(type_reference=constant.type) }} {{ _identifier(name=constant.name) }} = {{ _value(model_value=constant.value, type_reference=constant.type) }};
 {% endfor %}
 
 } // namespace {{ project.ident|snake }}

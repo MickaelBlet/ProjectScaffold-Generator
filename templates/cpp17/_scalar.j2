@@ -1,17 +1,25 @@
-{% macro scalar(t=none) %}
+{% macro scalar(type_reference=none) %}
 {#
-  `true` for a type cheap to copy (passed and returned by value): numbers, bool, char, enums, bitmasks,
-  aliases of those. Parameter: t.
+  `true` for a type cheap to copy, passed and returned by value: numbers, bool, char, enums, bitmasks,
+  aliases of those; empty for the others.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+  Examples:
+    type_reference: {kind: primitive, name: uint32}  -> true
+    type_reference: {kind: primitive, name: string}  -> (empty)
+    type_reference: {kind: ref, name: State, key: State, typeKind: enum} -> true
 #}
 {% filter inline %}
-{% if t.kind == 'primitive' %}
-  {% if not (t.name == 'string' or t.name == 'bytes') %}true{% endif %}
-{% elif t.kind == 'ref' %}
-  {% set def = typeByKey[t.key] %}
-  {% if def.kind == 'enum' or def.kind == 'bitmask' %}
+{% if type_reference.kind == 'primitive' %}
+  {% if not (type_reference.name == 'string' or type_reference.name == 'bytes') %}true{% endif %}
+{% elif type_reference.kind == 'ref' %}
+  {% set definition = typeByKey[type_reference.key] %}
+  {% if definition.kind == 'enum' or definition.kind == 'bitmask' %}
     true
-  {% elif def.kind == 'alias' %}
-    {{ scalar(t=def.type) }}
+  {% elif definition.kind == 'alias' %}
+    {{ scalar(type_reference=definition.type) }}
   {% endif %}
 {% endif %}
 {% endfilter %}

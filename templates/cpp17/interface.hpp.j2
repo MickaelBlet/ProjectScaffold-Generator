@@ -1,28 +1,43 @@
-{% from '_id.j2' import id as _id %}
+{#
+  Generates include/<project>/interfaces/<Interface>.hpp: one interface, an abstract class of pure virtual methods.
+  Rendered (manifest.yaml): once per entry of `interfaces`, as `item`.
+  Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
+    item:
+      entity: interface
+      name: Sink
+      scope: []
+      messages:
+        - name: push
+          params: [{name: reading, type: {kind: ref, name: Reading, typeKind: struct, key: Reading}, direction: in, const: false}]
+          returns: null
+          raises: []
+#}
+{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
 {% from '_name.j2' import name as _name %}
-{% from '_ns.j2' import ns as _ns %}
-{% from '_params.j2' import params as _params %}
+{% from '_parameters.j2' import parameters as _parameters %}
 {% from '_type.j2' import type as _type %}
 {% include '_banner.j2' %}
 #pragma once
 
-{{ _includes(e=item) }}{##}
+{{ _includes(entity=item) }}{##}
 
-namespace {{ _ns(e=item) }} {
+namespace {{ _cpp_namespace(entity=item) }} {
 
 {{ item.description|doc_comment }}
-class {{ _name(e=item) }} {
+class {{ _name(entity=item) }} {
 public:
-    virtual ~{{ _name(e=item) }}() = default;
-{% for msg in item.messages %}
+    virtual ~{{ _name(entity=item) }}() = default;
+{# One pure virtual method per message; its `raises` become @throws lines. #}
+{% for message in item.messages %}
 
-{{ msg.description|doc_comment('    /// ') }}
-{% for r in msg.raises %}
-    /// @throws {{ _type(t=r) }}
+{{ message.description|doc_comment('    /// ') }}
+{% for raised_type in message.raises %}
+    /// @throws {{ _type(type_reference=raised_type) }}
 {% endfor %}
-    virtual {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }}) = 0;
+    virtual {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameter_list=message.params) }}) = 0;
 {% endfor %}
 };
 
-} // namespace {{ _ns(e=item) }}
+} // namespace {{ _cpp_namespace(entity=item) }}

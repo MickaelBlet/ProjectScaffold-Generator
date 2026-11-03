@@ -1,0 +1,25 @@
+{% macro cpp_namespace(entity=none) %}
+{#
+  C++ namespace of an entity, without leading `::`: the project's, a dependency's, a module's parents,
+  or for a type of a module the module itself (types of modules live beside the module's content).
+  Parameters:
+    entity: a type, interface, module or system of the context (`entity`, `dependency`, `scope` of a type,
+      `namespace` of a module).
+  Examples (project Robot):
+    entity: {entity: interface, name: Pose, dependency: Common}           -> common
+    entity: {entity: module, name: Sensor, namespace: [Core]}             -> robot::core
+    entity: {entity: type, name: Mode, dependency: null, scope: [Core, Sensor]} -> robot::core::sensor
+#}
+{% set project_namespace = project.ident|snake %}
+{% filter inline %}
+{% if entity.entity == 'type' or entity.entity == 'interface' %}
+  {{ entity.dependency|snake if entity.dependency else project_namespace }}
+  {# A type of a module: in the namespace of the module's content. #}
+  {% if entity.entity == 'type' %}{% for part in entity.scope %}::{{ part|snake }}{% endfor %}{% endif %}
+{% elif entity.entity == 'module' %}
+  {{ project_namespace }}{% for parent in entity.namespace %}::{{ parent|snake }}{% endfor %}
+{% else %}
+  {{ project_namespace }}
+{% endif %}
+{% endfilter %}
+{% endmacro %}

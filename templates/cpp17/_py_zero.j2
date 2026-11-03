@@ -1,52 +1,62 @@
-{% macro py_zero(t=none, prefix=none) %}
-{% from '_py_id.j2' import py_id as _py_id %}
-{% from '_py_ref.j2' import py_ref as _py_ref %}
+{% macro py_zero(type_reference=none, prefix=none) %}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
+{% from '_py_reference.j2' import py_reference as _py_reference %}
 {#
-  Python expression of the default value of a type (what C++ value-initializes to; an enum gets its
-  first value). Parameters: t, prefix.
+  Python expression of the default value of a type: what C++ value-initializes it to (an enum gets its
+  first value, a struct its defaults, an array its size of elements); `None` for no type.
+  Parameters:
+    type_reference: a type reference of the model: `kind` primitive (`name`, bound `max`), ref (a user
+      type: `key`, `name`, `typeKind`, `dependency`, `scope`, `flatName`), optional / vector / list / set
+      (`of`, `max`), array (`of`, `size`), map (`key`, `value`, `max`).
+      Or none.
+    prefix: `data.` outside data.py, else ''.
+  Examples (prefix: data.):
+    type_reference: {kind: primitive, name: float64}                   -> 0.0
+    type_reference: {kind: array, size: 3, of: {kind: primitive, name: int8}} -> [0 for _ in range(3)]
+    type_reference: {kind: ref, name: Pose, key: Pose, flatName: Pose, scope: []} (a struct) -> data.Pose()
 #}
 {% filter inline %}
-{% if t == none %}
+{% if type_reference == none %}
   None
-{% elif t.kind == 'primitive' %}
-  {% if t.name == 'bool' %}
+{% elif type_reference.kind == 'primitive' %}
+  {% if type_reference.name == 'bool' %}
     False
-  {% elif t.name == 'char' %}
+  {% elif type_reference.name == 'char' %}
     '\0'
-  {% elif t.name == 'string' %}
+  {% elif type_reference.name == 'string' %}
     ''
-  {% elif t.name == 'bytes' %}
+  {% elif type_reference.name == 'bytes' %}
     b''
-  {% elif t.name == 'float32' or t.name == 'float64' %}
+  {% elif type_reference.name == 'float32' or type_reference.name == 'float64' %}
     0.0
   {% else %}
     0
   {% endif %}
-{% elif t.kind == 'ref' %}
-  {% set def = typeByKey[t.key] %}
-  {% if def.kind == 'struct' or def.kind == 'union' %}
-    {{ _py_ref(t=t, prefix=prefix) }}()
-  {% elif def.kind == 'enum' %}
-    {% if def['values']|length > 0 %}
-      {{ _py_ref(t=t, prefix=prefix) }}.{{ _py_id(name=def['values'][0].name) }}
+{% elif type_reference.kind == 'ref' %}
+  {% set definition = typeByKey[type_reference.key] %}
+  {% if definition.kind == 'struct' or definition.kind == 'union' %}
+    {{ _py_reference(type_reference=type_reference, prefix=prefix) }}()
+  {% elif definition.kind == 'enum' %}
+    {% if definition['values']|length > 0 %}
+      {{ _py_reference(type_reference=type_reference, prefix=prefix) }}.{{ _py_identifier(name=definition['values'][0].name) }}
     {% else %}
       0
     {% endif %}
-  {% elif def.kind == 'bitmask' %}
-    {{ _py_ref(t=t, prefix=prefix) }}(0)
-  {% elif def.kind == 'alias' %}
-    {{ py_zero(t=def.type, prefix=prefix) }}
+  {% elif definition.kind == 'bitmask' %}
+    {{ _py_reference(type_reference=type_reference, prefix=prefix) }}(0)
+  {% elif definition.kind == 'alias' %}
+    {{ py_zero(type_reference=definition.type, prefix=prefix) }}
   {% else %}
     None
   {% endif %}
-{% elif t.kind == 'optional' %}
+{% elif type_reference.kind == 'optional' %}
   None
-{% elif t.kind == 'set' %}
+{% elif type_reference.kind == 'set' %}
   set()
-{% elif t.kind == 'map' %}
+{% elif type_reference.kind == 'map' %}
   {}
-{% elif t.kind == 'array' %}
-  [{{ py_zero(t=t.of, prefix=prefix) }} for _ in range({{ t.size }})]
+{% elif type_reference.kind == 'array' %}
+  [{{ py_zero(type_reference=type_reference.of, prefix=prefix) }} for _ in range({{ type_reference.size }})]
 {% else %}
   []
 {% endif %}

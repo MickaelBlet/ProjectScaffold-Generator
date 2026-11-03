@@ -1,10 +1,15 @@
 {% macro accessor(name=none) %}
 {#
-  Accessor of a child module: `Sensor` -> `sensor`, `Operator` -> `operatorModule`.
-  Its member is the accessor followed by `_`. Parameter: name.
+  Name of the accessor of a child module: its name in lower camel case, `Module` appended when that is a
+  C++ keyword. Its data member is the accessor followed by `_`.
+  Parameters:
+    name: the child's name in the model.
+  Examples:
+    name: Sensor   -> sensor
+    name: Operator -> operatorModule
 #}
-{% set accessor = name|lcfirst %}
+{% set accessor_name = name|lcfirst %}
 {% filter inline %}
-{{ accessor }}{% if accessor in generator.reserved %}Module{% endif %}
+{{ accessor_name }}{% if accessor_name in generator.reserved %}Module{% endif %}
 {% endfilter %}
 {% endmacro %}

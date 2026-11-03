@@ -1,6 +1,15 @@
-{% from '_py_id.j2' import py_id as _py_id %}
+{#
+  Generates python/<project>/remote/__init__.py: re-exports the Handler, Proxy and Stub of every remote interface.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input (trimmed):
+    remoteInterfaces:
+      - {entity: interface, name: Echo, messages: [...]}
+      - {entity: interface, name: Notify, messages: [...]}
+#}
+{% from '_py_identifier.j2' import py_identifier as _py_identifier %}
 {% include '_py_banner.j2' %}
 """Proxies, handlers and stubs of the interfaces of the links between binaries."""
-{% for i in remoteInterfaces %}
-from .{{ _py_id(name=i.name|snake) }} import {{ i.name }}Handler, {{ i.name }}Proxy, {{ i.name }}Stub
+{# One import line per interface. #}
+{% for interface in remoteInterfaces %}
+from .{{ _py_identifier(name=interface.name|snake) }} import {{ interface.name }}Handler, {{ interface.name }}Proxy, {{ interface.name }}Stub
 {% endfor %}

@@ -1,44 +1,57 @@
-{% macro members(m=none, names=none, access=none) %}
-{% from '_id.j2' import id as _id %}
+{% macro members(module=none, names=none, access=none) %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_input.j2' import input as _input %}
 {% from '_member.j2' import member as _member %}
 {% from '_name.j2' import name as _name %}
-{% from '_params.j2' import params as _params %}
-{% from '_qualified.j2' import qualified as _qualified %}
+{% from '_parameters.j2' import parameters as _parameters %}
+{% from '_qualified_name.j2' import qualified_name as _qualified_name %}
 {% from '_type.j2' import type as _type %}
 {#
-  Types (aliases), attribute accessors and methods of a module with an access level (`public`, `protected`,
-  `private`): attribute members stay private, private attributes have no accessors.
-  Parameters: m, names (taken by the model: no accessor of that name), access.
+  Declarations of a module class for one access level: its types (aliases of the types of the module),
+  accessors of its attributes (getter, setter unless const; private attributes have none: their data
+  members are private anyway), then its methods (with `@throws` of their exceptions).
+  Parameters:
+    module: an entry of `modules` (`types`, `attributes`, `methods`, each with `access`).
+    names: names taken by the model in the class (ports, children...): no accessor generated with such a name.
+    access: 'public', 'protected' or 'private'.
+  Example (one method, project Plant):
+    module:
+      types: []
+      attributes: []
+      methods:
+        - {name: run, access: public, params: [], returns: null, raises: [], static: false, const: false,
+           virtual: true, pure: true, override: false}
+    access: public
+    -> virtual void run() = 0;
 #}
-{% set types = m.types|selectattr('access', 'equalto', access) %}
+{% set types = module.types|selectattr('access', 'equalto', access) %}
 {% if types|length > 0 %}
 
-{% for t in types %}
-    using {{ _name(e=t) }} = {{ _qualified(e=t) }};
+{% for module_type in types %}
+    using {{ _name(entity=module_type) }} = {{ _qualified_name(entity=module_type) }};
 {% endfor %}
 {% endif %}
-{% set attributes = m.attributes|selectattr('access', 'equalto', access) %}
+{% set attributes = module.attributes|selectattr('access', 'equalto', access) %}
 {% if access != 'private' and attributes|length > 0 %}
 
-{% for a in attributes %}
-{% set setter = 'set' ~ a.name|ucfirst %}
-{{ a.description|doc_comment('    /// ') }}
-{% if not (a.name in names) %}
-    {%+ if a.static %}static {% endif %}{{ _input(t=a.type) }} {{ _id(name=a.name) }}(){% if not a.static %} const{% endif %} { return {{ _member(name=a.name) }}; }
+{% for attribute in attributes %}
+{% set setter = 'set' ~ attribute.name|ucfirst %}
+{{ attribute.description|doc_comment('    /// ') }}
+{% if not (attribute.name in names) %}
+    {%+ if attribute.static %}static {% endif %}{{ _input(type_reference=attribute.type) }} {{ _identifier(name=attribute.name) }}(){% if not attribute.static %} const{% endif %} { return {{ _member(name=attribute.name) }}; }
 {% endif %}
-{% if not (a.const or setter in names) %}
-    {%+ if a.static %}static {% endif %}void {{ setter }}({{ _input(t=a.type) }} value) { {{ _member(name=a.name) }} = value; }
+{% if not (attribute.const or setter in names) %}
+    {%+ if attribute.static %}static {% endif %}void {{ setter }}({{ _input(type_reference=attribute.type) }} value) { {{ _member(name=attribute.name) }} = value; }
 {% endif %}
 {% endfor %}
 {% endif %}
-{% set methods = m.methods|selectattr('access', 'equalto', access) %}
-{% for x in methods %}
+{% set methods = module.methods|selectattr('access', 'equalto', access) %}
+{% for method in methods %}
 
-{{ x.description|doc_comment('    /// ') }}
-{% for r in x.raises %}
-    /// @throws {{ _type(t=r) }}
+{{ method.description|doc_comment('    /// ') }}
+{% for exception in method.raises %}
+    /// @throws {{ _type(type_reference=exception) }}
 {% endfor %}
-    {%+ if x.static %}static {% endif %}{% if x.virtual and x.override == false %}virtual {% endif %}{{ _type(t=x.returns) }} {{ _id(name=x.name) }}({{ _params(params=x.params) }}){% if x.const %} const{% endif %}{% if x.override %} override{% endif %}{% if x.pure %} = 0{% endif %};
+    {%+ if method.static %}static {% endif %}{% if method.virtual and method.override == false %}virtual {% endif %}{{ _type(type_reference=method.returns) }} {{ _identifier(name=method.name) }}({{ _parameters(parameter_list=method.params) }}){% if method.const %} const{% endif %}{% if method.override %} override{% endif %}{% if method.pure %} = 0{% endif %};
 {% endfor %}
 {%+ endmacro %}

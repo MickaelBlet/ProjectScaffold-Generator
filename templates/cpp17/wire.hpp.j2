@@ -1,3 +1,11 @@
+{#
+  Generates include/<project>/remote/wire.hpp: the wire format of the calls between binaries (frame header,
+  Writer/Reader, scalar and container encoding, errors), implemented identically by the Python peers
+  (python/<project>/wire.py). The encoding of the project's own types is in codec.hpp.
+  Rendered once (manifest.yaml), when `remoteLinks` is not empty.
+  Example input: none, the file is the same for every project but for its namespace.
+  Also reads: project.ident.
+#}
 {% include '_banner.j2' %}
 #pragma once
 

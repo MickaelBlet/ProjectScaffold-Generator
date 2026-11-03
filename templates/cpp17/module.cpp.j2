@@ -1,37 +1,59 @@
+{#
+  Generates src/<namespace>/<Module>.cpp: the definitions of one module's class: constructor wiring its
+  connections, destructor, user methods and the handlers of the calls received by its `in` ports.
+  Rendered (manifest.yaml): once per entry of `modules` that is not an interface (`item.kind`), as `item`.
+  Example input (from tests/fixtures/plant.scaffold.yaml, trimmed):
+    item:
+      entity: module
+      name: Plant
+      kind: class
+      namespace: []
+      instances: [{name: Sensor, abstract: false, ...}, {name: Store, ...}, {name: Group, ...}]
+      connections:
+        - link: {name: sensor_to_store, constraints: {...}}
+          from: {via: [Sensor], module: Plant.Sensor, port: out}
+          to: {via: [Store], module: Plant.Store, port: in}
+      methods: []
+      ports:
+        - {name: out, role: out, interface: {name: Sink, ...}, delegates: [{via: [Group], module: Plant.Group, port: out}]}
+#}
 {% from '_accessor.j2' import accessor as _accessor %}
+{% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
 {% from '_endpoint.j2' import endpoint as _endpoint %}
 {% from '_header.j2' import header as _header %}
-{% from '_id.j2' import id as _id %}
+{% from '_identifier.j2' import identifier as _identifier %}
 {% from '_member.j2' import member as _member %}
 {% from '_name.j2' import name as _name %}
-{% from '_ns.j2' import ns as _ns %}
-{% from '_params.j2' import params as _params %}
+{% from '_parameters.j2' import parameters as _parameters %}
 {% from '_type.j2' import type as _type %}
 {% include '_banner.j2' %}
-{% set m = item %}
-{% set class = _name(e=m) %}
-#include <{{ _header(e=m) }}>
+{% set module = item %}
+{% set class = _name(entity=module) %}
+#include <{{ _header(entity=module) }}>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ _ns(e=m) }} {
+namespace {{ _cpp_namespace(entity=module) }} {
 
 {{ class }}::{{ class }}()
 {
-{% for c in m.instances %}
-{% if c.abstract %}
-    {%+ filter user('create.' ~ c.name) +%}
-    // {{ _accessor(name=c.name) }}_ = std::make_unique<ConcreteClass>();
+{# Abstract children are created by the user, in a section named after them. #}
+{% for instance in module.instances %}
+{% if instance.abstract %}
+    {%+ filter user('create.' ~ instance.name) +%}
+    // {{ _accessor(name=instance.name) }}_ = std::make_unique<ConcreteClass>();
     {%+ endfilter +%}
 {% endif %}
 {% endfor %}
-{% for c in m.connections %}
-    {% with connection = c %}{% include '_connection.j2' %}{% endwith %}
+{# Links wired inside this module (see _connection.j2). #}
+{% for connection in module.connections %}
+    {% include '_connection.j2' %}
 {% endfor %}
-{% for p in m.ports %}
-{% if p.role == 'out' and p.interface %}
-{% for d in p.delegates %}
-    {{ _endpoint(x=d) }}.forward({{ _member(name=p.name) }});
+{# An out port delegating to a child's out port: the child's port forwards to this one. #}
+{% for port in module.ports %}
+{% if port.role == 'out' and port.interface %}
+{% for delegate in port.delegates %}
+    {{ _endpoint(link_end=delegate) }}.forward({{ _member(name=port.name) }});
 {% endfor %}
 {% endif %}
 {% endfor %}
@@ -44,27 +66,29 @@ namespace {{ _ns(e=m) }} {
     {%+ filter user('destructor') +%}
     {%+ endfilter +%}
 }
-{% for x in m.methods %}
-{% if not x.pure %}
+{# One stub per method that is not pure virtual; the body is a user section. #}
+{% for method in module.methods %}
+{% if not method.pure %}
 
-{{ _type(t=x.returns) }} {{ class }}::{{ _id(name=x.name) }}({{ _params(params=x.params) }}){% if x.const %} const{% endif +%}
+{{ _type(type_reference=method.returns) }} {{ class }}::{{ _identifier(name=method.name) }}({{ _parameters(parameter_list=method.params) }}){% if method.const %} const{% endif +%}
 {
-    {%+ filter user('method.' ~ x.name) +%}
-{% if x.returns %}
+    {%+ filter user('method.' ~ method.name) +%}
+{% if method.returns %}
     return {};
 {% endif %}
     {%+ endfilter +%}
 }
 {% endif %}
 {% endfor %}
-{% for p in m.ports %}
-{% if p.role == 'in' and (p.interface and p.delegates|length == 0) %}
-{% for msg in p.interface.messages %}
+{# Handlers of the calls received by the `in` ports: one per message of the port's interface. #}
+{% for port in module.ports %}
+{% if port.role == 'in' and (port.interface and port.delegates|length == 0) %}
+{% for message in port.interface.messages %}
 
-{{ _type(t=msg.returns) }} {{ class }}::on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _params(params=msg.params) }})
+{{ _type(type_reference=message.returns) }} {{ class }}::on{{ port.name|ucfirst }}{{ message.name|ucfirst }}({{ _parameters(parameter_list=message.params) }})
 {
-    {%+ filter user('on.' ~ p.name ~ '.' ~ msg.name) +%}
-{% if msg.returns %}
+    {%+ filter user('on.' ~ port.name ~ '.' ~ message.name) +%}
+{% if message.returns %}
     return {};
 {% endif %}
     {%+ endfilter +%}
@@ -76,4 +100,4 @@ namespace {{ _ns(e=m) }} {
 {% filter user('end') +%}
 {% endfilter +%}
 
-} // namespace {{ _ns(e=m) }}
+} // namespace {{ _cpp_namespace(entity=module) }}
