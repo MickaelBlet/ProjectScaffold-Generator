@@ -20,7 +20,7 @@
         cases:
           - {name: note, type: {kind: primitive, name: string, max: 8}, labels: [Idle], isDefault: false}
           - {name: speed, type: {kind: primitive, name: float64, max: null}, labels: [Run], isDefault: false}
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% from '_bounds.j2' import bounds as _bounds %}
 {% from '_header.j2' import header as _header %}
@@ -32,7 +32,7 @@
 {% include '_banner.j2' %}
 #pragma once
 
-#include <{{ project.ident|snake }}/remote/wire.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/wire.hpp>
 {% for user_type in remoteTypes %}
 #include <{{ _header(entity=user_type) }}>
 {% endfor %}
@@ -40,7 +40,7 @@
 {% endfilter +%}
 
 // Encoding of the types of the calls between binaries (enums, bitmasks and aliases need none: see wire.hpp).
-namespace {{ project.ident|snake }}::remote {
+namespace {{ project.name|underscore_normalize|snake }}::remote {
 
 {# Forward declarations, so that types may refer to each other in any order. #}
 {% for user_type in remoteTypes %}
@@ -181,4 +181,4 @@ inline void decode(Reader& r, {{ _qualified_name(entity=user_type) }}& v)
 {% endif %}
 {% endfor %}
 
-} // namespace {{ project.ident|snake }}::remote
+} // namespace {{ project.name|underscore_normalize|snake }}::remote

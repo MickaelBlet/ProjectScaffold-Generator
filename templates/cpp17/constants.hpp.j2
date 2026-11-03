@@ -9,7 +9,7 @@
         description: Most names of Names
         type: {kind: primitive, name: uint8, max: null}
         value: 3
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% from '_identifier.j2' import identifier as _identifier %}
 {% from '_includes.j2' import includes as _includes %}
@@ -23,7 +23,7 @@
 {%- filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.ident|snake }} {
+namespace {{ project.name|underscore_normalize|snake }} {
 {% for constant in constants %}
 {% set scalar = _scalar(type_reference=constant.type) %}
 {# Numbers, enums and bitmasks are constexpr. #}
@@ -32,4 +32,4 @@ namespace {{ project.ident|snake }} {
 inline {% if scalar != '' %}constexpr{% else %}const{% endif %} {{ _type(type_reference=constant.type) }} {{ _identifier(name=constant.name) }} = {{ _value(model_value=constant.value, type_reference=constant.type) }};
 {% endfor %}
 
-} // namespace {{ project.ident|snake }}
+} // namespace {{ project.name|underscore_normalize|snake }}

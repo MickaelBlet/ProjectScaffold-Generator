@@ -4,7 +4,7 @@
   (python/<project>/wire.py). The encoding of the project's own types is in codec.hpp.
   Rendered once (manifest.yaml), when `remoteLinks` is not empty.
   Example input: none, the file is the same for every project but for its namespace.
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% include '_banner.j2' %}
 #pragma once
@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-namespace {{ project.ident|snake }}::remote {
+namespace {{ project.name|underscore_normalize|snake }}::remote {
 
 /// Failure of a remote call: transport, timeout, malformed frame, or error sent back by the peer.
 class Error : public std::runtime_error {
@@ -419,4 +419,4 @@ std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
     return std::nullopt;
 }
 
-} // namespace {{ project.ident|snake }}::remote
+} // namespace {{ project.name|underscore_normalize|snake }}::remote

@@ -4,7 +4,7 @@
   calls and decodes the replies for the proxies.
   Rendered once (manifest.yaml), when `remoteLinks` is not empty.
   Example input: none, the file is the same for every project but for its namespace.
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% include '_banner.j2' %}
 #pragma once
@@ -12,7 +12,7 @@
 // Transports of the calls between binaries (POSIX): tcp, udp, http, websocket and shm, as the
 // Python peers (python/*/transport.py). Other transports: implement Channel and Server.
 
-#include <{{ project.ident|snake }}/remote/wire.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/wire.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -22,7 +22,7 @@
 #include <optional>
 #include <string>
 
-namespace {{ project.ident|snake }}::remote {
+namespace {{ project.name|underscore_normalize|snake }}::remote {
 
 /// Client end of a link: sends call frames, receives their replies.
 class Channel {
@@ -153,4 +153,4 @@ Bytes callRaising(Caller& caller, std::uint16_t message, const Bytes& inputs, bo
     }
 }
 
-} // namespace {{ project.ident|snake }}::remote
+} // namespace {{ project.name|underscore_normalize|snake }}::remote

@@ -10,6 +10,6 @@
     side: server  -> ROVER_SUPERVISE_CAMERA_LISTEN
 #}
 {% filter inline %}
-{{ (project.ident|constant ~ '_' ~ remote_link.link.name)|constant }}{% if side == 'server' %}_LISTEN{% endif %}
+{{ (project.name|underscore_normalize|constant ~ '_' ~ remote_link.link.name)|constant }}{% if side == 'server' %}_LISTEN{% endif %}
 {% endfilter %}
 {% endmacro %}

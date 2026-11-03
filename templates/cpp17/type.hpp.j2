@@ -16,7 +16,7 @@
         - {name: state, type: {kind: ref, name: State, typeKind: enum, key: State}, hasDefault: false}
   Other kinds carry `underlying` + `values` (enum), `underlying` + `flags` (bitmask), `discriminator` +
   `cases` (union), `type` (alias).
-  Also reads: project.ident, typeByKey (through the partials).
+  Also reads: project.name, typeByKey (through the partials).
 #}
 {% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
 {% from '_identifier.j2' import identifier as _identifier %}

@@ -21,7 +21,7 @@
           delegates: [{via: [Group, Filter], module: Plant.Group.Filter, port: in}]
         - {name: out, role: out, interface: {entity: interface, name: Sink, ...}, delegates: [{via: [Group], module: Plant.Group, port: out}]}
       instances: [{entity: module, name: Sensor, abstract: false, ...}, {name: Store, ...}, {name: Group, ...}]
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% from '_accessor.j2' import accessor as _accessor %}
 {% from '_arguments.j2' import arguments as _arguments %}
@@ -39,7 +39,7 @@
 {% include '_banner.j2' %}
 #pragma once
 {% set module = item %}
-{% set root = project.ident|snake %}
+{% set root = project.name|underscore_normalize|snake %}
 {% set class = _name(entity=module) %}
 {% set virtuals = module.methods|selectattr('virtual', 'equalto', true)|length %}
 {# Names given by the model: attribute accessors (see _members) do not take them. #}

@@ -15,7 +15,7 @@
           outputs: [v]            # the `out` and `inout` parameters
           returns: {kind: primitive, name: bool, max: null}
           raises: []
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% from '_bounds.j2' import bounds as _bounds %}
 {% from '_header.j2' import header as _header %}
@@ -29,12 +29,12 @@
 #pragma once
 
 #include <{{ _header(entity=item) }}>
-#include <{{ project.ident|snake }}/remote/codec.hpp>
-#include <{{ project.ident|snake }}/remote/transport.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/codec.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.ident|snake }}::remote {
+namespace {{ project.name|underscore_normalize|snake }}::remote {
 
 /// {{ _name(entity=item) }} of another binary: each call is encoded and sent over the channel
 /// given to open(), and waits for its reply when it has a result or the link acknowledges calls.
@@ -101,4 +101,4 @@ private:
     {%+ endfilter +%}
 };
 
-} // namespace {{ project.ident|snake }}::remote
+} // namespace {{ project.name|underscore_normalize|snake }}::remote

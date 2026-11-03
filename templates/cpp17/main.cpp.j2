@@ -7,7 +7,7 @@
       name: ServerSystem
       binary: {name: Server}
       stubs: [{link: {name: echo_tcp, ...}, ...}, ...]
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% from '_header.j2' import header as _header %}
 {% from '_qualified_name.j2' import qualified_name as _qualified_name %}
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
     (void)argv;
 {% if system.stubs|length > 0 %}
     // Serves the calls of the other binaries until SIGINT / SIGTERM.
-    {{ project.ident|snake }}::remote::waitForStop();
+    {{ project.name|underscore_normalize|snake }}::remote::waitForStop();
 {% endif %}
     (void)system;
     {%+ endfilter +%}

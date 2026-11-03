@@ -17,7 +17,7 @@
           local: {via: [Caller], module: Caller, port: status}
           peer: {binary: Server, module: Service, port: status}
           interface: {entity: interface, name: Status, ...}
-  Also reads: project.ident, project.name, project.description.
+  Also reads: project.name, project.description.
 #}
 {% from '_accessor.j2' import accessor as _accessor %}
 {% from '_cpp_namespace.j2' import cpp_namespace as _cpp_namespace %}
@@ -38,7 +38,7 @@
 {% endfor %}
 {% set state.remote_headers = state.remote_headers|unique|list|sort %}
 {% for remote_link in state.remote_headers %}
-#include <{{ project.ident|snake }}/remote/{{ remote_link }}.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/{{ remote_link }}.hpp>
 {% endfor %}
 {% filter user('includes') +%}
 {% endfilter +%}

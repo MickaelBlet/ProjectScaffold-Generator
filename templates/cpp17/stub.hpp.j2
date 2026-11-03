@@ -5,7 +5,7 @@
   Rendered (manifest.yaml): once per entry of `remoteInterfaces`, as `item`.
   Example input: same `item` as proxy.hpp.j2 (an interface with its messages, each with
   params/inputs/outputs/returns/raises; a message is dispatched by its index in `item.messages`).
-  Also reads: project.ident.
+  Also reads: project.name.
 #}
 {% from '_arguments.j2' import arguments as _arguments %}
 {% from '_bounds.j2' import bounds as _bounds %}
@@ -19,12 +19,12 @@
 #pragma once
 
 #include <{{ _header(entity=item) }}>
-#include <{{ project.ident|snake }}/remote/codec.hpp>
-#include <{{ project.ident|snake }}/remote/transport.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/codec.hpp>
+#include <{{ project.name|underscore_normalize|snake }}/remote/transport.hpp>
 {% filter user('includes') +%}
 {% endfilter +%}
 
-namespace {{ project.ident|snake }}::remote {
+namespace {{ project.name|underscore_normalize|snake }}::remote {
 
 /// Receives the calls of {{ _name(entity=item) }} from another binary and makes them on the
 /// port bound. The calls come on the threads of the transport: several at once over tcp, http and
@@ -121,4 +121,4 @@ private:
     {%+ endfilter +%}
 };
 
-} // namespace {{ project.ident|snake }}::remote
+} // namespace {{ project.name|underscore_normalize|snake }}::remote
