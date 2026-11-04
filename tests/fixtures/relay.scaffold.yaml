@@ -523,6 +523,9 @@ modules:
       - name: shm
         role: out
         interface: Echo
+      - name: mq
+        role: out
+        interface: Echo
       - name: mqtt
         role: out
         interface: Echo
@@ -546,6 +549,9 @@ modules:
         role: in
         interface: Echo
       - name: shm
+        role: in
+        interface: Echo
+      - name: mq
         role: in
         interface: Echo
       - name: mqtt
@@ -647,6 +653,27 @@ links:
         settings:
           name: relay_echo_segment
           capacity: 4194304
+  - name: echo_mq
+    from:
+      module: Caller
+      port: mq
+    to:
+      module: Service
+      port: mq
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 2000
+      performance:
+        class: normal
+      remote:
+        enabled: true
+        transport: mq
+        settings:
+          name: relay_echo_queues
+          maxMessages: 8
+          messageSize: 8192
   - name: echo_mqtt
     from:
       module: Caller

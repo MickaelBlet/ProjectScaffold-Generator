@@ -18,6 +18,7 @@ When a project has [binaries](https://github.com/MickaelBlet/ProjectScaffold-Vie
 | http      | yes       | `POST <path>` with the frame as body, answered by the reply frame (200) or nothing (204)                                                                    |
 | websocket | yes       | `GET <path>`, a binary message per frame                                                                                                                    |
 | shm       | yes       | a POSIX shared memory segment holding two rings (calls, replies; 1 MiB each by default) of length-prefixed frames, made by the server (one client per link) |
+| mq        | yes       | POSIX message queues `<name>.call` and `<name>.reply` (Linux), a message per frame (`messageSize` bytes at most), made by the server (one client per link)  |
 | others    | no        | a user section, where a `remote::Channel` / `remote::Server` of your own goes                                                                               |
 
 - Code: `include/<ns>/remote/transport.hpp`, `src/remote/transport.cpp` (POSIX, threads).
@@ -34,6 +35,7 @@ When a project has [binaries](https://github.com/MickaelBlet/ProjectScaffold-Vie
 - Unset host and port come from `remoteDefaults`: `127.0.0.1:<47000 + index of the link>` by default.
 - The client connects again after a failure.
 - shm: the name of the segment (`name`, `<project>_<link>` by default), made by the server with rings of `capacity` bytes.
+- mq: the base name of the queues (`name`, `<project>_<link>` by default), made by the server with `maxMessages` messages (default 10) of `messageSize` bytes (default 8192). Larger than Linux's limits (`/proc/sys/fs/mqueue/msg_max`, `msgsize_max`) needs `CAP_SYS_RESOURCE` or raised limits; a frame larger than `messageSize` fails (`remote::Error` / `RemoteError`). Python reaches the queues through `ctypes` (librt). Elsewhere than Linux, `remote::supported("mq")` is false.
 - Settings of transports not generated are listed in their user sections. In templates: `r.link.constraints.remote.settings`; resolved ones, defaults applied, in `r.settings`.
 
 ## Calls

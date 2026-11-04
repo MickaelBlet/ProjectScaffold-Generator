@@ -79,6 +79,7 @@ fn transport_fields(t: &str) -> &'static [&'static str] {
     match t {
         "ipc" => &["socket"],
         "shm" => &["name", "capacity"],
+        "mq" => &["name", "maxMessages", "messageSize"],
         "tcp" | "udp" | "grpc" => &["client", "server"],
         "http" | "websocket" => &["client", "server", "path"],
         "mqtt" => &["broker", "topic"],
@@ -693,7 +694,7 @@ impl<'a> Ctx<'a> {
         self.a.set(g, "client", x);
         let x = self.host_port(&dn(s, "server"));
         self.a.set(g, "server", x);
-        for k in ["path", "name", "capacity", "socket"] {
+        for k in ["path", "name", "capacity", "maxMessages", "messageSize", "socket"] {
             self.put(g, k, dn(s, k));
         }
         let x = self.host_port(&dn(s, "broker"));
@@ -1278,11 +1279,10 @@ impl<'a> Ctx<'a> {
             };
             r.insert("name".into(), v);
         }
-        if has("capacity") {
-            r.insert(
-                "capacity".into(),
-                if dh(s, "capacity") { s["capacity"].clone() } else { Json::from(1048576) },
-            );
+        for (k, d) in [("capacity", 1048576), ("maxMessages", 10), ("messageSize", 8192)] {
+            if has(k) {
+                r.insert(k.into(), if dh(s, k) { s[k].clone() } else { Json::from(d) });
+            }
         }
         self.settings(&Json::Object(r))
     }

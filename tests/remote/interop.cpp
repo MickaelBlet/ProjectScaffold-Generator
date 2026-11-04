@@ -155,7 +155,7 @@ void rejected(const char* what, Call call)
 
 int call(EchoProxy& proxy, const std::string& transport)
 {
-    const Sample s = full(transport == "udp" ? 1000 : 100000);
+    const Sample s = full(transport == "udp" || transport == "mq" ? 1000 : 100000);
     check("echo", bytes(proxy.echo(s)) == bytes(s));
 
     std::int64_t total = 0;

@@ -1,9 +1,9 @@
 {% macro generated_transport(transport=none) %}
 {#
-  `true` for a transport written by transport.cpp and transport.py: tcp, udp, http, websocket, shm.
+  `true` for a transport written by transport.cpp and transport.py: tcp, udp, http, websocket, shm, mq.
   Parameter: transport.
 #}
 {% filter inline %}
-{% if transport in ['tcp', 'udp', 'http', 'websocket', 'shm'] %}true{% endif %}
+{% if transport in ['tcp', 'udp', 'http', 'websocket', 'shm', 'mq'] %}true{% endif %}
 {% endfilter %}
 {% endmacro %}

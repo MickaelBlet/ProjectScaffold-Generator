@@ -83,7 +83,7 @@ namespace {{ _cpp_namespace(entity=system) }} {
     {{ _camel(name=remote_link.link.name) }}Stub_.bind({{ _endpoint(link_end=remote_link.local) }});
 {% set state.has_generated_transport = _generated_transport(transport=remote_link.link.constraints.remote.transport) %}
 {% if state.has_generated_transport == 'true' %}
-    {{ _camel(name=remote_link.link.name) }}Stub_.serve("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='server') }}", "{{ _address(remote_link=remote_link, side='server') }}"){% if remote_link.settings.capacity is not none %}, {{ remote_link.settings.capacity }}{% endif %});
+    {{ _camel(name=remote_link.link.name) }}Stub_.serve("{{ state.transport }}", remote::address("{{ _address_variable(remote_link=remote_link, side='server') }}", "{{ _address(remote_link=remote_link, side='server') }}"){% if remote_link.settings.capacity is not none %}, {{ remote_link.settings.capacity }}{% elif remote_link.settings.maxMessages is not none %}, remote::ringCapacity, {{ remote_link.settings.maxMessages }}, {{ remote_link.settings.messageSize }}{% endif %});
 {% endif %}
     {%+ filter user('link.' ~ remote_link.link.name) +%}
 {% if not (state.has_generated_transport == 'true') %}

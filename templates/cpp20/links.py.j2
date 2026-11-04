@@ -24,6 +24,9 @@ class Link(NamedTuple):
     path: str
     # Bytes of each ring (shm).
     capacity: int
+    # Messages each queue holds, bytes of a message (mq).
+    max_messages: int
+    message_size: int
     # Settings of the transport set in the project, as text (see `options` for the free ones).
     settings: str
     options: Dict[str, str]
@@ -47,7 +50,7 @@ class Link(NamedTuple):
 {% for r in remoteLinks %}
 
 {{ r.link.description|doc_comment('# ') }}
-{{ r.link.name|constant }} = Link('{{ r.link.name }}', {{ r.index }}, '{{ r.interface.name }}', '{{ r.link.constraints.remote.transport }}', '{{ _address_variable(r=r, side='client') }}', '{{ _address(r=r, side='client') }}', '{{ _address_variable(r=r, side='server') }}', '{{ _address(r=r, side='server') }}', '{{ r.settings.path|default('/', true) }}', {{ r.settings.capacity|default(1048576, true) }}, '{{ _settings(s=r.link.constraints.remote.settings) }}', { {%- for o in r.settings.options %}'{{ o.name }}': '{{ o.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if r.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(r.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ r.from.binary }}', '{{ r.to.binary }}')
+{{ r.link.name|constant }} = Link('{{ r.link.name }}', {{ r.index }}, '{{ r.interface.name }}', '{{ r.link.constraints.remote.transport }}', '{{ _address_variable(r=r, side='client') }}', '{{ _address(r=r, side='client') }}', '{{ _address_variable(r=r, side='server') }}', '{{ _address(r=r, side='server') }}', '{{ r.settings.path|default('/', true) }}', {{ r.settings.capacity|default(1048576, true) }}, {{ r.settings.maxMessages|default(10, true) }}, {{ r.settings.messageSize|default(8192, true) }}, '{{ _settings(s=r.link.constraints.remote.settings) }}', { {%- for o in r.settings.options %}'{{ o.name }}': '{{ o.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if r.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(r.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ r.from.binary }}', '{{ r.to.binary }}')
 {% endfor %}
 
 LINKS: List[Link] = [{% for r in remoteLinks %}{{ r.link.name|constant }}{% if not loop.last %}, {% endif %}{% endfor %}]

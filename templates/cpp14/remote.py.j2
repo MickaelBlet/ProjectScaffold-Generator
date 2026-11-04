@@ -101,7 +101,7 @@ class {{ item.name }}Stub:
     @classmethod
     def serve(cls, link: Link, handler: {{ item.name }}Handler) -> Server:
         """Receives the calls of `link` into `handler` until the server is closed."""
-        return serve(link.transport, link.server_address, cls(handler), link.capacity)
+        return serve(link.transport, link.server_address, cls(handler), link.capacity, link.max_messages, link.message_size)
 
     def __call__(self, frame: bytes) -> Optional[bytes]:
         return respond(frame, self._handle)

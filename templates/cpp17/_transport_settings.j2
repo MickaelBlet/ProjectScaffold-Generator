@@ -22,7 +22,7 @@
     {% set state.parts = state.parts + [role ~ ' ' ~ endpoint_settings.host ~ ':' ~ endpoint_settings.port] %}
   {% endif %}
 {% endfor %}
-{% for key in ['path', 'name', 'capacity', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
+{% for key in ['path', 'name', 'capacity', 'maxMessages', 'messageSize', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
   {% set setting_value = settings[key] if key in settings else none %}
   {% if setting_value != none %}
     {% set state.parts = state.parts + [key ~ ' ' ~ setting_value] %}

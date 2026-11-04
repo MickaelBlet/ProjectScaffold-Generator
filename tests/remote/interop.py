@@ -95,7 +95,7 @@ def check(what: str, ok: bool) -> None:
 
 
 def call(proxy: EchoProxy, transport: str) -> None:
-    s = full(1000 if transport == 'udp' else 100000)
+    s = full(1000 if transport in ('udp', 'mq') else 100000)
     check('echo', proxy.echo(s) == s)
     check('sum', proxy.sum([1, 2, 3, -10]) == -4)
     check('scale', proxy.scale(data.Vec3(1.0, 2.0, 3.0), 2.0) == (True, data.Vec3(2.0, 4.0, 6.0)))
@@ -173,7 +173,8 @@ def main() -> int:
             proxy.close()
         return 1 if failures else 0
     if mode == 'peers':
-        handlers = {name: Echo() for name in ('echo_tcp', 'echo_udp', 'echo_http', 'echo_websocket', 'echo_shm')}
+        names = ('echo_tcp', 'echo_udp', 'echo_http', 'echo_websocket', 'echo_shm', 'echo_mq')
+        handlers = {name: Echo() for name in names}
         with ServerPeer(**handlers), ClientPeer() as client:
             for name in handlers:
                 call(getattr(client, name), name[len('echo_'):])

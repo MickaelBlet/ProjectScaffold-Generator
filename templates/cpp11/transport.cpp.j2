@@ -13,6 +13,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#if defined(__linux__)
+#include <mqueue.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -538,6 +541,91 @@ std::unique_ptr<Mapping> map(int fd, std::size_t size)
     return makeUnique<Mapping>(p, size);
 }
 
+#if defined(__linux__)
+// POSIX message queues (Linux): `<name>.call` and `<name>.reply`, made by the server, a message per frame.
+
+/// Message queue descriptor, closed on destruction.
+class Queue {
+public:
+    Queue() : q_(none()) {}
+    explicit Queue(mqd_t q) : q_(q) {}
+    Queue(Queue&& other) noexcept : q_(other.q_) { other.q_ = none(); }
+    Queue& operator=(Queue&& other) noexcept
+    {
+        if (this != &other) {
+            reset();
+            q_ = other.q_;
+            other.q_ = none();
+        }
+        return *this;
+    }
+    Queue(const Queue&) = delete;
+    Queue& operator=(const Queue&) = delete;
+    ~Queue() { reset(); }
+
+    mqd_t get() const { return q_; }
+    explicit operator bool() const { return q_ != none(); }
+    void reset()
+    {
+        if (q_ != none()) ::mq_close(q_);
+        q_ = none();
+    }
+    /// Bytes of a message at most.
+    std::size_t messageSize() const
+    {
+        mq_attr attr{};
+        if (::mq_getattr(q_, &attr) != 0) fail("mq_getattr");
+        return static_cast<std::size_t>(attr.mq_msgsize);
+    }
+
+private:
+    static mqd_t none() { return static_cast<mqd_t>(-1); }
+    mqd_t q_;
+};
+
+/// The CLOCK_REALTIME time mq_timedsend / mq_timedreceive wait until: `deadline`, at most 100 ms from now
+/// (the stop flag of a server is checked in between).
+timespec slice(Clock::time_point deadline)
+{
+    const Clock::duration left =
+        std::max(Clock::duration::zero(), std::min<Clock::duration>(deadline - Clock::now(), std::chrono::milliseconds(100)));
+    timespec at{};
+    ::clock_gettime(CLOCK_REALTIME, &at);
+    const long long ns = std::chrono::duration_cast<std::chrono::nanoseconds>(left).count() + at.tv_nsec;
+    at.tv_sec += static_cast<time_t>(ns / 1000000000);
+    at.tv_nsec = static_cast<long>(ns % 1000000000);
+    return at;
+}
+
+/// Sends `frame` before `deadline` or `stop`: false when the queue stayed full.
+bool mqSend(const Queue& q, const Bytes& frame, Clock::time_point deadline, const std::atomic<bool>* stop)
+{
+    for (;;) {
+        const timespec at = slice(deadline);
+        if (::mq_timedsend(q.get(), reinterpret_cast<const char*>(frame.data()), frame.size(), 0, &at) == 0) return true;
+        if (errno == EMSGSIZE) throw Error("frame larger than the messages of the message queue");
+        if (errno != ETIMEDOUT && errno != EINTR) fail("mq_timedsend");
+        if ((stop && *stop) || Clock::now() >= deadline) return false;
+    }
+}
+
+/// Receives a frame before `deadline` or `stop`: false when none came.
+bool mqReceive(const Queue& q, Bytes& frame, Clock::time_point deadline, const std::atomic<bool>* stop)
+{
+    frame.resize(q.messageSize());
+    for (;;) {
+        const timespec at = slice(deadline);
+        const ssize_t n = ::mq_timedreceive(q.get(), reinterpret_cast<char*>(frame.data()), frame.size(), nullptr, &at);
+        if (n >= 0) {
+            frame.resize(static_cast<std::size_t>(n));
+            return true;
+        }
+        if (errno != ETIMEDOUT && errno != EINTR) fail("mq_timedreceive");
+        if ((stop && *stop) || Clock::now() >= deadline) return false;
+    }
+}
+#endif
+
 // Clients.
 
 /// Client exchanging whole frames; drops its connection on any failure.
@@ -745,6 +833,44 @@ private:
     std::string name_;
     std::unique_ptr<Mapping> mapping_;
 };
+
+#if defined(__linux__)
+/// Opens the queues made by the server (waiting for them), sends on `<name>.call`, receives on `<name>.reply`.
+class MqChannel final : public FrameChannel {
+public:
+    explicit MqChannel(const std::string& address) : name_(shmName(address)) {}
+
+private:
+    void open(Clock::time_point deadline) override
+    {
+        if (!calls_ && !waitFor([this] { return attach(); }, deadline, nullptr))
+            throw Error("no message queues " + name_ + ".call, " + name_ + ".reply");
+    }
+    bool attach()
+    {
+        Queue calls(::mq_open((name_ + ".call").c_str(), O_WRONLY));
+        Queue replies(::mq_open((name_ + ".reply").c_str(), O_RDONLY));
+        if (!calls || !replies) return false;
+        calls_ = std::move(calls);
+        replies_ = std::move(replies);
+        return true;
+    }
+    void send(const Bytes& frame, Clock::time_point deadline) override
+    {
+        if (!mqSend(calls_, frame, deadline, nullptr)) throw Error("message queue " + name_ + ".call full");
+    }
+    bool receive(Bytes& frame, Clock::time_point deadline) override { return mqReceive(replies_, frame, deadline, nullptr); }
+    void drop() override
+    {
+        calls_.reset();
+        replies_.reset();
+    }
+
+    std::string name_;
+    Queue calls_;
+    Queue replies_;
+};
+#endif
 
 // Servers.
 
@@ -972,6 +1098,64 @@ private:
     std::unique_ptr<Mapping> mapping_;
 };
 
+#if defined(__linux__)
+/// Makes the queues (replacing stale ones), receives the calls on `<name>.call`, sends the replies on
+/// `<name>.reply`.
+class MqServer final : public Threads {
+public:
+    MqServer(const std::string& address, Handler handler, std::uint32_t maxMessages, std::uint32_t messageSize)
+        : name_(shmName(address)), handler_(std::move(handler)),
+          calls_(make(name_ + ".call", maxMessages, messageSize)),
+          replies_(make(name_ + ".reply", maxMessages, messageSize))
+    {
+        spawn([this] { run(); });
+    }
+    ~MqServer() override
+    {
+        halt();
+        calls_.reset();
+        replies_.reset();
+        ::mq_unlink((name_ + ".call").c_str());
+        ::mq_unlink((name_ + ".reply").c_str());
+    }
+
+private:
+    static Queue make(const std::string& name, std::uint32_t maxMessages, std::uint32_t messageSize)
+    {
+        ::mq_unlink(name.c_str());
+        mq_attr attr{};
+        attr.mq_maxmsg = static_cast<long>(maxMessages);
+        attr.mq_msgsize = static_cast<long>(messageSize);
+        Queue q(::mq_open(name.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600, &attr));
+        if (!q) fail("cannot create message queue " + name);
+        return q;
+    }
+
+    void run()
+    {
+        Bytes frame;
+        while (mqReceive(calls_, frame, forever, &stop_)) {
+            scaffold::Optional<Bytes> reply;
+            try {
+                reply = handler_(frame);
+            } catch (const Error&) {
+                continue;
+            }
+            if (!reply) continue;
+            if (reply->size() > replies_.messageSize())
+                reply = errorFrame(header(frame).id, "reply larger than the messages of the message queue");
+            // A reply finding no room within a second is lost: the client gave up on it.
+            mqSend(replies_, *reply, Clock::now() + std::chrono::seconds(1), &stop_);
+        }
+    }
+
+    std::string name_;
+    Handler handler_;
+    Queue calls_;
+    Queue replies_;
+};
+#endif
+
 volatile std::sig_atomic_t stopSignal = 0;
 
 void onStop(int) { stopSignal = 1; }
@@ -981,7 +1165,11 @@ void onStop(int) { stopSignal = 1; }
 bool supported(const std::string& transport)
 {
     return transport == "tcp" || transport == "udp" || transport == "http" || transport == "websocket" ||
-           transport == "shm";
+           transport == "shm"
+#if defined(__linux__)
+           || transport == "mq"
+#endif
+        ;
 }
 
 std::string address(const char* variable, const std::string& fallback)
@@ -997,17 +1185,26 @@ std::unique_ptr<Channel> connect(const std::string& transport, const std::string
     if (transport == "http") return makeUnique<HttpChannel>(address, path);
     if (transport == "websocket") return makeUnique<WebSocketChannel>(address, path);
     if (transport == "shm") return makeUnique<ShmChannel>(address);
+#if defined(__linux__)
+    if (transport == "mq") return makeUnique<MqChannel>(address);
+#endif
     throw Error("transport '" + transport + "' is not generated: implement a remote::Channel");
 }
 
 std::unique_ptr<Server> serve(const std::string& transport, const std::string& address, Handler handler,
-                              std::uint32_t capacity)
+                              std::uint32_t capacity, std::uint32_t maxMessages, std::uint32_t messageSize)
 {
     if (transport == "tcp") return makeUnique<StreamServer>(address, std::move(handler), tcpSession);
     if (transport == "udp") return makeUnique<UdpServer>(address, std::move(handler));
     if (transport == "http") return makeUnique<StreamServer>(address, std::move(handler), httpSession);
     if (transport == "websocket") return makeUnique<StreamServer>(address, std::move(handler), webSocketSession);
     if (transport == "shm") return makeUnique<ShmServer>(address, std::move(handler), capacity);
+#if defined(__linux__)
+    if (transport == "mq") return makeUnique<MqServer>(address, std::move(handler), maxMessages, messageSize);
+#else
+    (void)maxMessages;
+    (void)messageSize;
+#endif
     throw Error("transport '" + transport + "' is not generated: implement a remote::Server");
 }
 

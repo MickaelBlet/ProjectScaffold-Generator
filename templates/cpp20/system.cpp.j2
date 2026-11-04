@@ -53,7 +53,7 @@ namespace {{ _ns(e=system) }} {
     {{ r.link.name|camel }}Stub_.bind({{ _endpoint(x=r.local) }});
 {% set ns.generated = _generated_transport(transport=r.link.constraints.remote.transport) %}
 {% if ns.generated == 'true' %}
-    {{ r.link.name|camel }}Stub_.serve("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='server') }}", "{{ _address(r=r, side='server') }}"){% if r.settings.capacity is not none %}, {{ r.settings.capacity }}{% endif %});
+    {{ r.link.name|camel }}Stub_.serve("{{ ns.transport }}", remote::address("{{ _address_variable(r=r, side='server') }}", "{{ _address(r=r, side='server') }}"){% if r.settings.capacity is not none %}, {{ r.settings.capacity }}{% elif r.settings.maxMessages is not none %}, remote::ringCapacity, {{ r.settings.maxMessages }}, {{ r.settings.messageSize }}{% endif %});
 {% endif %}
     {%+ filter user('link.' ~ r.link.name) +%}
 {% if not (ns.generated == 'true') %}

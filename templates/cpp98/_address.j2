@@ -6,7 +6,7 @@
 #}
 {% set at = r.settings.server if side == 'server' else r.settings.client %}
 {% filter inline %}
-{% if r.link.constraints.remote.transport == 'shm' %}
+{% if r.link.constraints.remote.transport in ['shm', 'mq'] %}
   {{ r.settings.name }}
 {% elif at.host != none %}
   {% if ':' in at.host %}[{{ at.host }}]{% else %}{{ at.host }}{% endif %}:{{ at.port }}

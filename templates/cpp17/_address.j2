@@ -1,7 +1,7 @@
 {#
   Address of a link between binaries (C++ and Python alike), from its resolved settings: `host:port` of
   the client (where the caller connects) or of the server (where the callee listens), IPv6 hosts in
-  brackets; the name of the shared memory for transport shm; empty when the host is not set.
+  brackets; the name of the shared memory or the message queues for transports shm and mq; empty when the host is not set.
   Parameters:
     remote_link: an entry of `remoteLinks` (`link`: the schema's links[] entry, with its `constraints.remote.transport`, `settings`).
     side: 'client' or 'server'.
@@ -14,7 +14,7 @@
 {% macro address(remote_link=none, side=none) %}
 {% set endpoint_settings = remote_link.settings.server if side == 'server' else remote_link.settings.client %}
 {% filter inline %}
-{% if remote_link.link.constraints.remote.transport == 'shm' %}
+{% if remote_link.link.constraints.remote.transport in ['shm', 'mq'] %}
   {{ remote_link.settings.name }}
 {% elif endpoint_settings.host != none %}
   {% if ':' in endpoint_settings.host %}[{{ endpoint_settings.host }}]{% else %}{{ endpoint_settings.host }}{% endif %}:{{ endpoint_settings.port }}

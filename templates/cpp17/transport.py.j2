@@ -1,15 +1,19 @@
 {#
-  Generates python/<project>/transport.py: the transports (tcp, udp, http, websocket, shm) and the Caller /
+  Generates python/<project>/transport.py: the transports (tcp, udp, http, websocket, shm, mq) and the Caller /
   Server on top of them, speaking as remote/transport.cpp does; the two must change together.
   Rendered once (manifest.yaml), when `remoteLinks` is not empty.
   Example input: none (the file does not read the project).
 #}
 {% include '_py_banner.j2' %}
-"""Transports of the calls between binaries: tcp, udp, http, websocket and shm, as
-src/remote/transport.cpp (standard library only; shm: POSIX)."""
+"""Transports of the calls between binaries: tcp, udp, http, websocket, shm and mq,
+as src/remote/transport.cpp (standard library only; shm: POSIX; mq: POSIX message queues of
+Linux, through ctypes)."""
 from __future__ import annotations
 
 import base64
+import ctypes
+import ctypes.util
+import errno
 import hashlib
 import logging
 import os
@@ -27,7 +31,7 @@ from .wire import (CALL, ERROR, HEADER, MAX_LENGTH, REPLY, TYPED, WANT_REPLY, Ra
 Handler = Callable[[bytes], Optional[bytes]]
 """Answers a call frame: the reply frame, or None when the call wants none."""
 
-TRANSPORTS = ('tcp', 'udp', 'http', 'websocket', 'shm')
+TRANSPORTS = ('tcp', 'udp', 'http', 'websocket', 'shm') + (('mq',) if sys.platform.startswith('linux') else ())
 MAX_DATAGRAM = 65507
 
 _log = logging.getLogger(__name__)
@@ -306,6 +310,105 @@ def _wait_for(ready: Callable[[], object], deadline: Optional[float], stop: Opti
         pause = min(pause + 0.00005, 0.001)
 
 
+# POSIX message queues (Linux): `<name>.call` and `<name>.reply`, made by the server, a message per frame.
+
+MQ_MAX_MESSAGES = 10
+MQ_MESSAGE_SIZE = 8192
+
+
+class _MqAttr(ctypes.Structure):
+    _fields_ = [('mq_flags', ctypes.c_long), ('mq_maxmsg', ctypes.c_long), ('mq_msgsize', ctypes.c_long),
+                ('mq_curmsgs', ctypes.c_long), ('_reserved', ctypes.c_long * 4)]
+
+
+class _Timespec(ctypes.Structure):
+    _fields_ = [('tv_sec', ctypes.c_long), ('tv_nsec', ctypes.c_long)]
+
+
+_rt: Any = None
+
+
+def _mq() -> Any:
+    """librt's mq_* functions (loaded once)."""
+    global _rt
+    if _rt is None:
+        if not sys.platform.startswith('linux'):
+            raise RemoteError('transport mq: POSIX message queues of Linux only')
+        lib = ctypes.CDLL(ctypes.util.find_library('rt') or 'librt.so.1', use_errno=True)
+        lib.mq_open.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_uint, ctypes.POINTER(_MqAttr)]
+        lib.mq_open.restype = ctypes.c_int
+        lib.mq_close.argtypes = [ctypes.c_int]
+        lib.mq_unlink.argtypes = [ctypes.c_char_p]
+        lib.mq_getattr.argtypes = [ctypes.c_int, ctypes.POINTER(_MqAttr)]
+        lib.mq_timedsend.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_uint,
+                                     ctypes.POINTER(_Timespec)]
+        lib.mq_timedreceive.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_size_t,
+                                        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(_Timespec)]
+        lib.mq_timedreceive.restype = ctypes.c_ssize_t
+        _rt = lib
+    return _rt
+
+
+def _mq_fail(what: str) -> RemoteError:
+    return RemoteError(f'{what}: {os.strerror(ctypes.get_errno())}')
+
+
+def _mq_open(name: str, flags: int, max_messages: int = 0, message_size: int = 0) -> int:
+    """Descriptor of queue `name` (-1 when it does not exist yet); made with its sizes with O_CREAT."""
+    attr = _MqAttr(0, max_messages, message_size, 0) if flags & os.O_CREAT else None
+    q = _mq().mq_open(('/' + name).encode(), flags, 0o600, ctypes.byref(attr) if attr is not None else None)
+    if q < 0 and ctypes.get_errno() != errno.ENOENT:
+        raise _mq_fail(f'mq_open /{name}')
+    return q
+
+
+def _mq_unlink(name: str) -> None:
+    _mq().mq_unlink(('/' + name).encode())
+
+
+def _mq_message_size(q: int) -> int:
+    attr = _MqAttr()
+    if _mq().mq_getattr(q, ctypes.byref(attr)) != 0:
+        raise _mq_fail('mq_getattr')
+    return attr.mq_msgsize
+
+
+def _slice(deadline: Optional[float]) -> _Timespec:
+    """The CLOCK_REALTIME time mq_timedsend / mq_timedreceive wait until: `deadline`, at most 100 ms
+    from now (the stop flag of a server is checked in between)."""
+    left = _left(deadline)
+    at = time.time() + (0.1 if left is None else min(left, 0.1))
+    return _Timespec(int(at), int((at - int(at)) * 1e9))
+
+
+def _mq_send(q: int, data: bytes, deadline: Optional[float], stop: Optional[threading.Event] = None) -> bool:
+    """Sends `data` before `deadline` or `stop`: False when the queue stayed full."""
+    while True:
+        if _mq().mq_timedsend(q, data, len(data), 0, ctypes.byref(_slice(deadline))) == 0:
+            return True
+        e = ctypes.get_errno()
+        if e == errno.EMSGSIZE:
+            raise RemoteError('frame larger than the messages of the message queue')
+        if e not in (errno.ETIMEDOUT, errno.EINTR):
+            raise _mq_fail('mq_timedsend')
+        if (stop is not None and stop.is_set()) or _left(deadline) == 0.0:
+            return False
+
+
+def _mq_receive(q: int, deadline: Optional[float], stop: Optional[threading.Event] = None) -> Optional[bytes]:
+    """Receives a frame before `deadline` or `stop`: None when none came."""
+    buf = ctypes.create_string_buffer(_mq_message_size(q))
+    while True:
+        n = _mq().mq_timedreceive(q, buf, len(buf), None, ctypes.byref(_slice(deadline)))
+        if n >= 0:
+            return buf.raw[:n]
+        e = ctypes.get_errno()
+        if e not in (errno.ETIMEDOUT, errno.EINTR):
+            raise _mq_fail('mq_timedreceive')
+        if (stop is not None and stop.is_set()) or _left(deadline) == 0.0:
+            return None
+
+
 # Clients.
 
 
@@ -526,9 +629,47 @@ class ShmChannel(Channel):
         self._shm = None
 
 
+class MqChannel(Channel):
+    """Opens the queues made by the server (waiting for them), sends on `<name>.call`, receives on
+    `<name>.reply`. One client per link."""
+
+    def __init__(self, address: str) -> None:
+        self._name = _shm_name(address)
+        self._calls = -1
+        self._replies = -1
+
+    def _attach(self) -> bool:
+        calls = _mq_open(self._name + '.call', os.O_WRONLY)
+        replies = _mq_open(self._name + '.reply', os.O_RDONLY)
+        if calls < 0 or replies < 0:
+            for q in (calls, replies):
+                if q >= 0:
+                    _mq().mq_close(q)
+            return False
+        self._calls, self._replies = calls, replies
+        return True
+
+    def _open(self, deadline: float) -> None:
+        if self._calls < 0 and not _wait_for(self._attach, deadline):
+            raise RemoteError(f'no message queues /{self._name}.call, /{self._name}.reply')
+
+    def _send(self, data: bytes, deadline: float) -> None:
+        if not _mq_send(self._calls, data, deadline):
+            raise RemoteError(f'message queue /{self._name}.call full')
+
+    def _receive(self, deadline: float) -> Optional[bytes]:
+        return _mq_receive(self._replies, deadline)
+
+    def _drop(self) -> None:
+        for q in (self._calls, self._replies):
+            if q >= 0:
+                _mq().mq_close(q)
+        self._calls = self._replies = -1
+
+
 def connect(transport: str, address: str, path: str = '/') -> Channel:
-    """Channel to the server at `address` (`host:port`, or a name for shm); `path`: request path of
-    http and websocket."""
+    """Channel to the server at `address` (`host:port`, or a name for shm and mq); `path`: request
+    path of http and websocket."""
     if transport == 'tcp':
         return TcpChannel(address)
     if transport == 'udp':
@@ -539,6 +680,8 @@ def connect(transport: str, address: str, path: str = '/') -> Channel:
         return WebSocketChannel(address, path)
     if transport == 'shm':
         return ShmChannel(address)
+    if transport == 'mq':
+        return MqChannel(address)
     raise RemoteError(f"transport '{transport}' is not generated: write a Channel for it")
 
 
@@ -782,9 +925,51 @@ class ShmServer(Server):
         self._shm.unlink()
 
 
-def serve(transport: str, address: str, handler: Handler, capacity: int = RING_CAPACITY) -> Server:
+class MqServer(Server):
+    """Makes the queues (replacing stale ones), receives the calls on `<name>.call`, sends the replies
+    on `<name>.reply`."""
+
+    def __init__(self, address: str, handler: Handler, max_messages: int = MQ_MAX_MESSAGES,
+                 message_size: int = MQ_MESSAGE_SIZE) -> None:
+        super().__init__(handler)
+        self._name = _shm_name(address)
+        self._queues: List[int] = []
+        for suffix in ('.call', '.reply'):
+            _mq_unlink(self._name + suffix)
+            q = _mq_open(self._name + suffix, os.O_CREAT | os.O_EXCL | os.O_RDWR, max_messages, message_size)
+            if q < 0:
+                raise _mq_fail(f'cannot create message queue /{self._name}{suffix}')
+            self._queues.append(q)
+        self._spawn(self._run)
+
+    def _run(self) -> None:
+        calls, replies = self._queues
+        size = _mq_message_size(replies)
+        while True:
+            call = _mq_receive(calls, None, self._stop)
+            if call is None:
+                return
+            try:
+                reply = self.handler(call)
+            except RemoteError:
+                continue
+            if reply is not None:
+                if len(reply) > size:
+                    reply = error_frame(header(call)[3], 'reply larger than the messages of the message queue')
+                # A reply finding no room within a second is lost: the client gave up on it.
+                _mq_send(replies, reply, time.monotonic() + 1.0, self._stop)
+
+    def _cleanup(self) -> None:
+        for q in self._queues:
+            _mq().mq_close(q)
+        for suffix in ('.call', '.reply'):
+            _mq_unlink(self._name + suffix)
+
+
+def serve(transport: str, address: str, handler: Handler, capacity: int = RING_CAPACITY,
+          max_messages: int = MQ_MAX_MESSAGES, message_size: int = MQ_MESSAGE_SIZE) -> Server:
     """Server at `address`, calling `handler` for each call received; `capacity`: bytes of each ring
-    of shm."""
+    of shm; `max_messages`, `message_size`: of each queue of mq."""
     if transport == 'tcp':
         return TcpServer(address, handler)
     if transport == 'udp':
@@ -795,4 +980,6 @@ def serve(transport: str, address: str, handler: Handler, capacity: int = RING_C
         return WebSocketServer(address, handler)
     if transport == 'shm':
         return ShmServer(address, handler, capacity)
+    if transport == 'mq':
+        return MqServer(address, handler, max_messages, message_size)
     raise RemoteError(f"transport '{transport}' is not generated: write a Server for it")

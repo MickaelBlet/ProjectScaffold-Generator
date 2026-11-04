@@ -971,11 +971,13 @@ impl<'i, 'a> V<'i, 'a> {
                 {
                     self.err(format!("Link '{ln}': path '{path}' must start with '/'"));
                 }
-                if transport == "shm" && s.get("name").is_some() {
+                if (transport == "shm" || transport == "mq") && s.get("name").is_some() {
                     let nm = ds(s, "name");
                     let body = nm.strip_prefix('/').unwrap_or(&nm);
-                    if body.is_empty() || body.contains('/') || nm.len() > 255 {
-                        self.err(format!("Link '{ln}': shared memory name '{nm}' is not valid"));
+                    let (what, max) =
+                        if transport == "shm" { ("shared memory", 255) } else { ("message queue", 249) };
+                    if body.is_empty() || body.contains('/') || nm.len() > max {
+                        self.err(format!("Link '{ln}': {what} name '{nm}' is not valid"));
                     }
                 }
             }

@@ -10,7 +10,7 @@
     {% set ns.parts = ns.parts + [e ~ ' ' ~ at.host ~ ':' ~ at.port] %}
   {% endif %}
 {% endfor %}
-{% for k in ['path', 'name', 'capacity', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
+{% for k in ['path', 'name', 'capacity', 'maxMessages', 'messageSize', 'socket', 'topic', 'interface', 'id', 'device', 'baud'] %}
   {% set v = s[k] if k in s else none %}
   {% if v != none %}
     {% set ns.parts = ns.parts + [k ~ ' ' ~ v] %}

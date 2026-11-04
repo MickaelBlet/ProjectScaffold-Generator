@@ -30,11 +30,13 @@ public:
 
     void bind({{ _qualified(e=item) }}& target) { target_ = &target; }
 
-    /// Receives the calls over `transport`, at `address`; `capacity`: bytes of each ring of shm.
+    /// Receives the calls over `transport`, at `address`; `capacity`: bytes of each ring of shm;
+    /// `maxMessages`, `messageSize`: of each queue of mq.
     void serve(const std::string& transport, const std::string& address,
-               uint32_t capacity = remote::ringCapacity)
+               uint32_t capacity = remote::ringCapacity, uint32_t maxMessages = remote::mqMaxMessages,
+               uint32_t messageSize = remote::mqMessageSize)
     {
-        server_.reset(remote::serve(transport, address, *this, capacity));
+        server_.reset(remote::serve(transport, address, *this, capacity, maxMessages, messageSize));
     }
 
     /// Makes the call of a frame: true with the reply frame in `reply`, false when the call wants none.

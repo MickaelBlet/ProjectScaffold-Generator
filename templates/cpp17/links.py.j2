@@ -46,6 +46,9 @@ class Link(NamedTuple):
     path: str
     # Bytes of each ring (shm).
     capacity: int
+    # Messages each queue holds, bytes of a message (mq).
+    max_messages: int
+    message_size: int
     # Settings of the transport set in the project, as text (see `options` for the free ones).
     settings: str
     options: Dict[str, str]
@@ -70,7 +73,7 @@ class Link(NamedTuple):
 {% for remote_link in remoteLinks %}
 
 {{ _doc_comment(text=remote_link.link.description, prefix='# ') }}{##}
-{{ _constant(name=remote_link.link.name) }} = Link('{{ remote_link.link.name }}', {{ remote_link.index }}, '{{ remote_link.interface.name }}', '{{ remote_link.link.constraints.remote.transport }}', '{{ _address_variable(remote_link=remote_link, side='client') }}', '{{ _address(remote_link=remote_link, side='client') }}', '{{ _address_variable(remote_link=remote_link, side='server') }}', '{{ _address(remote_link=remote_link, side='server') }}', '{{ remote_link.settings.path|default('/', true) }}', {{ remote_link.settings.capacity|default(1048576, true) }}, '{{ _transport_settings(settings=remote_link.link.constraints.remote.settings) }}', { {%- for option in remote_link.settings.options %}'{{ option.name }}': '{{ option.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if remote_link.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(remote_link.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ remote_link.from.binary }}', '{{ remote_link.to.binary }}')
+{{ _constant(name=remote_link.link.name) }} = Link('{{ remote_link.link.name }}', {{ remote_link.index }}, '{{ remote_link.interface.name }}', '{{ remote_link.link.constraints.remote.transport }}', '{{ _address_variable(remote_link=remote_link, side='client') }}', '{{ _address(remote_link=remote_link, side='client') }}', '{{ _address_variable(remote_link=remote_link, side='server') }}', '{{ _address(remote_link=remote_link, side='server') }}', '{{ remote_link.settings.path|default('/', true) }}', {{ remote_link.settings.capacity|default(1048576, true) }}, {{ remote_link.settings.maxMessages|default(10, true) }}, {{ remote_link.settings.messageSize|default(8192, true) }}, '{{ _transport_settings(settings=remote_link.link.constraints.remote.settings) }}', { {%- for option in remote_link.settings.options %}'{{ option.name }}': '{{ option.value }}'{% if not loop.last %}, {% endif %}{% endfor -%} }, {% if remote_link.link.constraints.ack.required %}True{% else %}False{% endif %}, {{ '%.12g'|format(remote_link.link.constraints.ack.timeoutMs|default(5000, true) / 1000.0) }}, '{{ remote_link.from.binary }}', '{{ remote_link.to.binary }}')
 {% endfor %}
 
 LINKS: List[Link] = [{% for remote_link in remoteLinks %}{{ _constant(name=remote_link.link.name) }}{% if not loop.last %}, {% endif %}{% endfor %}]

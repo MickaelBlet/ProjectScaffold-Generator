@@ -62,13 +62,13 @@ pair() {
 }
 
 port=47100
-for t in tcp udp http websocket shm; do
+for t in tcp udp http websocket shm mq; do
   ack=true
   [ $t = udp ] && ack=false
   for way in "python -> c++" "c++ -> python" "python -> python"; do
     port=$((port + 1))
     address=127.0.0.1:$port
-    [ $t = shm ] && address=relay_check_$$_$port
+    [ $t = shm ] || [ $t = mq ] && address=relay_check_$$_$port
     case $way in
       "python -> c++") pair "$t: $way" "${cpp[@]}" serve $t $address -- "${py[@]}" call $t $address $ack ;;
       "c++ -> python") pair "$t: $way" "${py[@]}" serve $t $address -- "${cpp[@]}" call $t $address $ack ;;

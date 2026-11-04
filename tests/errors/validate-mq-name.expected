@@ -1,0 +1,1 @@
+tests/errors/validate-mq-name.scaffold.yaml: error: Link 'echo_mq': message queue name 'a/b' is not valid

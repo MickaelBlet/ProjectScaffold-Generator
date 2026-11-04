@@ -6,7 +6,7 @@
 {% set ns = namespace() %}
 {% include '_py_banner.j2' %}
 {% set root = project.ident|snake %}
-{% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm'] %}
+{% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm', 'mq'] %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
 {% set module = _py_id(name=system.name|snake) %}
 """{% if system.binary %}Binary {{ system.binary.name }} of {{ project.name }}: its top-level modules, wired together and to the other

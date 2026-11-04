@@ -3,7 +3,7 @@
 {% set ns_ = project.ident|snake %}
 {% set binary = system.binary.name %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
-{% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm'] %}
+{% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm', 'mq'] %}
 """Stands in for binary {{ binary }} of {{ project.name }}, to test the other binaries: serves the calls
 {{ binary }} receives, makes those it sends.
 
