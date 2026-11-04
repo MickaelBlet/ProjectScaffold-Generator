@@ -1,0 +1,191 @@
+{% include '_banner.j2' %}
+#pragma once
+
+#include <cerrno>
+#include <cstddef>
+#include <ctime>
+#include <deque>
+#include <stdexcept>
+#include <string>
+
+#include <pthread.h>
+#include <time.h>
+
+namespace {{ project.ident|snake }} {
+
+/// A call to an active module failed: its queue was full (overflow `error`, or `drop` for a call waiting
+/// for its result), its result did not come within the module's timeout, or the handler threw an
+/// exception the message does not raise.
+class ActiveError : public std::runtime_error {
+public:
+    explicit ActiveError(const std::string& what) : std::runtime_error(what) {}
+};
+
+/// A call queued for an active module: `run` makes it, on the module's thread.
+class ActiveJob {
+public:
+    ActiveJob() : state_(queued), posted_(false) {}
+    virtual ~ActiveJob() {}
+    virtual void run() = 0;
+
+private:
+    friend class ActiveQueue;
+    enum State { queued, running, done };
+    State state_;
+    bool posted_; // deleted once run, nobody waiting for it
+};
+
+/// Thread of an active module: runs the jobs queued by the adapters of its `in` ports, one at a time, in
+/// their order. The destructor runs the jobs still queued, then joins the thread.
+class ActiveQueue {
+public:
+    /// What a job reaching a full queue does: waits for room, is dropped, or fails (ActiveError).
+    enum Overflow { block, drop, error };
+
+    ActiveQueue(std::size_t capacity, long timeoutMs, Overflow overflow)
+        : capacity_(capacity), timeoutMs_(timeoutMs), overflow_(overflow), stopping_(false)
+    {
+        pthread_mutex_init(&mutex_, 0);
+        pthread_cond_init(&ready_, 0);
+        pthread_cond_init(&room_, 0);
+        pthread_cond_init(&done_, 0);
+        if (pthread_create(&thread_, 0, &ActiveQueue::start, this) != 0)
+            throw std::runtime_error("active module: no thread");
+    }
+
+    ~ActiveQueue()
+    {
+        pthread_mutex_lock(&mutex_);
+        stopping_ = true;
+        pthread_cond_broadcast(&ready_);
+        pthread_mutex_unlock(&mutex_);
+        pthread_join(thread_, 0);
+        pthread_cond_destroy(&done_);
+        pthread_cond_destroy(&room_);
+        pthread_cond_destroy(&ready_);
+        pthread_mutex_destroy(&mutex_);
+    }
+
+    /// Queues `job` (deleted once run, or when dropped) and returns: a call without a result. Its
+    /// exceptions are dropped.
+    void post(ActiveJob* job)
+    {
+        job->posted_ = true;
+        pthread_mutex_lock(&mutex_);
+        const bool queued = push(job, 0);
+        pthread_mutex_unlock(&mutex_);
+        if (!queued) {
+            delete job;
+            if (overflow_ == error) throw ActiveError("active module: queue full");
+        }
+    }
+
+    /// Runs `job` on the thread and waits for it; throws ActiveError when the queue is full or `job` has
+    /// not started within the timeout (once started, it is waited for). `job` runs at once when called
+    /// from the thread itself.
+    void call(ActiveJob& job)
+    {
+        if (pthread_equal(pthread_self(), thread_)) {
+            job.run();
+            return;
+        }
+        timespec deadline;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_sec += timeoutMs_ / 1000;
+        deadline.tv_nsec += (timeoutMs_ % 1000) * 1000000L;
+        if (deadline.tv_nsec >= 1000000000L) {
+            deadline.tv_sec += 1;
+            deadline.tv_nsec -= 1000000000L;
+        }
+        pthread_mutex_lock(&mutex_);
+        if (!push(&job, &deadline)) {
+            pthread_mutex_unlock(&mutex_);
+            throw ActiveError("active module: queue full");
+        }
+        int waited = 0;
+        while (job.state_ != ActiveJob::done && waited != ETIMEDOUT)
+            waited = pthread_cond_timedwait(&done_, &mutex_, &deadline);
+        if (job.state_ == ActiveJob::queued) {
+            // Given up: never run (it refers to the arguments of the caller).
+            for (std::deque<ActiveJob*>::iterator i = jobs_.begin(); i != jobs_.end(); ++i)
+                if (*i == &job) {
+                    jobs_.erase(i);
+                    break;
+                }
+            pthread_mutex_unlock(&mutex_);
+            throw ActiveError("active module: no result in time");
+        }
+        while (job.state_ != ActiveJob::done) pthread_cond_wait(&done_, &mutex_);
+        pthread_mutex_unlock(&mutex_);
+    }
+
+private:
+    ActiveQueue(const ActiveQueue&);
+    ActiveQueue& operator=(const ActiveQueue&);
+
+    /// Queues `job`, the mutex held, waiting for room until `deadline` (none: 0) with overflow `block`;
+    /// false when not queued. Jobs queued by the thread itself never wait.
+    bool push(ActiveJob* job, const timespec* deadline)
+    {
+        if (!pthread_equal(pthread_self(), thread_)) {
+            while (jobs_.size() >= capacity_ && !stopping_) {
+                if (overflow_ != block) return false;
+                if (!deadline)
+                    pthread_cond_wait(&room_, &mutex_);
+                else if (pthread_cond_timedwait(&room_, &mutex_, deadline) == ETIMEDOUT &&
+                         jobs_.size() >= capacity_)
+                    return false;
+            }
+        }
+        jobs_.push_back(job);
+        pthread_cond_signal(&ready_);
+        return true;
+    }
+
+    static void* start(void* self)
+    {
+        static_cast<ActiveQueue*>(self)->run();
+        return 0;
+    }
+
+    void run()
+    {
+        pthread_mutex_lock(&mutex_);
+        for (;;) {
+            while (!stopping_ && jobs_.empty()) pthread_cond_wait(&ready_, &mutex_);
+            if (jobs_.empty()) break;
+            ActiveJob* job = jobs_.front();
+            jobs_.pop_front();
+            job->state_ = ActiveJob::running;
+            pthread_cond_signal(&room_);
+            pthread_mutex_unlock(&mutex_);
+            // A job waited for catches its own exceptions; a posted one has nobody to tell.
+            const bool posted = job->posted_;
+            try {
+                job->run();
+            } catch (...) {
+            }
+            pthread_mutex_lock(&mutex_);
+            if (posted) {
+                delete job;
+            } else {
+                job->state_ = ActiveJob::done;
+                pthread_cond_broadcast(&done_);
+            }
+        }
+        pthread_mutex_unlock(&mutex_);
+    }
+
+    const std::size_t capacity_;
+    const long timeoutMs_;
+    const Overflow overflow_;
+    pthread_mutex_t mutex_;
+    pthread_cond_t ready_;
+    pthread_cond_t room_;
+    pthread_cond_t done_;
+    std::deque<ActiveJob*> jobs_;
+    bool stopping_;
+    pthread_t thread_;
+};
+
+} // namespace {{ project.ident|snake }}

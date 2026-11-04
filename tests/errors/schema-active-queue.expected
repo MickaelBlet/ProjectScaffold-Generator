@@ -1,0 +1,3 @@
+tests/errors/schema-active-queue.scaffold.yaml:212:5: error: modules.4.active.queue: Too small: expected number to be >=1
+ 212 |     queue: 0
+     |     ^~~~~~~~

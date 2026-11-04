@@ -89,9 +89,22 @@ private:
     public:
         explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
 {% for msg in p.interface.messages %}
+{% set handler = 'owner_.on' ~ p.name|ucfirst ~ msg.name|ucfirst ~ '(' ~ _args(params=msg.params) ~ ')' %}
+{% set waits = namespace(value=msg.returns != none or msg.outputs|length > 0 or p.ackRequired) %}
+{% for prm in msg.params %}
+{% if prm.type.kind == 'ref' and prm.type.typeKind == 'module' %}{% set waits.value = true %}{% endif %}
+{% endfor %}
         {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }}) override
         {
-            return owner_.on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _args(params=msg.params) }});
+{% if not m.active %}
+            return {{ handler }};
+{% elif waits.value %}
+{# Waits for the result (or the acknowledgement; a module argument is not copied): the job refers to the arguments. #}
+            return owner_.active_.call([&] { return {{ handler }}; });
+{% else %}
+{# Returns once queued: the job holds copies of the arguments. #}
+            owner_.active_.post([this{% for prm in msg.params %}, {{ _id(name=prm.name) }}{% endfor %}] { {{ handler }}; });
+{% endif %}
         }
 {% endfor %}
 
@@ -116,6 +129,11 @@ private:
 {{ _members(m=m, names=names, access='private') }}{##}
     {%+ filter user('private') +%}
     {%+ endfilter +%}
+{% if m.active %}
+    // Thread running the calls of the in ports: last, so stopped first (the queued calls run before the
+    // members go).
+    ::{{ root }}::ActiveQueue active_{ {{- m.active.queue }}, std::chrono::milliseconds({{ m.active.timeoutMs }}), ::{{ root }}::ActiveQueue::Overflow::{{ m.active.overflow }}};
+{% endif %}
 };
 
 } // namespace {{ _ns(e=m) }}

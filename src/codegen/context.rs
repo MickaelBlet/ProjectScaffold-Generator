@@ -150,6 +150,21 @@ impl<'a> Ctx<'a> {
         self.a.set(m, k, x);
     }
 
+    /// An active module's settings, defaults applied (`active: true` takes them all); null when not active.
+    fn active(&mut self, m: &Json) -> Id {
+        let a = &m["active"];
+        if !(a.as_bool() == Some(true) || a.is_object()) {
+            return self.a.null();
+        }
+        let int = |k: &str, d: i64| if dh(a, k) { a[k].as_i64().unwrap_or(d) } else { d };
+        let overflow = if dh(a, "overflow") { ds(a, "overflow") } else { "block".into() };
+        self.json_map(serde_json::json!({
+            "queue": int("queue", 64),
+            "timeoutMs": int("timeoutMs", 5000),
+            "overflow": overflow,
+        }))
+    }
+
     fn empty_list(&mut self) -> Id {
         self.a.list(vec![])
     }
@@ -587,6 +602,8 @@ impl<'a> Ctx<'a> {
         self.put_str(g, "description", ds(m, "description"));
         self.put_str(g, "kind", if kind.is_empty() { "class".to_string() } else { kind.clone() });
         self.put_bool(g, "abstract", !kind.is_empty() && kind != "class");
+        let active = self.active(m);
+        self.a.set(g, "active", active);
         let b = self.empty_list();
         self.a.set(g, "bases", b);
         self.put_bool(g, "isBase", false);
@@ -638,6 +655,7 @@ impl<'a> Ctx<'a> {
             self.a.set(x, "interface", i);
             let dl_ = self.empty_list();
             self.a.set(x, "delegates", dl_);
+            self.put_bool(x, "ackRequired", false);
             ports.push(x);
         }
         let l = self.a.list(ports);
@@ -996,6 +1014,12 @@ impl<'a> Ctx<'a> {
                 warnings.push(format!("Link '{lname}' has a missing endpoint"));
                 continue;
             }
+            // The calls reaching an `in` port through a link requiring an acknowledgement wait for it.
+            if db(&fl["constraints"]["ack"], "required")
+                && let Some(p) = self.port_of(&tm, &tport)
+            {
+                self.put_bool(p, "ackRequired", true);
+            }
             if tm.starts_with(&format!("{fm}.")) {
                 // A container's `in` port handing its calls to an inner `in` port.
                 if let Some(p) = self.port_of(&fm, &fport) {
@@ -1175,7 +1199,9 @@ impl<'a> Ctx<'a> {
         set_list(self, "moduleTypes", mts);
         set_list(self, "interfaces", interfaces);
         let ms = self.modules.clone();
+        let any_active = ms.iter().any(|&m| self.a.get(m, "active").is_some_and(|x| !self.a.is_null(x)));
         set_list(self, "modules", ms);
+        self.put_bool(ctx, "anyActive", any_active);
         set_list(self, "binaries", binaries);
         set_list(self, "systems", systems.clone());
         let sys = if nbin > 0 { self.a.null() } else { systems[0] };

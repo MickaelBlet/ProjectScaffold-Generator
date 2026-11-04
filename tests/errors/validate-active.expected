@@ -1,0 +1,2 @@
+tests/errors/validate-active.scaffold.yaml: error: Worker: an active module is a class (not abstract)
+tests/errors/validate-active.scaffold.yaml: error: Tools: a utility module is not active

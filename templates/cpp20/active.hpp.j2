@@ -1,0 +1,139 @@
+{% include '_banner.j2' %}
+#pragma once
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstddef>
+#include <deque>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <thread>
+#include <utility>
+
+namespace {{ project.ident|snake }} {
+
+/// A call to an active module failed: its queue was full (overflow `error`, or `drop` for a call waiting
+/// for its result), or its result did not come within the module's timeout.
+class ActiveError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+/// Thread of an active module: runs the jobs queued by the adapters of its `in` ports, one at a time, in
+/// their order. The destructor runs the jobs still queued, then joins the thread.
+class ActiveQueue {
+public:
+    /// What a job reaching a full queue does: waits for room, is dropped, or fails (ActiveError).
+    enum class Overflow { block, drop, error };
+
+    ActiveQueue(std::size_t capacity, std::chrono::milliseconds timeout, Overflow overflow)
+        : capacity_(capacity), timeout_(timeout), overflow_(overflow), thread_([this] { run(); })
+    {
+    }
+
+    ~ActiveQueue()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+        }
+        ready_.notify_all();
+        thread_.join();
+    }
+
+    ActiveQueue(const ActiveQueue&) = delete;
+    ActiveQueue& operator=(const ActiveQueue&) = delete;
+
+    /// Queues `job` and returns: a call without a result. Its exceptions are dropped.
+    void post(std::function<void()> job)
+    {
+        if (!push(std::move(job), std::chrono::steady_clock::time_point::max()))
+            if (overflow_ == Overflow::error) throw ActiveError("active module: queue full");
+    }
+
+    /// Runs `f` on the thread and returns its result, or rethrows its exception; throws ActiveError when
+    /// the queue is full or `f` has not started within the timeout (once started, it is waited for).
+    /// `f` runs at once when called from the thread itself.
+    template <class F>
+    auto call(F f) -> decltype(f())
+    {
+        if (std::this_thread::get_id() == thread_.get_id()) return f();
+        using Result = decltype(f());
+        // 0: queued, 1: running or done, 2: given up by the caller (then never run: `f` refers to its
+        // arguments).
+        auto state = std::make_shared<std::atomic<int>>(0);
+        auto task = std::make_shared<std::packaged_task<Result()>>(std::move(f));
+        std::future<Result> result = task->get_future();
+        const auto deadline = std::chrono::steady_clock::now() + timeout_;
+        const bool queued = push(
+            [state, task] {
+                int expected = 0;
+                if (state->compare_exchange_strong(expected, 1)) (*task)();
+            },
+            deadline);
+        if (!queued) throw ActiveError("active module: queue full");
+        if (result.wait_until(deadline) != std::future_status::ready) {
+            int expected = 0;
+            if (state->compare_exchange_strong(expected, 2)) throw ActiveError("active module: no result in time");
+            result.wait();
+        }
+        return result.get();
+    }
+
+private:
+    /// Queues `job`, waiting for room until `deadline` (overflow `block`); false when not queued. Jobs
+    /// queued by the thread itself never wait.
+    bool push(std::function<void()> job, std::chrono::steady_clock::time_point deadline)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        const bool own = std::this_thread::get_id() == thread_.get_id();
+        const auto room = [this] { return jobs_.size() < capacity_ || stopping_; };
+        if (!own && !room()) {
+            if (overflow_ != Overflow::block) return false;
+            if (deadline == std::chrono::steady_clock::time_point::max())
+                room_.wait(lock, room);
+            else if (!room_.wait_until(lock, deadline, room))
+                return false;
+        }
+        jobs_.push_back(std::move(job));
+        lock.unlock();
+        ready_.notify_one();
+        return true;
+    }
+
+    void run()
+    {
+        for (;;) {
+            std::function<void()> job;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                ready_.wait(lock, [this] { return stopping_ || !jobs_.empty(); });
+                if (jobs_.empty()) return;
+                job = std::move(jobs_.front());
+                jobs_.pop_front();
+            }
+            room_.notify_one();
+            try {
+                job();
+            } catch (...) {
+                // A call without a result: nobody to tell.
+            }
+        }
+    }
+
+    const std::size_t capacity_;
+    const std::chrono::milliseconds timeout_;
+    const Overflow overflow_;
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::condition_variable room_;
+    std::deque<std::function<void()>> jobs_;
+    bool stopping_ = false;
+    std::thread thread_; // last: started once the members above are made
+};
+
+} // namespace {{ project.ident|snake }}

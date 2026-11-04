@@ -28,6 +28,9 @@
   {% for base in e.bases %}
     {% set ns.own = ns.own + ['<' ~ _header(e=base) ~ '>'] %}
   {% endfor %}
+  {% if e.active %}
+    {% set ns.own = ns.own + ['<' ~ root ~ '/active.hpp>'] %}
+  {% endif %}
   {% for p in e.ports %}
     {% if p.interface %}
       {% set ns.own = ns.own + ['<' ~ _header(e=p.interface) ~ '>'] %}

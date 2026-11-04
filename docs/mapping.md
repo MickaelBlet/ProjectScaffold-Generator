@@ -59,6 +59,17 @@ How the built-in template sets spell the model. The C++17 set is the reference; 
 | container `in` port linked inside  | the accessor returns the inner port                                                                                       |
 | container `out` port linked inside | the inner port forwards to it                                                                                             |
 
+### Active modules
+
+A module with `active` runs the calls of its `in` ports on its own thread, one at a time, in their order (an active object): `include/<ns>/active.hpp`, `ActiveQueue active_`, the last member of the class.
+
+- A call with a result (return value, `out` / `inout` parameters), through a link with `ack.required`, or with a module argument waits for it, at most `timeoutMs`: the handler's exceptions, `raises` included, are thrown to the caller; `ActiveError` when it did not start in time (it never runs then; once started, it is waited for).
+- The other calls return once queued, with copies of their arguments; their exceptions are dropped.
+- A full queue (`queue` calls): `block` waits for room (calls waiting for a result, within their timeout), `drop` loses the call, `error` throws `ActiveError` (a call waiting for its result also gets it with `drop`).
+- A call from the module's own thread (a handler calling another port of its module) runs at once.
+- The destructor runs the calls still queued, then joins the thread. CMake links `Threads::Threads`.
+- C++98: pthreads; a job class per message in the port's adapter (`ComputeJob`), the result and exceptions copied back. Python: `active.py`, `ActiveQueue` on a daemon thread (`self._active.close()` runs the queued calls and stops it); out parameters come back in the result as usual.
+
 ### Links and binaries
 
 - A link is `from.connect(to)` in the constructor of the innermost module holding both ends, or of `robot::System` (the top-level modules, created by `src/main.cpp`).

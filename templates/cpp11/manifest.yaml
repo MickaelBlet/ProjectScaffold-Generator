@@ -61,6 +61,9 @@ outputs:
   - template: ports.hpp.j2
     path: "include/{{ project.ident|snake }}/ports.hpp"
     when: modules|length > 0
+  - template: active.hpp.j2
+    path: "include/{{ project.ident|snake }}/active.hpp"
+    when: anyActive
   - template: type.hpp.j2
     each: types
     path: "{% from '_header.j2' import header as _header %}include/{{ _header(e=item) }}"

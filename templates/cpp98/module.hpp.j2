@@ -13,10 +13,20 @@
 {% from '_params.j2' import params as _params %}
 {% from '_qualified.j2' import qualified as _qualified %}
 {% from '_type.j2' import type as _type %}
+{% from '_scalar.j2' import scalar as _scalar %}
 {% from '_value.j2' import value as _value %}
 {% include '_banner.j2' %}
 #pragma once
 {% set m = item %}
+{#- Whether a call of message `msg` received by port `p` of an active module waits: a result, out
+    parameters, an acknowledgement, or a module argument (not copied). -#}
+{% macro waits(msg, p) %}
+{% set w = namespace(value=msg.returns != none or msg.outputs|length > 0 or p.ackRequired) %}
+{% for prm in msg.params %}
+{% if prm.type.kind == 'ref' and prm.type.typeKind == 'module' %}{% set w.value = true %}{% endif %}
+{% endfor %}
+{{- 'true' if w.value else 'false' -}}
+{% endmacro %}
 {% set root = project.ident|snake %}
 {% set class = _name(e=m) %}
 {% set virtuals = m.methods|selectattr('virtual', 'equalto', true)|length %}
@@ -95,13 +105,113 @@ private:
     public:
         explicit {{ adapter }}({{ class }}& owner) : owner_(owner) {}
 {% for msg in p.interface.messages %}
+{% set handler = 'owner_.on' ~ p.name|ucfirst ~ msg.name|ucfirst %}
+{% set job = msg.name|ucfirst ~ 'Job' %}
         {{ _type(t=msg.returns) }} {{ _id(name=msg.name) }}({{ _params(params=msg.params) }})
         {
-            return owner_.on{{ p.name|ucfirst }}{{ msg.name|ucfirst }}({{ _args(params=msg.params) }});
+{% if not m.active %}
+            return {{ handler }}({{ _args(params=msg.params) }});
+{% elif waits(msg, p) == 'true' %}
+            {{ job }} job(owner_{% for prm in msg.params %}, {{ _id(name=prm.name) }}{% endfor %});
+            owner_.active_.call(job);
+            return job.result();
+{% else %}
+            owner_.active_.post(new {{ job }}(owner_{% for prm in msg.params %}, {{ _id(name=prm.name) }}{% endfor %}));
+{% endif %}
         }
 {% endfor %}
 
     private:
+{% if m.active %}
+{% for msg in p.interface.messages %}
+{% set handler = 'owner_.on' ~ p.name|ucfirst ~ msg.name|ucfirst %}
+{% set job = msg.name|ucfirst ~ 'Job' %}
+{% set arguments %}{% for prm in msg.params %}{{ _id(name=prm.name) }}_{% if not loop.last %}, {% endif %}{% endfor %}{% endset %}
+{% if waits(msg, p) == 'true' %}
+        // Call {{ msg.name }}, waited for: refers to the arguments; keeps the result or the exception.
+        class {{ job }} : public ::{{ root }}::ActiveJob {
+        public:
+            {{ job }}({{ class }}& owner{% if msg.params|length > 0 %}, {{ _params(params=msg.params) }}{% endif %})
+                : owner_(owner){% for prm in msg.params %}, {{ _id(name=prm.name) }}_({{ _id(name=prm.name) }}){% endfor %}{% if msg.returns %}, result_(0){% endif %}{% for r in msg.raises %}, raised{{ loop.index0 }}_(0){% endfor %}, failure_(0)
+            {
+            }
+            ~{{ job }}()
+            {
+{% if msg.returns %}
+                delete result_;
+{% endif %}
+{% for r in msg.raises %}
+                delete raised{{ loop.index0 }}_;
+{% endfor %}
+                delete failure_;
+            }
+            void run()
+            {
+                try {
+                    {%+ if msg.returns %}result_ = new {{ _type(t=msg.returns) }}({{ handler }}({{ arguments }}));{% else %}{{ handler }}({{ arguments }});{% endif +%}
+{% for r in msg.raises %}
+                } catch (const {{ _type(t=r) }}& e) {
+                    raised{{ loop.index0 }}_ = new {{ _type(t=r) }}(e);
+{% endfor %}
+                } catch (const std::exception& e) {
+                    failure_ = new std::string(e.what());
+                } catch (...) {
+                    failure_ = new std::string("unknown exception");
+                }
+            }
+            /// The result, or the exception of the handler thrown again.
+            {{ _type(t=msg.returns) }} result() const
+            {
+{% for r in msg.raises %}
+                if (raised{{ loop.index0 }}_) throw {{ _type(t=r) }}(*raised{{ loop.index0 }}_);
+{% endfor %}
+                if (failure_) throw ::{{ root }}::ActiveError(*failure_);
+{% if msg.returns %}
+                return *result_;
+{% endif %}
+            }
+
+        private:
+            {{ job }}(const {{ job }}&);
+            {{ job }}& operator=(const {{ job }}&);
+
+            {{ class }}& owner_;
+{% for prm in msg.params %}
+{% if prm.direction != 'in' %}
+            {{ _type(t=prm.type) }}& {{ _id(name=prm.name) }}_;
+{% elif _scalar(t=prm.type) == 'true' %}
+            {{ _type(t=prm.type) }} {{ _id(name=prm.name) }}_;
+{% else %}
+            const {{ _type(t=prm.type) }}& {{ _id(name=prm.name) }}_;
+{% endif %}
+{% endfor %}
+{% if msg.returns %}
+            {{ _type(t=msg.returns) }}* result_;
+{% endif %}
+{% for r in msg.raises %}
+            {{ _type(t=r) }}* raised{{ loop.index0 }}_;
+{% endfor %}
+            std::string* failure_;
+        };
+{% else %}
+        // Call {{ msg.name }}, returning once queued: holds copies of the arguments.
+        class {{ job }} : public ::{{ root }}::ActiveJob {
+        public:
+            {%+ if msg.params|length == 0 %}explicit {% endif %}{{ job }}({{ class }}& owner{% if msg.params|length > 0 %}, {{ _params(params=msg.params) }}{% endif %})
+                : owner_(owner){% for prm in msg.params %}, {{ _id(name=prm.name) }}_({{ _id(name=prm.name) }}){% endfor +%}
+            {
+            }
+            void run() { {{ handler }}({{ arguments }}); }
+
+        private:
+            {{ class }}& owner_;
+{% for prm in msg.params %}
+            {{ _type(t=prm.type) }} {{ _id(name=prm.name) }}_;
+{% endfor %}
+        };
+{% endif %}
+{% endfor %}
+{% endif %}
         {{ class }}& owner_;
     };
     {{ adapter }} {{ p.name }}In_;
@@ -131,6 +241,11 @@ private:
 {{ _members(m=m, names=names, access='private') }}{##}
     {%+ filter user('private') +%}
     {%+ endfilter +%}
+{% if m.active %}
+    // Thread running the calls of the in ports: last, so stopped first (the queued calls run before the
+    // members go).
+    ::{{ root }}::ActiveQueue active_;
+{% endif %}
 };
 
 {{ _namespace_close(ns_=ns_) -}}

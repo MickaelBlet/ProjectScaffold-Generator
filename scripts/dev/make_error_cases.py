@@ -219,6 +219,12 @@ def _(p):
         if r.get('enabled'):
             r.pop('transport', None)
             break
+@case('validate-active')
+def _(p):
+    p['modules'].append({'name': 'Worker', 'kind': 'abstract', 'active': True, 'ports': []})
+    p['modules'].append({'name': 'Tools', 'instantiation': 'utility', 'active': {'queue': 4}, 'ports': []})
+@case('schema-active-queue')
+def _(p): p['modules'].append({'name': 'Busy', 'active': {'queue': 0}, 'ports': []})
 @case('validate-module-type-access', 'robot')
 def _(p):
     p['types'].append({'kind': 'alias', 'name': 'Outside', 'type': ref('Core.Sensor.Sample')})

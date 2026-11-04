@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Active modules (`active` of a module, `true` or `{ queue, timeoutMs, overflow }`): the module's own thread runs the calls of its `in` ports, queued in their order. Calls with a result, `out` parameters, or through a link with `ack.required` wait for it (its exceptions come back to the caller; `ActiveError` after `timeoutMs`); the others return once queued. A full queue blocks, drops the call or fails (`overflow`). Every C++ set (`include/<ns>/active.hpp`, pthreads in `cpp98`) and `python` (`active.py`). Templates see `module.active`, `anyActive` and `ports[].ackRequired`. `tests/fixtures/active.scaffold.yaml`; `scripts/check_templates.sh` runs the queue (`tests/active`).
 - Diagnostics as clang prints them: `path:line:col: error: message`, the lines of the file with their numbers and a `^~~~` mark. Conflicts point at each change, the generated lines below (`+`); project errors at their line of the project file.
 - Option `--show-kept` (`-k`): the user sections carried over from the files already there, with their content (clang-style notes).
 - Colored command line output on a terminal (diagnostics, report); `NO_COLOR` turns it off, `FORCE_COLOR` / `CLICOLOR_FORCE` on.

@@ -4,7 +4,7 @@
   without its own header.
   Parameters:
     entity: a type, interface, module or system (`uses.builtins`, `uses.types`; for a module `bases`,
-      `ports` with their `interface` and `role`; for a module or system `instances`).
+      `active`, `ports` with their `interface` and `role`; for a module or system `instances`).
   Example (project Plant):
     entity:
       entity: type
@@ -40,6 +40,9 @@
   {% for base in entity.bases %}
     {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=base) ~ '>'] %}
   {% endfor %}
+  {% if entity.active %}
+    {% set state.project_headers = state.project_headers + ['<' ~ project_directory ~ '/active.hpp>'] %}
+  {% endif %}
   {% for port in entity.ports %}
     {% if port.interface %}
       {% set state.project_headers = state.project_headers + ['<' ~ _header(entity=port.interface) ~ '>'] %}

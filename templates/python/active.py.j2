@@ -1,0 +1,94 @@
+{% include '_py_banner.j2' %}
+"""Thread of the active modules of {{ project.name }}: runs the calls of their in ports in their order."""
+from __future__ import annotations
+
+import collections
+import threading
+import time
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeout
+from typing import Any, Callable, Deque, Optional, Tuple
+
+
+class ActiveError(RuntimeError):
+    """A call to an active module failed: its queue was full (overflow `error`, or `drop` for a call
+    waiting for its result), or its result did not come within the module's timeout."""
+
+
+class ActiveQueue:
+    """Thread of an active module: runs the jobs queued by its in ports, one at a time, in their order.
+    `close()` runs the jobs still queued, then joins the thread (a daemon: left running otherwise)."""
+
+    def __init__(self, capacity: int, timeout_ms: int, overflow: str = 'block') -> None:
+        self._capacity = capacity
+        self._timeout = timeout_ms / 1000.0
+        self._overflow = overflow  # block, drop or error
+        self._lock = threading.Condition()
+        self._jobs: Deque[Tuple[Callable[[], Any], Optional[Future]]] = collections.deque()
+        self._stopping = False
+        self._thread = threading.Thread(target=self._run, name='active', daemon=True)
+        self._thread.start()
+
+    def post(self, job: Callable[[], Any]) -> None:
+        """Queues `job` and returns: a call without a result. Its exceptions are dropped."""
+        if not self._push(job, None, None) and self._overflow == 'error':
+            raise ActiveError('active module: queue full')
+
+    def call(self, job: Callable[[], Any]) -> Any:
+        """Runs `job` on the thread and returns its result, or raises its exception; raises ActiveError
+        when the queue is full or `job` has not started within the timeout (once started, it is waited
+        for). `job` runs at once when called from the thread itself."""
+        if threading.current_thread() is self._thread:
+            return job()
+        deadline = time.monotonic() + self._timeout
+        result: Future = Future()
+        if not self._push(job, result, deadline):
+            raise ActiveError('active module: queue full')
+        try:
+            return result.result(max(0.0, deadline - time.monotonic()))
+        except FutureTimeout:
+            if result.cancel():  # still queued: never run
+                raise ActiveError('active module: no result in time') from None
+        return result.result()
+
+    def close(self) -> None:
+        """Runs the jobs still queued, then stops the thread."""
+        with self._lock:
+            self._stopping = True
+            self._lock.notify_all()
+        if threading.current_thread() is not self._thread:
+            self._thread.join()
+
+    def _push(self, job: Callable[[], Any], result: Optional[Future], deadline: Optional[float]) -> bool:
+        with self._lock:
+            if threading.current_thread() is not self._thread:
+                while len(self._jobs) >= self._capacity and not self._stopping:
+                    if self._overflow != 'block':
+                        return False
+                    left = None if deadline is None else deadline - time.monotonic()
+                    if left is not None and left <= 0:
+                        return False
+                    self._lock.wait(left)
+            self._jobs.append((job, result))
+            self._lock.notify_all()
+            return True
+
+    def _run(self) -> None:
+        while True:
+            with self._lock:
+                while not self._stopping and not self._jobs:
+                    self._lock.wait()
+                if not self._jobs:
+                    return
+                job, result = self._jobs.popleft()
+                self._lock.notify_all()
+            if result is None:
+                try:
+                    job()
+                except Exception:  # a call without a result: nobody to tell
+                    pass
+            elif result.set_running_or_notify_cancel():
+                try:
+                    result.set_result(job())
+                except BaseException as e:
+                    result.set_exception(e)

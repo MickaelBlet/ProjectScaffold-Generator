@@ -56,6 +56,9 @@ outputs:
   - template: ports.py.j2
     path: "{{ project.ident|snake }}/ports.py"
     when: modules|length > 0
+  - template: active.py.j2
+    path: "{{ project.ident|snake }}/active.py"
+    when: anyActive
   # One Python module per module; a module with children is a package (its class in __init__.py).
   - template: modules_init.py.j2
     path: "{{ project.ident|snake }}/modules/__init__.py"

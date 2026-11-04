@@ -414,6 +414,15 @@ impl<'i, 'a> V<'i, 'a> {
                 ));
             }
         }
+        let active = &m["active"];
+        if active.as_bool() == Some(true) || active.is_object() {
+            if !kind.is_empty() && kind != "class" {
+                self.err(format!("{path}: an active module is a class (not {kind})"));
+            }
+            if ds(m, "instantiation") == "utility" {
+                self.err(format!("{path}: a utility module is not active"));
+            }
+        }
     }
 
     // --------------------------------------------------------------- refs ----

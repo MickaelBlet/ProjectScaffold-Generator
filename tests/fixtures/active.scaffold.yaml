@@ -1,0 +1,153 @@
+schemaVersion: 1
+project:
+  name: Active Demo
+  description: Active modules (own thread, queued calls), with every kind of call
+types:
+  - kind: exception
+    name: Busy
+    fields:
+      - name: reason
+        type:
+          kind: primitive
+          name: string
+interfaces:
+  - name: Jobs
+    messages:
+      - name: compute
+        description: Waits for its result; raises Busy
+        params:
+          - name: x
+            type:
+              kind: primitive
+              name: int32
+        returns:
+          kind: primitive
+          name: int32
+        raises:
+          - Busy
+      - name: split
+        description: Waits for its out parameter
+        params:
+          - name: text
+            type:
+              kind: primitive
+              name: string
+          - name: head
+            type:
+              kind: primitive
+              name: string
+            direction: out
+        returns: null
+      - name: notify
+        description: Returns once queued
+        params:
+          - name: level
+            type:
+              kind: primitive
+              name: uint8
+          - name: tags
+            type:
+              kind: vector
+              of:
+                kind: primitive
+                name: string
+        returns: null
+      - name: stop
+        params: []
+        returns: null
+  - name: Log
+    messages:
+      - name: write
+        params:
+          - name: line
+            type:
+              kind: primitive
+              name: string
+        returns: null
+modules:
+  - name: Client
+    ports:
+      - name: jobs
+        role: out
+        interface: Jobs
+      - name: log
+        role: out
+        interface: Log
+  - name: Worker
+    description: Runs the jobs on its own thread
+    active: true
+    ports:
+      - name: jobs
+        role: in
+        interface: Jobs
+  - name: Logger
+    description: Waits for each line (the link requires an acknowledgement)
+    active:
+      queue: 4
+      timeoutMs: 250
+      overflow: error
+    ports:
+      - name: log
+        role: in
+        interface: Log
+  - name: Pool
+    description: An active module inside another one
+    ports:
+      - name: jobs
+        role: in
+        interface: Jobs
+    modules:
+      - name: Lane
+        active:
+          overflow: drop
+        ports:
+          - name: jobs
+            role: in
+            interface: Jobs
+links:
+  - name: client_jobs
+    from:
+      module: Client
+      port: jobs
+    to:
+      module: Worker
+      port: jobs
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false
+  - name: client_log
+    from:
+      module: Client
+      port: log
+    to:
+      module: Logger
+      port: log
+    constraints:
+      direction: bidirectional
+      ack:
+        required: true
+        timeoutMs: 100
+      performance:
+        class: low
+      remote:
+        enabled: false
+  - name: pool_lane
+    from:
+      module: Pool
+      port: jobs
+    to:
+      module: Pool.Lane
+      port: jobs
+    constraints:
+      direction: bidirectional
+      ack:
+        required: false
+      performance:
+        class: normal
+      remote:
+        enabled: false

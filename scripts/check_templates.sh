@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Check the built-in template sets: generate the examples and fixtures with each, then build them
-# (C++: CMake with -Wall -Wextra -Werror; Python: byte-compile and import each package).
+# (C++: CMake with -Wall -Wextra -Werror, and the queue of active modules run by tests/active; Python:
+# byte-compile and import each package).
 # Needs cmake, a C++20 compiler (C++98 for cpp98) and python3 (3.8+); sca-cpp98 also omniORB 4 (omniidl,
 # libomniorb4-dev; elsewhere than the system: OMNIORB_ROOT=<prefix>, omniidl in <prefix>/bin), else
 # it is only generated.
@@ -22,7 +23,7 @@ sets=("$@")
 [ ${#sets[@]} -gt 0 ] || sets=($(ls templates))
 projects=(examples/robot.scaffold.yaml examples/rover.scaffold.yaml examples/station.scaffold.yaml
   examples/idl/filling_cell.scaffold.yaml
-  tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml)
+  tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml tests/fixtures/active.scaffold.yaml)
 failed=0
 # Imports a package and all its modules, then makes and closes each system (servers not started).
 IMPORT_ALL='
@@ -35,6 +36,19 @@ for m in pkgutil.walk_packages(package.__path__, sys.argv[1] + "."):
             if cls.__module__ == m.name and hasattr(cls, "serve"):
                 cls().close()
 '
+
+# Builds and runs tests/active/check{,98}.cpp (the queue of active modules) against the generated header
+# (tests/active/check.py for the python set).
+check_active() {
+  local set=$1 out=$2 std=${1#cpp} source=tests/active/check.cpp
+  [ "$std" = 98 ] && source=tests/active/check98.cpp
+  if "${CXX:-c++}" -std=c++$std -Wall -Wextra -Werror -I"$out/include" "$source" -o "$out/.build/check_active" -pthread \
+    >"$work/log" 2>&1 && "$out/.build/check_active" >>"$work/log" 2>&1; then
+    echo "ok      $set: $name (active queue)"
+  else
+    echo "FAILED  $set: $name (active queue)"; tail -15 "$work/log" | sed 's/^/        /'; failed=1
+  fi
+}
 
 check() {
   local set=$1 project=$2 name out
@@ -56,6 +70,7 @@ check() {
     if cmake -S "$out" -B "$out/.build" "${cmake_args[@]}" -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror -Wno-unused-parameter" \
       >"$work/log" 2>&1 && cmake --build "$out/.build" -j >>"$work/log" 2>&1; then
       echo "ok      $set: $name"
+      if [ -f "$out/include/active_demo/active.hpp" ]; then check_active "$set" "$out"; fi
     else
       echo "FAILED  $set: $name (build)"; grep -E 'error:' "$work/log" | sed "s|$out/||" | sort -u | head -15 | sed 's/^/        /'; failed=1
     fi
@@ -66,6 +81,13 @@ check() {
     if python3 -m compileall -q "$root" >"$work/log" 2>&1 &&
       (cd "$root" && for p in */__init__.py; do python3 -c "$IMPORT_ALL" "${p%/__init__.py}" || exit 1; done) >>"$work/log" 2>&1; then
       echo "ok      $set: $name (python)"
+      if [ -f "$root/active_demo/active.py" ]; then
+        if python3 tests/active/check.py "$root" >"$work/log" 2>&1; then
+          echo "ok      $set: $name (active queue)"
+        else
+          echo "FAILED  $set: $name (active queue)"; tail -15 "$work/log" | sed 's/^/        /'; failed=1
+        fi
+      fi
     else
       echo "FAILED  $set: $name (python)"; tail -20 "$work/log" | sed 's/^/        /'; failed=1
     fi

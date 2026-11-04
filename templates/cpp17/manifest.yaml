@@ -71,6 +71,9 @@ outputs:
     when: modules|length > 0
   # include/<project>/types/<Type>.hpp: one header per type of the project (struct, exception, enum,
   # bitmask, union, alias, custom primitive).
+  - template: active.hpp.j2
+    path: "{% from '_project_identifier.j2' import project_identifier as _project_identifier %}include/{{ _project_identifier() }}/active.hpp"
+    when: anyActive
   - template: type.hpp.j2
     each: types
     as: type_definition

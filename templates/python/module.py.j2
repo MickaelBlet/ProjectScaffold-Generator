@@ -23,6 +23,9 @@ from {{ root }} import data, interfaces  # noqa: F401
 from {{ root }} import module_types  # noqa: F401
 {% endif %}
 from {{ root }}.ports import OutPort  # noqa: F401
+{% if m.active %}
+from {{ root }}.active import ActiveQueue
+{% endif %}
 {% for b in m.bases %}
 from {{ _py_module_path(m=b) }} import {{ _py_class(e=b) }}
 {% endfor %}
@@ -48,6 +51,10 @@ class {{ class }}{% if m.bases|length > 0 %}({% for b in m.bases %}{{ _py_class(
     def __init__(self) -> None:
 {% if m.bases|length > 0 %}
         super().__init__()
+{% endif %}
+{% if m.active %}
+        # Thread running the calls of the in ports, in their order (close(): runs those queued, then stops).
+        self._active = ActiveQueue({{ m.active.queue }}, {{ m.active.timeoutMs }}, '{{ m.active.overflow }}')
 {% endif %}
 {% for a in m.attributes %}
 {% if not a.static %}
@@ -157,7 +164,14 @@ class {{ adapter }}(interfaces.{{ _py_class(e=p.interface) }}):
 {% for msg in p.interface.messages %}
 
     def {{ _py_id(name=msg.name) }}(self{{ _py_params(msg=msg) }}) -> {{ _py_results(msg=msg, what='hint', prefix='data.') }}:
-        return self._owner.on_{{ p.name|snake }}_{{ msg.name|snake }}({{ _py_args(msg=msg) }})
+{% set handler = 'self._owner.on_' ~ p.name|snake ~ '_' ~ msg.name|snake ~ '(' ~ _py_args(msg=msg) ~ ')' %}
+{% if not m.active %}
+        return {{ handler }}
+{% elif msg.returns != none or msg.outputs|length > 0 or p.ackRequired %}
+        return self._owner._active.call(lambda: {{ handler }})
+{% else %}
+        self._owner._active.post(lambda: {{ handler }})
+{% endif %}
 {% endfor %}
 {% endif %}
 {% endfor %}

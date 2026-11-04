@@ -6,7 +6,8 @@
 {#
   Member initializer list of a module's constructor (no member initializers in C++98): the
   adapters of its in ports, its abstract children (null until created), its attributes (their
-  default, else value-initialized), in the order they are declared. Parameter: m.
+  default, else value-initialized), the queue of an active module, in the order they are declared.
+  Parameter: m.
 #}
 {% for p in m.ports if p.role == 'in' and p.interface and p.delegates|length == 0 %}
   {% set ns.inits = ns.inits + [p.name ~ 'In_(*this)'] %}
@@ -18,4 +19,7 @@
   {% set value = _value(v=a.default, t=a.type) if a.hasDefault else '' %}
   {% set ns.inits = ns.inits + [_member(name=a.name) ~ '(' ~ value ~ ')'] %}
 {% endfor %}
+{% if m.active %}
+  {% set ns.inits = ns.inits + ['active_(' ~ m.active.queue ~ ', ' ~ m.active.timeoutMs ~ ', ::' ~ project.ident|snake ~ '::ActiveQueue::' ~ m.active.overflow ~ ')'] %}
+{% endif %}
 {% if ns.inits %} : {{ ns.inits|join(', ') }}{% endif %}{% endmacro %}
