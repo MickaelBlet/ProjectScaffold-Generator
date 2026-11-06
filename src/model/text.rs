@@ -150,9 +150,21 @@ enum Frame {
     },
 }
 
+/// Aliases allowed, as the editor's `yaml` library counts them (`maxAliasCount`): each use of an
+/// anchor times the aliases it holds; beyond, an alias bomb (exponential expansion).
+const MAX_ALIAS_COUNT: usize = 100;
+
+/// An anchored node: its value, its alias count (as `yaml`'s getAliasCount), its uses so far.
+struct Anchor {
+    value: Json,
+    aliases: usize,
+    uses: usize,
+}
+
 struct Builder {
-    stack: Vec<(Frame, usize)>,
-    anchors: HashMap<usize, (Json, usize)>,
+    /// Open collections: their frame, anchor and alias count (the largest of their items').
+    stack: Vec<(Frame, usize, usize)>,
+    anchors: HashMap<usize, Anchor>,
     root: Option<(Json, Lines)>,
     error: Option<(String, Option<usize>)>,
     docs: usize,
@@ -249,10 +261,13 @@ fn key_text(v: &Json) -> String {
 }
 
 impl Builder {
-    fn add(&mut self, value: Json, lines: Lines, anchor: usize) {
+    /// Adds a node holding `aliases` (its alias count).
+    fn add(&mut self, value: Json, lines: Lines, anchor: usize, aliases: usize) {
         if anchor > 0 {
-            let line = lines.start().unwrap_or(0);
-            self.anchors.insert(anchor, (value.clone(), line));
+            self.anchors.insert(anchor, Anchor { value: value.clone(), aliases, uses: 0 });
+        }
+        if let Some((_, _, most)) = self.stack.last_mut() {
+            *most = (*most).max(aliases);
         }
         match self.stack.last_mut() {
             None => {
@@ -261,11 +276,11 @@ impl Builder {
                     self.root = Some((value, lines));
                 }
             }
-            Some((Frame::Seq { items, lines: ls, .. }, _)) => {
+            Some((Frame::Seq { items, lines: ls, .. }, _, _)) => {
                 items.push(value);
                 ls.push(lines);
             }
-            Some((Frame::Map { map, lines: ls, key, .. }, _)) => match key.take() {
+            Some((Frame::Map { map, lines: ls, key, .. }, _, _)) => match key.take() {
                 None => *key = Some((key_text(&value), lines.start().unwrap_or(0))),
                 Some((k, kline)) => {
                     if map.contains_key(&k) && self.error.is_none() {
@@ -290,26 +305,44 @@ impl MarkedEventReceiver for Builder {
                     (TScalarStyle::Plain, _) => resolve_plain(&s),
                     _ => Json::String(s),
                 };
-                self.add(v, Lines::Scalar(line), anchor);
+                self.add(v, Lines::Scalar(line), anchor, 1);
             }
             Event::Alias(id) => {
-                let (v, l) = self.anchors.get(&id).cloned().unwrap_or((Json::Null, line));
-                let _ = l;
-                self.add(v, Lines::Scalar(line), 0);
+                let (v, aliases) = match self.anchors.get_mut(&id) {
+                    Some(a) => {
+                        a.uses += 1;
+                        let n = a.uses.saturating_mul(a.aliases);
+                        if n > MAX_ALIAS_COUNT {
+                            if self.error.is_none() {
+                                self.error = Some((
+                                    "Excessive alias count indicates a resource exhaustion attack".into(),
+                                    Some(line),
+                                ));
+                            }
+                            (Json::Null, n)
+                        } else {
+                            (a.value.clone(), n)
+                        }
+                    }
+                    None => (Json::Null, 0),
+                };
+                self.add(v, Lines::Scalar(line), 0, aliases);
             }
             Event::SequenceStart(anchor, _) => {
-                self.stack.push((Frame::Seq { start: line, items: vec![], lines: vec![] }, anchor))
+                self.stack.push((Frame::Seq { start: line, items: vec![], lines: vec![] }, anchor, 0))
             }
-            Event::MappingStart(anchor, _) => self
-                .stack
-                .push((Frame::Map { start: line, map: Map::new(), lines: vec![], key: None }, anchor)),
+            Event::MappingStart(anchor, _) => self.stack.push((
+                Frame::Map { start: line, map: Map::new(), lines: vec![], key: None },
+                anchor,
+                0,
+            )),
             Event::SequenceEnd | Event::MappingEnd => {
-                let Some((frame, anchor)) = self.stack.pop() else { return };
+                let Some((frame, anchor, aliases)) = self.stack.pop() else { return };
                 let (v, l) = match frame {
                     Frame::Seq { start, items, lines } => (Json::Array(items), Lines::Seq(start, lines)),
                     Frame::Map { start, map, lines, .. } => (Json::Object(map), Lines::Map(start, lines)),
                 };
-                self.add(v, l, anchor);
+                self.add(v, l, anchor, aliases);
             }
             _ => {}
         }
@@ -333,6 +366,20 @@ fn parse_yaml(text: &str) -> Result<Doc, (String, Option<usize>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alias_bomb() {
+        let mut t = String::from("a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n");
+        for i in 1..9 {
+            t += &format!("a{i}: &a{i} [{}]\n", vec![format!("*a{}", i - 1); 10].join(", "));
+        }
+        let e = parse_text(&t, Format::Yaml).err().unwrap();
+        assert!(e.message.contains("Excessive alias count"), "{}", e.message);
+        assert_eq!(e.line, Some(4));
+        // Aliases within bounds are expanded.
+        let d = parse_text("a: &a {x: 1}\nb: [*a, *a]\n", Format::Yaml).ok().unwrap();
+        assert_eq!(d.value["b"][1]["x"], 1);
+    }
 
     #[test]
     #[allow(clippy::useless_vec)] // path! builds the DataPath (a Vec) the code passes

@@ -135,6 +135,32 @@ pub fn value(arena: &Arc<Arena>, id: Id) -> Value {
     }
 }
 
+/// JSON of a template value; the context's nodes through their arena, a node inside itself as
+/// `"<cycle>"` (serializing the value itself would never end on a cycle).
+pub fn to_json(v: &Value) -> Json {
+    use minijinja::value::ValueKind;
+    if let Some(n) = v.downcast_object_ref::<NodeRef>() {
+        return n.arena.to_json(n.id);
+    }
+    match v.kind() {
+        ValueKind::Seq | ValueKind::Iterable => {
+            Json::Array(v.try_iter().map(|i| i.map(|x| to_json(&x)).collect()).unwrap_or_default())
+        }
+        ValueKind::Map => Json::Object(
+            v.try_iter()
+                .map(|keys| {
+                    keys.map(|k| {
+                        let key = k.as_str().map_or_else(|| k.to_string(), String::from);
+                        (key, to_json(&v.get_item(&k).unwrap_or_default()))
+                    })
+                    .collect()
+                })
+                .unwrap_or_default(),
+        ),
+        _ => serde_json::to_value(v).unwrap_or(Json::Null),
+    }
+}
+
 impl Object for NodeRef {
     fn repr(self: &Arc<Self>) -> ObjectRepr {
         match self.arena.nodes[self.id] {

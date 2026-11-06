@@ -251,6 +251,45 @@ impl Token {
 }
 
 /// Where a token is, for messages: its line, and its file when not the main one.
+/// Levels of nesting allowed (modules, types, expressions, macros): deeper, the stack would
+/// overflow on hostile input.
+const MAX_NESTING: usize = 100;
+/// Tokens a macro expansion may produce (macros doubling at each level grow exponentially).
+const MAX_EXPANSION: usize = 1_000_000;
+
+thread_local! {
+    static NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// One more level of nesting while held; None past `MAX_NESTING`.
+struct Nesting;
+
+impl Nesting {
+    fn enter() -> Option<Nesting> {
+        NESTING.with(|n| {
+            if n.get() >= MAX_NESTING {
+                return None;
+            }
+            n.set(n.get() + 1);
+            Some(Nesting)
+        })
+    }
+}
+
+impl Drop for Nesting {
+    fn drop(&mut self) {
+        NESTING.with(|n| n.set(n.get() - 1));
+    }
+}
+
+fn too_deep(t: Option<&Token>, main: &str) -> String {
+    let msg = format!("nested more than {MAX_NESTING} levels deep");
+    match t {
+        Some(t) => format!("{}: {msg}", at(t, main)),
+        None => msg,
+    }
+}
+
 fn at(t: &Token, main: &str) -> String {
     if !t.file.is_empty() && t.file != main {
         format!("Line {} of {}", t.line, base_name(&t.file))
@@ -692,6 +731,9 @@ impl Eval<'_> {
     }
 
     fn ternary(&mut self) -> Res<Cv> {
+        let Some(_nesting) = Nesting::enter() else {
+            return Err(too_deep(self.tokens.get(self.i).or(self.raw_last.as_ref()), self.main));
+        };
         let c = self.level(0)?;
         if self.tokens.get(self.i).map(|t| t.text.as_str()) != Some("?") {
             return Ok(c);
@@ -708,6 +750,9 @@ impl Eval<'_> {
     }
 
     fn unary(&mut self) -> Res<Cv> {
+        let Some(_nesting) = Nesting::enter() else {
+            return Err(too_deep(self.tokens.get(self.i).or(self.raw_last.as_ref()), self.main));
+        };
         let Some(t) = self.tokens.get(self.i).cloned() else {
             self.i += 1;
             return self.fail(None, "expected a constant");
@@ -1005,6 +1050,9 @@ impl<'a> Preprocessor<'a> {
 
     /// Macro expansion; `hidden` macros are being expanded (no recursion).
     fn expand(&self, tokens: &[Token], hidden: &HashSet<String>) -> Res<Vec<Token>> {
+        let Some(_nesting) = Nesting::enter() else {
+            return Err(too_deep(tokens.first(), &self.main));
+        };
         let mut out: Vec<Token> = Vec::new();
         let mut i = 0;
         while i < tokens.len() {
@@ -1083,6 +1131,13 @@ impl<'a> Preprocessor<'a> {
             let mut inner = hidden.clone();
             inner.insert(t.text.clone());
             out.extend(self.expand(&placed, &inner)?);
+            if out.len() > MAX_EXPANSION {
+                return Err(format!(
+                    "{}: macro '{}' expands to more than {MAX_EXPANSION} tokens",
+                    at(t, &self.main),
+                    t.text
+                ));
+            }
             i += 1;
         }
         Ok(out)
@@ -2048,6 +2103,9 @@ impl Parser {
     }
 
     fn module(&mut self) -> Res<()> {
+        let Some(_nesting) = Nesting::enter() else {
+            return Err(too_deep(self.peek(), &self.main));
+        };
         let keyword = self.next()?;
         let written = self.scoped()?;
         if self.is("<") {
@@ -3029,6 +3087,9 @@ impl Parser {
     }
 
     fn type_spec(&mut self) -> Res<Json> {
+        let Some(_nesting) = Nesting::enter() else {
+            return Err(too_deep(self.peek(), &self.main));
+        };
         let t = self.peek().cloned();
         if t.as_ref().is_some_and(|t| t.text == "::") {
             let s = self.scoped()?;
@@ -4746,6 +4807,26 @@ module Robot {
         assert_eq!(error("#if 1\nstruct A { long x; };"), "main.idl: missing #endif");
         assert_eq!(error("#error unsupported"), "Line 1: #error unsupported");
         assert_eq!(idl_project("x.idl", &files(&[])).unwrap_err(), "x.idl: not read");
+    }
+
+    #[test]
+    fn hostile_nesting_is_an_error() {
+        let deep = |open: &str, close: &str, n: usize| (open.repeat(n), close.repeat(n));
+        // Constants not computed are left out with a warning.
+        let (o, c) = deep("(", ")", 100_000);
+        assert_eq!(read(&format!("const long X = {o}1{c};")).1.len(), 1);
+        assert_eq!(read(&format!("const long X = {}1;", "-".repeat(100_000))).1.len(), 1);
+        let (o, c) = deep("module a { ", "}; ", 10_000);
+        assert!(error(&format!("{o}{c}")).contains("levels deep"));
+        let (o, c) = deep("sequence<", ">", 10_000);
+        assert!(error(&format!("typedef {o}long{c} T;")).contains("levels deep"));
+        // Macros doubling at each level.
+        let mut src: String = (0..40).map(|i| format!("#define M{i} M{} M{}\n", i + 1, i + 1)).collect();
+        src += "const long X = M0;\n";
+        assert!(error(&src).contains("expands to more than"), "{}", error(&src));
+        // Fine within the limits.
+        let (o, c) = deep("(", ")", 20);
+        read(&format!("const long X = {o}1{c};"));
     }
 
     #[test]

@@ -20,7 +20,7 @@ pub fn text(v: &Value) -> String {
     }
     match v.kind() {
         minijinja::value::ValueKind::Number | minijinja::value::ValueKind::Bool => v.to_string(),
-        _ => serde_json::to_string(v).unwrap_or_default(),
+        _ => super::node::to_json(v).to_string(),
     }
 }
 
@@ -134,7 +134,41 @@ pub fn register(env: &mut minijinja::Environment<'_>) {
             .replace('\'', "&#39;")
     });
     // JSON.stringify's output: no escaping of `<`, `>`, `&`, `'` (unlike tojson).
-    env.add_filter("json", |v: Value| serde_json::to_string(&v).unwrap_or_default());
+    env.add_filter("json", |v: Value| super::node::to_json(&v).to_string());
+    // minijinja's tojson, over the same cycle-safe JSON.
+    env.add_filter("tojson", |v: Value, indent: Option<Value>, kwargs: minijinja::value::Kwargs| {
+        let indent = match indent {
+            Some(i) => Some(i),
+            None => kwargs.get::<Option<Value>>("indent")?,
+        };
+        kwargs.assert_all_used()?;
+        let json = super::node::to_json(&v);
+        let width = indent.and_then(|i| {
+            if i.kind() == minijinja::value::ValueKind::Bool {
+                i.is_true().then_some(2)
+            } else {
+                i.as_usize()
+            }
+        });
+        let text = match width {
+            Some(n) => {
+                let mut out = Vec::new();
+                let indent = " ".repeat(n);
+                let fmt = serde_json::ser::PrettyFormatter::with_indent(indent.as_bytes());
+                let mut ser = serde_json::Serializer::with_formatter(&mut out, fmt);
+                serde::Serialize::serialize(&json, &mut ser).ok();
+                String::from_utf8(out).unwrap_or_default()
+            }
+            None => json.to_string(),
+        };
+        // As minijinja escapes it for HTML.
+        Ok::<_, minijinja::Error>(Value::from_safe_string(
+            text.replace('<', "\\u003c")
+                .replace('>', "\\u003e")
+                .replace('&', "\\u0026")
+                .replace('\'', "\\u0027"),
+        ))
+    });
 }
 
 #[cfg(test)]
@@ -158,5 +192,26 @@ mod tests {
     fn doc() {
         assert_eq!(doc_comment("", None), DROP);
         assert_eq!(doc_comment("a\n\nb", Some("// ")), "// a\n//\n// b");
+    }
+
+    #[test]
+    fn json_of_cycles() {
+        use super::super::node::{Arena, value};
+        let mut a = Arena::default();
+        let m = a.map();
+        let n = a.str("n");
+        a.set(m, "name", n);
+        a.set(m, "self", m);
+        let mut env = minijinja::Environment::new();
+        register(&mut env);
+        env.add_global("x", value(&std::sync::Arc::new(a), m));
+        let r = |t: &str| env.render_str(t, ()).unwrap();
+        assert_eq!(r("{{ x|json }}"), r#"{"name":"n","self":"<cycle>"}"#);
+        assert_eq!(r("{{ [x, 1]|json }}"), r#"[{"name":"n","self":"<cycle>"},1]"#);
+        assert_eq!(
+            r("{{ x|tojson(indent=1) }}"),
+            "{\n \"name\": \"n\",\n \"self\": \"<cycle>\"\n}".replace('<', "\\u003c").replace('>', "\\u003e")
+        );
+        assert_eq!(r("{{ x|snake }}"), "name_n_self_cycle");
     }
 }
