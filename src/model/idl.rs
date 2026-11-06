@@ -504,19 +504,25 @@ fn unescape(literal: &str) -> String {
     .into_owned()
 }
 
+/// Value of an integer literal (decimal, `0x` hexadecimal, `0` octal).
+fn int_literal(text: &str) -> Result<i128, &'static str> {
+    let s = text.trim_end_matches(['u', 'U', 'l', 'L']);
+    let v = if let Some(h) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        i128::from_str_radix(h, 16)
+    } else if s.len() > 1 && s.starts_with('0') {
+        if !s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
+            return Err("invalid octal literal");
+        }
+        i128::from_str_radix(&s[1..], 8)
+    } else {
+        s.parse::<i128>()
+    };
+    v.map_err(|_| "integer literal too large")
+}
+
 fn literal(t: &Token) -> Option<Cv> {
     match t.kind {
-        TokenKind::Int => {
-            let s = t.text.trim_end_matches(['u', 'U', 'l', 'L']);
-            let v = if let Some(h) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-                i128::from_str_radix(h, 16)
-            } else if s.len() > 1 && s.starts_with('0') && s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
-                i128::from_str_radix(&s[1..], 8)
-            } else {
-                s.parse::<i128>()
-            };
-            Some(Cv::Int(v.unwrap_or(i128::MAX)))
-        }
+        TokenKind::Int => int_literal(&t.text).ok().map(Cv::Int),
         TokenKind::Float => {
             let s = match t.text.chars().last() {
                 Some('f' | 'F' | 'd' | 'D' | 'l' | 'L') => &t.text[..t.text.len() - 1],
@@ -789,6 +795,11 @@ impl Eval<'_> {
                 return Ok(v);
             }
             _ => {}
+        }
+        if t.kind == TokenKind::Int
+            && let Err(e) = int_literal(&t.text)
+        {
+            return self.fail(Some(&t), e);
         }
         if let Some(v) = literal(&t) {
             return Ok(v);
@@ -1634,6 +1645,8 @@ struct Parser {
     instances: usize,
     main: String,
     warnings: Vec<String>,
+    /// Annotations whose value is not computed (read where `self` is borrowed).
+    annotation_warnings: std::cell::RefCell<Vec<String>>,
 }
 
 fn is_text(t: Option<&Token>, text: &str) -> bool {
@@ -1656,6 +1669,7 @@ impl Parser {
             instances: 0,
             main: main.to_string(),
             warnings,
+            annotation_warnings: Default::default(),
         }
     }
 
@@ -1985,7 +1999,17 @@ impl Parser {
             });
             tokens = &a.args[start + 2..end.unwrap_or(a.args.len())];
         }
-        self.evaluate(tokens).ok()
+        match self.evaluate(tokens) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                let w = format!("{e} (annotation @{} left out)", a.name);
+                let mut ws = self.annotation_warnings.borrow_mut();
+                if !ws.contains(&w) {
+                    ws.push(w);
+                }
+                None
+            }
+        }
     }
 
     /// Description of a member: its comment, then what annotations tell about it.
@@ -2697,10 +2721,15 @@ impl Parser {
         let end = self.expect(";")?;
         let q = self.qualified(&name);
         self.decls.insert(q.clone(), DeclKind::Const);
-        let Ok(value) = self.evaluate(&tokens) else {
-            // Unknown value: uses of the constant tell.
-            self.warn(first, &format!("constant {q} left out: its value is not computed"));
-            return Ok(());
+        let value = match self.evaluate(&tokens) {
+            Ok(v) => v,
+            Err(e) => {
+                // Unknown value: uses of the constant tell.
+                let why =
+                    e.split_once(": ").filter(|(at, _)| at.starts_with("Line ")).map_or(&*e, |(_, m)| m);
+                self.warn(first, &format!("constant {q} left out: its value is not computed ({why})"));
+                return Ok(());
+            }
         };
         self.consts.insert(q.clone(), value.clone());
         if self.const_defs.iter().any(|c| c.q == q) {
@@ -3458,7 +3487,10 @@ impl Parser {
             qualified: HashMap::new(),
             includes: HashMap::new(),
             missing,
-            warnings: std::mem::take(&mut self.warnings),
+            warnings: std::mem::take(&mut self.warnings)
+                .into_iter()
+                .chain(self.annotation_warnings.take())
+                .collect(),
         };
         for e in &all {
             match &e.def {
@@ -4807,6 +4839,21 @@ module Robot {
         assert_eq!(error("#if 1\nstruct A { long x; };"), "main.idl: missing #endif");
         assert_eq!(error("#error unsupported"), "Line 1: #error unsupported");
         assert_eq!(idl_project("x.idl", &files(&[])).unwrap_err(), "x.idl: not read");
+    }
+
+    #[test]
+    fn values_not_computed_are_warned_about() {
+        let (_, w) = read("const long A = 089;\nconst long long B = 0x1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;");
+        assert_eq!(
+            w,
+            [
+                "Line 1: constant A left out: its value is not computed (invalid octal literal)",
+                "Line 2: constant B left out: its value is not computed (integer literal too large)"
+            ]
+        );
+        let (f, w) = read("struct S {\n  @default(1/0) long f;\n};");
+        assert_eq!(w, ["Line 2: division by zero (annotation @default left out)"]);
+        assert_eq!(f["types"][0]["fields"][0].get("default"), None);
     }
 
     #[test]

@@ -67,6 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scaffold-gen`: a file that cannot be read or merged is a conflict on that file; the other files are still generated and `.scaffold-gen.json` still records them (stopping half way left a record of the previous generation, and false conflicts the next time). Same for a file no longer generated whose markers are broken (`--prune`).
 - `scaffold-gen`: an unreadable `.scaffold-gen.json` is reported as a warning (silently taken as missing before).
 - Template filters `json` and `tojson` over a context entity holding itself (`project`, recursive types…) print `"<cycle>"` there: the generator crashed (stack overflow).
+- IDL: an annotation whose value is not computed (`@default(1/0)`, `@range(min=X)` of an unknown `X`…) is warned about, instead of silently left out; a constant left out tells why (`constant A left out: its value is not computed (division by zero)`); integer literals too large or octal ones with `8` / `9` (`089`) are errors there, instead of the largest integer and a decimal number.
+- `scaffold-gen --deps`: a dependency whose name has no letter nor digit (`_`) is an error: it was generated into the parent directory of the output.
 
 ### Security
 

@@ -232,7 +232,17 @@ impl Run<'_> {
         if self.args.deps {
             let siblings = out_dir.parent().map(Path::to_path_buf).unwrap_or_default();
             for d in dl(&project, "dependencies") {
-                self.run(absolute(&parent.join(ds(d, "file"))), Some(siblings.join(snake(&ds(d, "name")))));
+                let (name, dep) = (ds(d, "name"), absolute(&parent.join(ds(d, "file"))));
+                // `_` has no words: it would be generated into the parent directory.
+                let folder = snake(&name);
+                if folder.is_empty() {
+                    let e = format!(
+                        "dependency '{name}': no folder name to generate it in (its name has no letter nor digit)"
+                    );
+                    self.fail(&file, &e, false);
+                    continue;
+                }
+                self.run(dep, Some(siblings.join(folder)));
             }
         }
     }
