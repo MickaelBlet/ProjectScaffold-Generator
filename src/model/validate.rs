@@ -542,9 +542,24 @@ impl<'i, 'a> V<'i, 'a> {
 
     // ------------------------------------------------------------- validate ----
 
+    /// The checks, in the editor's order.
     fn run(&mut self) {
+        self.validate_constants();
+        self.validate_types();
+        self.by_value_cycles();
+        self.validate_interfaces();
+        for i in 0..self.ix.modules.len() {
+            self.validate_module(i);
+        }
+        self.validate_dependencies();
+        let refs = self.all_type_refs();
+        self.validate_module_type_access(&refs);
+        self.validate_dependency_types(&refs);
+        self.validate_links();
+    }
+
+    fn validate_constants(&mut self) {
         let ix = self.ix;
-        // Constants
         for c in &ix.consts {
             let name = ds(c.def, "name");
             if reserved_type_name(&name) {
@@ -556,7 +571,10 @@ impl<'i, 'a> V<'i, 'a> {
                 self.err(format!("Constant '{}': {e}", c.key));
             }
         }
-        // Types
+    }
+
+    fn validate_types(&mut self) {
+        let ix = self.ix;
         for te in &ix.types {
             let t = te.def;
             let name = ds(t, "name");
@@ -564,58 +582,9 @@ impl<'i, 'a> V<'i, 'a> {
                 self.err(format!("'{name}' is a reserved type name"));
             }
             match ds(t, "kind").as_str() {
-                k @ ("struct" | "exception") => {
-                    let fs = dl(t, "fields");
-                    let what = if k == "struct" { "Struct" } else { "Exception" };
-                    for d in dups(fs, "name") {
-                        self.err(format!("{what} '{name}': duplicate field '{d}'"));
-                    }
-                    for f in fs {
-                        let w = format!("{name}.{}", ds(f, "name"));
-                        self.check_typeref(&f["type"], &w);
-                        self.check_default(f, &w);
-                    }
-                }
-                "enum" => {
-                    let vals = dl(t, "values");
-                    for d in dups(vals, "name") {
-                        self.err(format!("Enum '{name}': duplicate value name '{d}'"));
-                    }
-                    let u = ds(t, "underlying");
-                    if let Some((min, max)) = int_range(&u) {
-                        for v in vals {
-                            if let Some(x) = to_bigint(&v["value"])
-                                && (x < min || x > max)
-                            {
-                                self.err(format!(
-                                    "Enum '{name}': {} = {} does not fit in {u}",
-                                    ds(v, "name"),
-                                    js_str(&v["value"])
-                                ));
-                            }
-                        }
-                    }
-                }
-                "bitmask" => {
-                    let flags = dl(t, "flags");
-                    for d in dups(flags, "name") {
-                        self.err(format!("Bitmask '{name}': duplicate flag '{d}'"));
-                    }
-                    for d in dups_of(flags.iter().map(|f| js_str(&f["bit"]))) {
-                        self.err(format!("Bitmask '{name}': bit {d} used more than once"));
-                    }
-                    let u = ds(t, "underlying");
-                    let w: f64 = u.get(4..).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                    for f in flags {
-                        if f["bit"].as_f64().unwrap_or(0.0) >= w {
-                            self.err(format!(
-                                "Bitmask '{name}': {} (bit {}) does not fit in {u}",
-                                ds(f, "name"),
-                                ds(f, "bit")
-                            ));
-                        }
-                    }
-                }
+                k @ ("struct" | "exception") => self.validate_struct(t, &name, k == "struct"),
+                "enum" => self.validate_enum(t, &name),
+                "bitmask" => self.validate_bitmask(t, &name),
                 "union" => self.validate_union(t, &name),
                 "alias" => {
                     self.check_typeref(&t["type"], &name);
@@ -630,10 +599,65 @@ impl<'i, 'a> V<'i, 'a> {
                 _ => {}
             }
         }
-        self.by_value_cycles();
+    }
 
-        // Interfaces
-        for x in &ix.ifaces {
+    fn validate_struct(&mut self, t: &'a Json, name: &str, is_struct: bool) {
+        let fs = dl(t, "fields");
+        let what = if is_struct { "Struct" } else { "Exception" };
+        for d in dups(fs, "name") {
+            self.err(format!("{what} '{name}': duplicate field '{d}'"));
+        }
+        for f in fs {
+            let w = format!("{name}.{}", ds(f, "name"));
+            self.check_typeref(&f["type"], &w);
+            self.check_default(f, &w);
+        }
+    }
+
+    fn validate_enum(&mut self, t: &'a Json, name: &str) {
+        let vals = dl(t, "values");
+        for d in dups(vals, "name") {
+            self.err(format!("Enum '{name}': duplicate value name '{d}'"));
+        }
+        let u = ds(t, "underlying");
+        if let Some((min, max)) = int_range(&u) {
+            for v in vals {
+                if let Some(x) = to_bigint(&v["value"])
+                    && (x < min || x > max)
+                {
+                    self.err(format!(
+                        "Enum '{name}': {} = {} does not fit in {u}",
+                        ds(v, "name"),
+                        js_str(&v["value"])
+                    ));
+                }
+            }
+        }
+    }
+
+    fn validate_bitmask(&mut self, t: &'a Json, name: &str) {
+        let flags = dl(t, "flags");
+        for d in dups(flags, "name") {
+            self.err(format!("Bitmask '{name}': duplicate flag '{d}'"));
+        }
+        for d in dups_of(flags.iter().map(|f| js_str(&f["bit"]))) {
+            self.err(format!("Bitmask '{name}': bit {d} used more than once"));
+        }
+        let u = ds(t, "underlying");
+        let w: f64 = u.get(4..).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        for f in flags {
+            if f["bit"].as_f64().unwrap_or(0.0) >= w {
+                self.err(format!(
+                    "Bitmask '{name}': {} (bit {}) does not fit in {u}",
+                    ds(f, "name"),
+                    ds(f, "bit")
+                ));
+            }
+        }
+    }
+
+    fn validate_interfaces(&mut self) {
+        for x in &self.ix.ifaces {
             let name = ds(x.def, "name");
             if reserved_type_name(&name) {
                 self.err(format!("'{name}' is a reserved type name"));
@@ -646,13 +670,11 @@ impl<'i, 'a> V<'i, 'a> {
                 self.check_message(m, &format!("{name}.{}", ds(m, "name")));
             }
         }
+    }
 
-        // Modules
-        for i in 0..ix.modules.len() {
-            self.validate_module(i);
-        }
-
-        // Dependencies
+    /// Dependency files listed twice, dependencies using themselves.
+    fn validate_dependencies(&mut self) {
+        let ix = self.ix;
         let deps = dl(self.f, "dependencies");
         for d in dups_of(deps.iter().map(|d| normalize_file(&ds(d, "file")))) {
             self.err(format!("Dependency file '{d}' listed more than once"));
@@ -674,10 +696,12 @@ impl<'i, 'a> V<'i, 'a> {
                 self.err(format!("Dependency '{}' uses itself through other dependencies", ds(d, "name")));
             }
         }
+    }
 
-        // Types of modules: public ones anywhere, the others in modules only, as their access allows.
-        let refs = self.all_type_refs();
-        for r in &refs {
+    /// Types of modules: public ones anywhere, the others in modules only, as their access allows.
+    fn validate_module_type_access(&mut self, refs: &[TypeRefUse<'a>]) {
+        let ix = self.ix;
+        for r in refs {
             if !r.dep.is_empty() {
                 continue;
             }
@@ -709,7 +733,13 @@ impl<'i, 'a> V<'i, 'a> {
                 }
             }
         }
-        for r in &refs {
+    }
+
+    /// Types used by a dependency's entities: in that dependency, those it uses, or shared.
+    fn validate_dependency_types(&mut self, refs: &[TypeRefUse<'a>]) {
+        let ix = self.ix;
+        let deps = dl(self.f, "dependencies");
+        for r in refs {
             if matches!(r.owner, Owner::Module(_)) || r.dep.is_empty() {
                 continue;
             }
@@ -733,8 +763,6 @@ impl<'i, 'a> V<'i, 'a> {
                 }
             }
         }
-
-        self.validate_links();
     }
 
     fn validate_union(&mut self, t: &'a Json, name: &str) {

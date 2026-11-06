@@ -20,7 +20,7 @@ if [ "${1:-}" = -w ]; then work=$2; shift 2; fi
 work=${work:-$(mktemp -d)}
 mkdir -p "$work"
 sets=("$@")
-[ ${#sets[@]} -gt 0 ] || sets=($(ls templates))
+[ ${#sets[@]} -gt 0 ] || mapfile -t sets < <(cd templates && printf '%s\n' */ | tr -d /)
 projects=(examples/robot.scaffold.yaml examples/rover.scaffold.yaml examples/station.scaffold.yaml
   examples/idl/filling_cell.scaffold.yaml
   tests/fixtures/plant.scaffold.yaml tests/fixtures/relay.scaffold.yaml tests/fixtures/active.scaffold.yaml)
@@ -42,7 +42,7 @@ for m in pkgutil.walk_packages(package.__path__, sys.argv[1] + "."):
 check_active() {
   local set=$1 out=$2 std=${1#cpp} source=tests/active/check.cpp
   [ "$std" = 98 ] && source=tests/active/check98.cpp
-  if "${CXX:-c++}" -std=c++$std -Wall -Wextra -Werror -I"$out/include" "$source" -o "$out/.build/check_active" -pthread \
+  if "${CXX:-c++}" -std="c++$std" -Wall -Wextra -Werror -I"$out/include" "$source" -o "$out/.build/check_active" -pthread \
     >"$work/log" 2>&1 && "$out/.build/check_active" >>"$work/log" 2>&1; then
     echo "ok      $set: $name (active queue)"
   else

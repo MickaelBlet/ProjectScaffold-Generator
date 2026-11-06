@@ -69,3 +69,25 @@ fn examples_generate_with_every_set() {
     let _ = std::fs::remove_dir_all(&work);
     assert!(failed.is_empty(), "{}", failed.join("\n"));
 }
+
+#[test]
+fn dependencies_generated_next_to_the_project() {
+    let work = std::env::temp_dir().join(format!("scaffold-gen-deps-{}", std::process::id()));
+    let out = generator()
+        .args(["examples/station.scaffold.yaml", "-d", "-o"])
+        .arg(work.join("station"))
+        .output()
+        .unwrap();
+    let report = String::from_utf8_lossy(&out.stdout).into_owned();
+    let ok = out.status.success();
+    // Each dependency once, in a sibling directory named after it (robot also depends on common).
+    let dirs: Vec<bool> = ["station", "common", "robot"]
+        .iter()
+        .map(|d| work.join(d).join(".scaffold-gen.json").is_file())
+        .collect();
+    let lines = report.lines().filter(|l| l.contains(" -> ")).count();
+    let _ = std::fs::remove_dir_all(&work);
+    assert!(ok, "{report}{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(dirs, [true, true, true], "{report}");
+    assert_eq!(lines, 3, "{report}");
+}

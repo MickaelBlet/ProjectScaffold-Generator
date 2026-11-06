@@ -95,6 +95,77 @@ fn via(scope: &str, path: &str) -> Vec<String> {
     path.split('.').skip(s).map(String::from).collect()
 }
 
+/// Types, interfaces and constants of a project and of its dependencies (context ids).
+struct Entities {
+    types: Vec<Id>,
+    interfaces: Vec<Id>,
+    constants: Vec<Id>,
+    dep_nodes: Vec<Id>,
+    all_types: Vec<Id>,
+    all_ifaces: Vec<Id>,
+    /// Module types of the dependencies.
+    dep_mtypes: Vec<Id>,
+}
+
+/// The binaries and their systems (one for the whole project without binaries).
+struct Systems {
+    binaries: Vec<Id>,
+    systems: Vec<Id>,
+    /// Binary (index) of each top-level module, by name.
+    bin_of_top: HashMap<String, usize>,
+}
+
+impl Systems {
+    /// The system holding module `path`.
+    fn at(&self, path: &str) -> Option<Id> {
+        if self.binaries.is_empty() {
+            return Some(self.systems[0]);
+        }
+        let t = path.split('.').next().unwrap_or("");
+        self.bin_of_top.get(t).map(|&j| self.systems[j])
+    }
+}
+
+/// `remoteDefaults` of a project, defaults applied.
+struct RemoteDefaults {
+    client_host: String,
+    server_host: String,
+    base_port: i64,
+}
+
+impl RemoteDefaults {
+    fn of(file: &Json) -> RemoteDefaults {
+        let rd = &file["remoteDefaults"];
+        let host = |end: &str| if dh(&rd[end], "host") { ds(&rd[end], "host") } else { "127.0.0.1".into() };
+        RemoteDefaults {
+            client_host: host("client"),
+            server_host: host("server"),
+            base_port: if dh(rd, "basePort") { rd["basePort"].as_i64().unwrap_or(47000) } else { 47000 },
+        }
+    }
+}
+
+/// The links of a project and those between binaries.
+struct Remote {
+    links: Vec<Id>,
+    /// Interfaces of the links between binaries, the last of each name winning.
+    interfaces: Vec<Id>,
+    interface_index: HashMap<String, usize>,
+    links_between: Vec<Id>,
+}
+
+/// Both ends of a link between binaries: systems, endpoints, modules and ports.
+struct Ends {
+    at: Id,
+    peer: Id,
+    cf: Id,
+    ct: Id,
+    fm: String,
+    fport: String,
+    tm: String,
+    tport: String,
+}
+
 impl<'a> Ctx<'a> {
     fn place(&mut self, key: String, t: &'a Json, dep: &str, module: &str) {
         self.to.entry(key).or_insert(Placed {
@@ -794,12 +865,29 @@ impl<'a> Ctx<'a> {
 
     fn build(&mut self, file: &'a Json) -> Id {
         let mut warnings: Vec<String> = vec![];
+        self.place_all(file);
+        let e = self.entities(file);
+        let top = self.walk_modules(file);
+        let all_mtypes = self.entity_uses(&e);
+        let constants_file = self.constants_file(&e.constants);
+        self.module_uses();
+        let s = self.systems(file, &top, &mut warnings);
+        let defaults = RemoteDefaults::of(file);
+        let ident = dependency_name(&ds(&file["project"], "name"));
+        let r = self.wire_links(file, &s, &ident, &defaults, &mut warnings);
+        let rt = self.remote_types(&r.interfaces);
+        let rc = self.remote_constants(&e.constants, &rt);
+        self.delegate_warnings(&mut warnings);
+        self.root(file, &ident, &defaults, e, all_mtypes, constants_file, s, r, rt, rc, &warnings)
+    }
+
+    /// Type definitions by key, the first winning (the project's, its modules', its dependencies').
+    fn place_all(&mut self, file: &'a Json) {
         for t in dl(file, "types") {
             self.place(ds(t, "name"), t, "", "");
         }
         self.place_modules(dl(file, "modules"), "");
-        let deps = dl(file, "dependencies");
-        for d in deps {
+        for d in dl(file, "dependencies") {
             let dn_ = ds(d, "name");
             for t in dl(d, "types") {
                 self.place(ds(t, "name"), t, &dn_, "");
@@ -811,15 +899,23 @@ impl<'a> Ctx<'a> {
                 }
             }
         }
+    }
 
+    /// Types, interfaces and constants of the project and of its dependencies.
+    fn entities(&mut self, file: &'a Json) -> Entities {
         let types: Vec<Id> = dl(file, "types").iter().map(|t| self.type_def(t, "", "")).collect();
         let interfaces: Vec<Id> = dl(file, "interfaces").iter().map(|i| self.iface(i, "")).collect();
         let constants: Vec<Id> = dl(file, "constants").iter().map(|c| self.constant(c, "")).collect();
-        let mut dep_nodes = vec![];
-        let mut all_types = types.clone();
-        let mut all_ifaces = interfaces.clone();
-        let mut dep_mtypes = vec![];
-        for d in deps {
+        let mut e = Entities {
+            all_types: types.clone(),
+            all_ifaces: interfaces.clone(),
+            types,
+            interfaces,
+            constants,
+            dep_nodes: vec![],
+            dep_mtypes: vec![],
+        };
+        for d in dl(file, "dependencies") {
             let dn_ = ds(d, "name");
             let g = self.a.map();
             self.put(g, "name", dn(d, "name"));
@@ -835,21 +931,24 @@ impl<'a> Ctx<'a> {
             }
             let is: Vec<Id> = dl(d, "interfaces").iter().map(|i| self.iface(i, &dn_)).collect();
             let cs: Vec<Id> = dl(d, "constants").iter().map(|c| self.constant(c, &dn_)).collect();
-            all_types.extend(&ts);
-            all_ifaces.extend(&is);
-            dep_mtypes.extend(&mts);
+            e.all_types.extend(&ts);
+            e.all_ifaces.extend(&is);
+            e.dep_mtypes.extend(&mts);
             for (k, v) in [("types", ts), ("moduleTypes", mts), ("interfaces", is), ("constants", cs)] {
                 let l = self.a.list(v);
                 self.a.set(g, k, l);
             }
-            dep_nodes.push(g);
+            e.dep_nodes.push(g);
         }
-        for &x in &all_ifaces {
+        for &x in &e.all_ifaces {
             let n = self.a.s(x, "name");
             self.iface_by_name.entry(n).or_insert(x);
         }
+        e
+    }
 
-        // Modules, depth first.
+    /// The top-level modules, walked depth first; then the bases of each module.
+    fn walk_modules(&mut self, file: &'a Json) -> Vec<Id> {
         let bin_names: Vec<String> = dl(file, "binaries").iter().map(|b| ds(b, "name")).collect();
         let mut top = vec![];
         for fm in dl(file, "modules") {
@@ -869,11 +968,15 @@ impl<'a> Ctx<'a> {
             let l = self.a.list(b);
             self.a.set(g, "bases", l);
         }
+        top
+    }
 
-        // What each entity uses, now that every type exists.
+    /// What each type and interface uses, now that every type exists; the module types of the
+    /// project and of its dependencies.
+    fn entity_uses(&mut self, e: &Entities) -> Vec<Id> {
         let mut all_mtypes = self.module_types.clone();
-        all_mtypes.extend(&dep_mtypes);
-        let every: Vec<Id> = all_types.iter().chain(&all_mtypes).copied().collect();
+        all_mtypes.extend(&e.dep_mtypes);
+        let every: Vec<Id> = e.all_types.iter().chain(&all_mtypes).copied().collect();
         for &x in &every {
             let k = self.a.s(x, "key");
             self.type_by_key.entry(k).or_insert(x);
@@ -881,7 +984,7 @@ impl<'a> Ctx<'a> {
         for &x in &every {
             self.type_uses(x);
         }
-        for &g in &all_ifaces {
+        for &g in &e.all_ifaces {
             let mut refs = vec![];
             for m in self.a.items(self.list_at(g, "messages")) {
                 self.message_refs(m, &mut refs);
@@ -889,6 +992,11 @@ impl<'a> Ctx<'a> {
             let u = self.uses(&refs, &[]);
             self.a.set(g, "uses", u);
         }
+        all_mtypes
+    }
+
+    /// The file of the project's constants, with what they use.
+    fn constants_file(&mut self, constants: &[Id]) -> Id {
         let constants_file = self.a.map();
         self.put_str(constants_file, "entity", "constants");
         self.put_str(constants_file, "name", "constants");
@@ -897,7 +1005,11 @@ impl<'a> Ctx<'a> {
         let refs: Vec<Id> = constants.iter().filter_map(|&c| self.a.get(c, "type")).collect();
         let u = self.uses(&refs, &[]);
         self.a.set(constants_file, "uses", u);
-        // A module's types are declared in its class (`using`): it uses them.
+        constants_file
+    }
+
+    /// What each module uses: its types (declared in its class with `using`), attributes and methods.
+    fn module_uses(&mut self) {
         for g in self.modules.clone() {
             let mut refs = vec![];
             for x in self.a.items(self.list_at(g, "types")) {
@@ -926,8 +1038,10 @@ impl<'a> Ctx<'a> {
             let u = self.uses(&refs, &[]);
             self.a.set(g, "uses", u);
         }
+    }
 
-        // One system per binary, or one for the whole project.
+    /// One system per binary, holding its top-level modules, or one for the whole project.
+    fn systems(&mut self, file: &'a Json, top: &[Id], warnings: &mut Vec<String>) -> Systems {
         let mut binaries = vec![];
         for b in dl(file, "binaries") {
             let g = self.a.map();
@@ -961,53 +1075,37 @@ impl<'a> Ctx<'a> {
                 })
                 .collect()
         } else {
-            vec![self.system(None, top.clone())]
+            vec![self.system(None, top.to_vec())]
         };
-        let system_at = |path: &str| -> Option<Id> {
-            if nbin == 0 {
-                return Some(systems[0]);
-            }
-            let t = path.split('.').next().unwrap_or("");
-            bin_of_top.get(t).map(|&j| systems[j])
+        Systems { binaries, systems, bin_of_top }
+    }
+
+    /// The links: wired in their module or system, between binaries (proxies and stubs), or to
+    /// other projects.
+    fn wire_links(
+        &mut self,
+        file: &'a Json,
+        s: &Systems,
+        ident: &str,
+        defaults: &RemoteDefaults,
+        warnings: &mut Vec<String>,
+    ) -> Remote {
+        let mut r = Remote {
+            links: vec![],
+            interfaces: vec![],
+            interface_index: HashMap::new(),
+            links_between: vec![],
         };
-
-        let project = &file["project"];
-        let ident = dependency_name(&ds(project, "name"));
-        let rd = &file["remoteDefaults"];
-        let client_host =
-            if dh(&rd["client"], "host") { ds(&rd["client"], "host") } else { "127.0.0.1".into() };
-        let server_host =
-            if dh(&rd["server"], "host") { ds(&rd["server"], "host") } else { "127.0.0.1".into() };
-        let base_port = if dh(rd, "basePort") { rd["basePort"].as_i64().unwrap_or(47000) } else { 47000 };
-
-        let mut remote_ifaces: Vec<Id> = vec![];
-        let mut remote_iface_idx: HashMap<String, usize> = HashMap::new();
-        let mut remote_links = vec![];
         let flinks = dl(file, "links");
-        let links: Vec<Id> = flinks.iter().map(|l| self.link(l)).collect();
-        for (i, &l) in links.iter().enumerate() {
+        r.links = flinks.iter().map(|l| self.link(l)).collect();
+        for (i, &l) in r.links.clone().iter().enumerate() {
             let fl = &flinks[i];
             let (from, to) = (&fl["from"], &fl["to"]);
-            let lname = ds(fl, "name");
             if dh(from, "project") || dh(to, "project") {
-                let (local, remote) = if dh(from, "project") { (to, from) } else { (from, to) };
-                if dh(local, "project") {
-                    continue;
-                }
-                if let Some(sys) = system_at(&ds(local, "module")) {
-                    let g = self.a.map();
-                    self.a.set(g, "link", l);
-                    let lm = ds(local, "module");
-                    let e = self.endpoint(via("", &lm), &lm, &ds(local, "port"));
-                    self.a.set(g, "local", e);
-                    self.put_str(g, "side", if dh(from, "project") { "to" } else { "from" });
-                    let r = self.json_map(serde_json::json!({"project": dn(remote, "project"), "module": dn(remote, "module"), "port": dn(remote, "port")}));
-                    self.a.set(g, "remote", r);
-                    let ext = self.list_at(sys, "external");
-                    self.a.push(ext, g);
-                }
+                self.external_link(l, from, to, s);
                 continue;
             }
+            let lname = ds(fl, "name");
             let fm = ds(from, "module");
             let tm = ds(to, "module");
             let (fport, tport) = (ds(from, "port"), ds(to, "port"));
@@ -1023,20 +1121,12 @@ impl<'a> Ctx<'a> {
             }
             if tm.starts_with(&format!("{fm}.")) {
                 // A container's `in` port handing its calls to an inner `in` port.
-                if let Some(p) = self.port_of(&fm, &fport) {
-                    let e = self.endpoint(via(&fm, &tm), &tm, &tport);
-                    let d = self.list_at(p, "delegates");
-                    self.a.push(d, e);
-                }
+                self.delegate(&fm, &fport, &tm, &tport);
                 continue;
             }
             if fm.starts_with(&format!("{tm}.")) {
                 // An inner `out` port going out through the container's `out` port.
-                if let Some(p) = self.port_of(&tm, &tport) {
-                    let e = self.endpoint(via(&tm, &fm), &fm, &fport);
-                    let d = self.list_at(p, "delegates");
-                    self.a.push(d, e);
-                }
+                self.delegate(&tm, &tport, &fm, &fport);
                 continue;
             }
             // Wired by the innermost module holding both ends.
@@ -1058,7 +1148,7 @@ impl<'a> Ctx<'a> {
                 self.a.push(c, conn);
                 continue;
             }
-            let (Some(at), Some(peer)) = (system_at(&fm), system_at(&tm)) else { continue };
+            let (Some(at), Some(peer)) = (s.at(&fm), s.at(&tm)) else { continue };
             if at == peer {
                 let c = self.list_at(at, "connections");
                 self.a.push(c, conn);
@@ -1073,48 +1163,102 @@ impl<'a> Ctx<'a> {
                 warnings.push(format!("Link '{lname}' between binaries has no interface: left out"));
                 continue;
             };
-            let fname = self.a.s(face, "name");
-            match remote_iface_idx.get(&fname) {
-                Some(&k) => remote_ifaces[k] = face,
-                None => {
-                    remote_iface_idx.insert(fname, remote_ifaces.len());
-                    remote_ifaces.push(face);
-                }
-            }
-            let idx = remote_links.len();
-            let settings = self.resolve_settings(fl, idx, &ident, &client_host, &server_host, base_port);
-            let at_bin = self.a.get(at, "binary").map(|b| self.a.s(b, "name")).unwrap_or_default();
-            let peer_bin = self.a.get(peer, "binary").map(|b| self.a.s(b, "name")).unwrap_or_default();
-            let rl = self.a.map();
-            let ix = self.a.int(idx as i64);
-            self.a.set(rl, "index", ix);
-            self.a.set(rl, "link", l);
-            self.a.set(rl, "interface", face);
-            let w = self.where_(&at_bin, &fm, &fport);
-            self.a.set(rl, "from", w);
-            let w = self.where_(&peer_bin, &tm, &tport);
-            self.a.set(rl, "to", w);
-            self.a.set(rl, "settings", settings);
-            remote_links.push(rl);
-            for (sys, local, peer_where, list) in [
-                (at, cf, (peer_bin.clone(), tm.clone(), tport.clone()), "proxies"),
-                (peer, ct, (at_bin.clone(), fm.clone(), fport.clone()), "stubs"),
-            ] {
-                let g = self.a.map();
-                let ix = self.a.int(idx as i64);
-                self.a.set(g, "index", ix);
-                self.a.set(g, "link", l);
-                self.a.set(g, "local", local);
-                self.a.set(g, "interface", face);
-                let w = self.where_(&peer_where.0, &peer_where.1, &peer_where.2);
-                self.a.set(g, "peer", w);
-                self.a.set(g, "settings", settings);
-                let ls = self.list_at(sys, list);
-                self.a.push(ls, g);
+            let ends = Ends { at, peer, cf, ct, fm, fport, tm, tport };
+            self.remote_link(l, fl, face, ends, ident, defaults, &mut r);
+        }
+        r
+    }
+
+    /// A link to another project: an external end of the system of its local module.
+    fn external_link(&mut self, l: Id, from: &Json, to: &Json, s: &Systems) {
+        let (local, remote) = if dh(from, "project") { (to, from) } else { (from, to) };
+        if dh(local, "project") {
+            return;
+        }
+        let Some(sys) = s.at(&ds(local, "module")) else { return };
+        let g = self.a.map();
+        self.a.set(g, "link", l);
+        let lm = ds(local, "module");
+        let e = self.endpoint(via("", &lm), &lm, &ds(local, "port"));
+        self.a.set(g, "local", e);
+        self.put_str(g, "side", if dh(from, "project") { "to" } else { "from" });
+        let r = self.json_map(serde_json::json!({"project": dn(remote, "project"), "module": dn(remote, "module"), "port": dn(remote, "port")}));
+        self.a.set(g, "remote", r);
+        let ext = self.list_at(sys, "external");
+        self.a.push(ext, g);
+    }
+
+    /// Port `port` of container `outer` handing its calls to (or through) port `inner_port` of `inner`.
+    fn delegate(&mut self, outer: &str, port: &str, inner: &str, inner_port: &str) {
+        if let Some(p) = self.port_of(outer, port) {
+            let e = self.endpoint(via(outer, inner), inner, inner_port);
+            let d = self.list_at(p, "delegates");
+            self.a.push(d, e);
+        }
+    }
+
+    /// A link between binaries: its proxy in the system of the `from` end, its stub in that of the `to` end.
+    #[allow(clippy::too_many_arguments)]
+    fn remote_link(
+        &mut self,
+        l: Id,
+        fl: &Json,
+        face: Id,
+        e: Ends,
+        ident: &str,
+        defaults: &RemoteDefaults,
+        r: &mut Remote,
+    ) {
+        let fname = self.a.s(face, "name");
+        match r.interface_index.get(&fname) {
+            Some(&k) => r.interfaces[k] = face,
+            None => {
+                r.interface_index.insert(fname, r.interfaces.len());
+                r.interfaces.push(face);
             }
         }
-        // Types the remote interfaces reach, by name.
-        let mut remote_types: BTreeMap<String, Id> = BTreeMap::new();
+        let idx = r.links_between.len();
+        let settings = self.resolve_settings(
+            fl,
+            idx,
+            ident,
+            &defaults.client_host,
+            &defaults.server_host,
+            defaults.base_port,
+        );
+        let at_bin = self.a.get(e.at, "binary").map(|b| self.a.s(b, "name")).unwrap_or_default();
+        let peer_bin = self.a.get(e.peer, "binary").map(|b| self.a.s(b, "name")).unwrap_or_default();
+        let rl = self.a.map();
+        let ix = self.a.int(idx as i64);
+        self.a.set(rl, "index", ix);
+        self.a.set(rl, "link", l);
+        self.a.set(rl, "interface", face);
+        let w = self.where_(&at_bin, &e.fm, &e.fport);
+        self.a.set(rl, "from", w);
+        let w = self.where_(&peer_bin, &e.tm, &e.tport);
+        self.a.set(rl, "to", w);
+        self.a.set(rl, "settings", settings);
+        r.links_between.push(rl);
+        for (sys, local, peer_where, list) in [
+            (e.at, e.cf, (&peer_bin, &e.tm, &e.tport), "proxies"),
+            (e.peer, e.ct, (&at_bin, &e.fm, &e.fport), "stubs"),
+        ] {
+            let g = self.a.map();
+            let ix = self.a.int(idx as i64);
+            self.a.set(g, "index", ix);
+            self.a.set(g, "link", l);
+            self.a.set(g, "local", local);
+            self.a.set(g, "interface", face);
+            let w = self.where_(peer_where.0, peer_where.1, peer_where.2);
+            self.a.set(g, "peer", w);
+            self.a.set(g, "settings", settings);
+            let ls = self.list_at(sys, list);
+            self.a.push(ls, g);
+        }
+    }
+
+    /// Types the remote interfaces reach, by name (sorted by their bytes).
+    fn remote_types(&self, interfaces: &[Id]) -> Vec<(String, Id)> {
         fn reach(a: &Arena, t: Id, out: &mut BTreeMap<String, Id>) {
             let n = a.s(t, "name");
             if out.contains_key(&n) {
@@ -1127,7 +1271,8 @@ impl<'a> Ctx<'a> {
                 }
             }
         }
-        for &f in &remote_ifaces {
+        let mut remote_types: BTreeMap<String, Id> = BTreeMap::new();
+        for &f in interfaces {
             if let Some(u) = self.a.get(f, "uses").and_then(|u| self.a.get(u, "types")) {
                 for x in self.a.items(u) {
                     reach(&self.a, x, &mut remote_types);
@@ -1136,21 +1281,31 @@ impl<'a> Ctx<'a> {
         }
         let mut rt: Vec<(String, Id)> = remote_types.into_iter().collect();
         rt.sort_by(|x, y| x.0.as_bytes().cmp(y.0.as_bytes()));
-        let rt_names: std::collections::HashSet<String> = rt.iter().map(|x| x.0.clone()).collect();
+        rt
+    }
+
+    /// Constants whose types are all among the remote types.
+    fn remote_constants(&mut self, constants: &[Id], remote_types: &[(String, Id)]) -> Vec<Id> {
+        let names: std::collections::HashSet<&str> = remote_types.iter().map(|x| x.0.as_str()).collect();
         let mut rc = vec![];
-        for &c in &constants {
+        for &c in constants {
             let t: Vec<Id> = self.a.get(c, "type").into_iter().collect();
             let u = self.uses(&t, &[]);
             let ok = self
                 .a
                 .items(self.list_at(u, "types"))
                 .iter()
-                .all(|&x| rt_names.contains(&self.a.s(x, "name")));
+                .all(|&x| names.contains(self.a.s(x, "name").as_str()));
             if ok {
                 rc.push(c);
             }
         }
-        for g in self.modules.clone() {
+        rc
+    }
+
+    /// `in` ports handing their calls to several inner ports: only the first is wired.
+    fn delegate_warnings(&self, warnings: &mut Vec<String>) {
+        for &g in &self.modules {
             for p in self.a.items(self.list_at(g, "ports")) {
                 let ds_ = self.a.items(self.list_at(p, "delegates"));
                 if self.a.s(p, "role") == "in" && ds_.len() > 1 {
@@ -1165,7 +1320,25 @@ impl<'a> Ctx<'a> {
                 }
             }
         }
+    }
 
+    /// The root of the context.
+    #[allow(clippy::too_many_arguments)]
+    fn root(
+        &mut self,
+        file: &'a Json,
+        ident: &str,
+        defaults: &RemoteDefaults,
+        e: Entities,
+        all_mtypes: Vec<Id>,
+        constants_file: Id,
+        s: Systems,
+        r: Remote,
+        rt: Vec<(String, Id)>,
+        rc: Vec<Id>,
+        warnings: &[String],
+    ) -> Id {
+        let project = &file["project"];
         let ctx = self.a.map();
         let pr = self.a.map();
         self.put(pr, "name", dn(project, "name"));
@@ -1189,44 +1362,45 @@ impl<'a> Ctx<'a> {
         self.put(
             ctx,
             "remoteDefaults",
-            serde_json::json!({"client": {"host": client_host}, "server": {"host": server_host}, "basePort": base_port}),
+            serde_json::json!({"client": {"host": defaults.client_host}, "server": {"host": defaults.server_host}, "basePort": defaults.base_port}),
         );
         let set_list = |c: &mut Self, k: &str, v: Vec<Id>| {
             let l = c.a.list(v);
             c.a.set(ctx, k, l);
         };
-        set_list(self, "types", types);
+        set_list(self, "types", e.types);
         let mts = self.module_types.clone();
         set_list(self, "moduleTypes", mts);
-        set_list(self, "interfaces", interfaces);
+        set_list(self, "interfaces", e.interfaces);
         let ms = self.modules.clone();
         let any_active = ms.iter().any(|&m| self.a.get(m, "active").is_some_and(|x| !self.a.is_null(x)));
         set_list(self, "modules", ms);
         self.put_bool(ctx, "anyActive", any_active);
-        set_list(self, "binaries", binaries);
-        set_list(self, "systems", systems.clone());
-        let sys = if nbin > 0 { self.a.null() } else { systems[0] };
+        let nbin = s.binaries.len();
+        set_list(self, "binaries", s.binaries);
+        set_list(self, "systems", s.systems.clone());
+        let sys = if nbin > 0 { self.a.null() } else { s.systems[0] };
         self.a.set(ctx, "system", sys);
-        set_list(self, "remoteInterfaces", remote_ifaces);
-        set_list(self, "remoteLinks", remote_links);
+        set_list(self, "remoteInterfaces", r.interfaces);
+        set_list(self, "remoteLinks", r.links_between);
         set_list(self, "remoteTypes", rt.into_iter().map(|x| x.1).collect());
-        set_list(self, "constants", constants);
+        set_list(self, "constants", e.constants);
         self.a.set(ctx, "constantsFile", constants_file);
         set_list(self, "remoteConstants", rc);
-        set_list(self, "links", links);
-        set_list(self, "dependencies", dep_nodes);
-        set_list(self, "allTypes", all_types.clone());
+        set_list(self, "links", r.links);
+        set_list(self, "dependencies", e.dep_nodes);
+        set_list(self, "allTypes", e.all_types.clone());
         set_list(self, "allModuleTypes", all_mtypes.clone());
         let tbk = self.a.map();
-        for &x in all_types.iter().chain(&all_mtypes) {
+        for &x in e.all_types.iter().chain(&all_mtypes) {
             let k = self.a.s(x, "key");
             if self.a.get(tbk, &k).is_none() {
                 self.a.set(tbk, &k, x);
             }
         }
         self.a.set(ctx, "typeByKey", tbk);
-        set_list(self, "allInterfaces", all_ifaces);
-        let w = self.strs(&warnings);
+        set_list(self, "allInterfaces", e.all_ifaces);
+        let w = self.strs(warnings);
         self.a.set(ctx, "warnings", w);
         ctx
     }

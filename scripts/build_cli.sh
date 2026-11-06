@@ -12,8 +12,8 @@ target=${1:-x86_64-unknown-linux-musl}
 case $target in
 *windows-msvc)
     if ! command -v llvm-rc >/dev/null; then
-        for dir in $(ls -d /usr/lib/llvm-*/bin 2>/dev/null | sort -V -r); do
-            [[ -x $dir/llvm-rc ]] && { PATH=$dir:$PATH; break; }
+        for dir in $(printf '%s\n' /usr/lib/llvm-*/bin | sort -V -r); do
+            [[ -x "$dir/llvm-rc" ]] && { PATH="$dir:$PATH"; break; }
         done
     fi
     cargo xwin build --release --target "$target"

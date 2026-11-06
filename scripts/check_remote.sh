@@ -47,7 +47,7 @@ pair() {
   local pid=$!
   for _ in $(seq 100); do
     grep -q ready "$log" 2>/dev/null && break
-    kill -0 $pid 2>/dev/null || break
+    kill -0 "$pid" 2>/dev/null || break
     sleep 0.05
   done
   if grep -q ready "$log" && "${client[@]}"; then
@@ -64,11 +64,11 @@ pair() {
 port=47100
 for t in tcp udp http websocket shm mq; do
   ack=true
-  [ $t = udp ] && ack=false
+  [ "$t" = udp ] && ack=false
   for way in "python -> c++" "c++ -> python" "python -> python"; do
     port=$((port + 1))
-    address=127.0.0.1:$port
-    [ $t = shm ] || [ $t = mq ] && address=relay_check_$$_$port
+    address="127.0.0.1:$port"
+    { [ "$t" = shm ] || [ "$t" = mq ]; } && address="relay_check_$$_$port"
     case $way in
       "python -> c++") pair "$t: $way" "${cpp[@]}" serve $t $address -- "${py[@]}" call $t $address $ack ;;
       "c++ -> python") pair "$t: $way" "${py[@]}" serve $t $address -- "${cpp[@]}" call $t $address $ack ;;
