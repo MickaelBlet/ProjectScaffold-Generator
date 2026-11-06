@@ -81,6 +81,7 @@ Generating again rewrites only what changed:
        + #pragma once
   ```
 
+- a file whose user section markers are broken (one removed, one inside another) is a conflict; `--force` generates it anew and saves the whole file to its `.orphans` file;
 - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files);
 - `.scaffold-gen.json` in the output directory records what was generated: keep it with the code. Files are never written nor deleted through a symbolic link of the output directory.
 

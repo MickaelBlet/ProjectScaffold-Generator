@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browser: the Explorer lists the modules of IDL dependencies, read from the file picked in the session or open as text (_Open_ on the dependency after a reload), with the files they include; they were listed only for files open as documents.
 - Explorer: double-clicking (or _Place on the canvas_) a module of an IDL dependency not placed yet places it: it did nothing, the module being looked up by an id the IDL file gets anew at each read; modules are now found by their path.
 - Code generation panel: a template folder just picked or filled with a copy of the built-in templates is listed at once (it stayed on the built-in templates in the desktop app on Windows), also when the folder already held a template set.
+- `scaffold-gen --force` overwrites a file whose user section markers are broken, the whole file saved to its `.orphans` file: generation stopped instead, the error shown on the project file.
+- `scaffold-gen`: a file that cannot be read or merged is a conflict on that file; the other files are still generated and `.scaffold-gen.json` still records them (stopping half way left a record of the previous generation, and false conflicts the next time). Same for a file no longer generated whose markers are broken (`--prune`).
+- `scaffold-gen`: an unreadable `.scaffold-gen.json` is reported as a warning (silently taken as missing before).
 
 ### Security
 

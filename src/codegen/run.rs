@@ -1,7 +1,7 @@
 // Generation into a directory: user sections of the files already there are carried over, files
 // changed outside their user sections are left alone (conflicts), and a record of what was
 // generated (`.scaffold-gen.json`) tells hand edits and files no longer generated apart.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::generate::{generate, output_path};
+use super::generate::{GeneratedFile, generate, output_path};
 use super::sections::{
     Change, Section, changes, extract_sections, format_orphans, hash, merge_sections, section_hash, skeleton,
 };
@@ -213,55 +213,125 @@ pub fn generate_into(
     options: &RunOptions,
 ) -> Result<GenerationReport, String> {
     let generation = generate(ctx, set)?;
-    let mut report = GenerationReport { warnings: generation.warnings, ..Default::default() };
-    let previous_record = read_record(dir, &mut report.warnings)?;
-    let mut record = GenRecord { generator: set.manifest.name.clone(), files: BTreeMap::new() };
-    let write = |path: &str, text: &str| -> Result<(), String> {
-        if options.dry_run { Ok(()) } else { dir.write(path, text) }
+    let mut warnings = generation.warnings;
+    let previous = read_record(dir, &mut warnings)?;
+    let mut run = Pass {
+        dir,
+        options,
+        previous: previous.as_ref(),
+        report: GenerationReport { warnings, ..Default::default() },
+        record: GenRecord { generator: set.manifest.name.clone(), files: BTreeMap::new() },
     };
-    let save_orphans = |report: &mut GenerationReport,
-                        path: &str,
-                        sections: Vec<Section>,
-                        comment: &str|
-     -> Result<(), String> {
-        if sections.is_empty() {
-            return Ok(());
+    // A file that cannot be handled is a conflict: the others are still generated and recorded.
+    for f in &generation.files {
+        if let Err(e) = run.file(f) {
+            run.fail(&f.path, e);
         }
-        report.orphans.push((path.to_string(), sections.iter().map(|s| s.id.clone()).collect()));
+    }
+    // Files generated before and no longer.
+    let generated: HashSet<&str> = generation.files.iter().map(|f| f.path.as_str()).collect();
+    if let Some(prev) = &previous {
+        for (path, entry) in &prev.files {
+            if generated.contains(path.as_str()) {
+                continue;
+            }
+            if let Err(e) = run.stale(path, entry, &set.manifest.comment) {
+                run.fail(path, e);
+            }
+        }
+    }
+    if !options.dry_run {
+        let text = serde_json::to_string_pretty(&run.record).map_err(|e| e.to_string())?;
+        dir.write(RECORD, &format!("{text}\n"))?;
+    }
+    Ok(run.report)
+}
+
+/// A generation into a directory, under way.
+struct Pass<'a> {
+    dir: &'a dyn OutputDir,
+    options: &'a RunOptions,
+    previous: Option<&'a GenRecord>,
+    report: GenerationReport,
+    record: GenRecord,
+}
+
+impl Pass<'_> {
+    fn write(&self, path: &str, text: &str) -> Result<(), String> {
+        if self.options.dry_run { Ok(()) } else { self.dir.write(path, text) }
+    }
+
+    fn entry(&self, path: &str) -> Option<RecordEntry> {
+        self.previous.and_then(|r| r.files.get(path)).cloned()
+    }
+
+    /// Keeps the file as last recorded.
+    fn keep_entry(&mut self, path: &str) {
+        if let Some(e) = self.entry(path) {
+            self.record.files.entry(path.to_string()).or_insert(e);
+        }
+    }
+
+    /// A problem with a file, reported as a conflict on it.
+    fn fail(&mut self, path: &str, why: String) {
+        self.report.conflicts.push(Conflict::new(path, why));
+        self.keep_entry(path);
+    }
+
+    /// Appends `text` to the `.orphans` file of `path`.
+    fn append_orphans(&mut self, path: &str, ids: Vec<String>, text: &str) -> Result<(), String> {
+        self.report.orphans.push((path.to_string(), ids));
         let target = format!("{path}{ORPHANS}");
-        let before = dir.read(&target)?.unwrap_or_default();
+        let before = self.dir.read(&target)?.unwrap_or_default();
         let sep = format!(
             "{}{}",
             if !before.is_empty() && !before.ends_with('\n') { "\n" } else { "" },
             if before.is_empty() { "" } else { "\n" }
         );
-        write(&target, &format!("{before}{sep}{}", format_orphans(&sections, comment, path)))
-    };
-    let prev_entry = |path: &str| previous_record.as_ref().and_then(|r| r.files.get(path)).cloned();
+        self.write(&target, &format!("{before}{sep}{text}"))
+    }
 
-    for f in &generation.files {
-        let previous = dir.read(&f.path)?;
-        let entry = prev_entry(&f.path);
+    fn save_orphans(&mut self, path: &str, sections: Vec<Section>, comment: &str) -> Result<(), String> {
+        if sections.is_empty() {
+            return Ok(());
+        }
+        let ids = sections.iter().map(|s| s.id.clone()).collect();
+        self.append_orphans(path, ids, &format_orphans(&sections, comment, path))
+    }
+
+    fn file(&mut self, f: &GeneratedFile) -> Result<(), String> {
+        let entry = self.entry(&f.path);
         let next = entry_of(&f.text, &f.comment)?;
-        let Some(previous) = previous else {
-            write(&f.path, &f.text)?;
-            report.written.push(f.path.clone());
-            record.files.insert(f.path.clone(), next);
-            continue;
+        let Some(previous) = self.dir.read(&f.path)? else {
+            self.write(&f.path, &f.text)?;
+            self.report.written.push(f.path.clone());
+            self.record.files.insert(f.path.clone(), next);
+            return Ok(());
         };
         let merged = match merge_sections(&f.text, &previous, &f.comment, |s| {
             entry.as_ref().and_then(|e| e.sections.get(&s.id)) == Some(&section_hash(&s.content))
         }) {
             Ok(m) => m,
+            // The markers of the file there cannot be read.
+            Err(e) if !self.options.force => {
+                self.report.conflicts.push(Conflict { text: Some(previous), ..Conflict::new(&f.path, e) });
+                self.keep_entry(&f.path);
+                return Ok(());
+            }
             Err(e) => {
-                if !options.force {
-                    report.conflicts.push(Conflict { text: Some(previous), ..Conflict::new(&f.path, e) });
-                    if let Some(entry) = entry {
-                        record.files.insert(f.path.clone(), entry);
-                    }
-                    continue;
-                }
-                super::sections::MergeResult { text: f.text.clone(), orphans: vec![], kept: vec![] }
+                // Overwritten: the whole file goes to its .orphans file.
+                let why = e.strip_prefix("line ").map_or(e.clone(), |l| format!("at line {l}"));
+                let text = format!(
+                    "{c} from {p}: the whole file, its user section markers broken ({why})\n{previous}{nl}",
+                    c = f.comment,
+                    p = f.path,
+                    nl = if previous.ends_with('\n') { "" } else { "\n" }
+                );
+                self.append_orphans(&f.path, vec!["(whole file)".into()], &text)?;
+                self.write(&f.path, &f.text)?;
+                self.report.written.push(f.path.clone());
+                self.record.files.insert(f.path.clone(), next);
+                return Ok(());
             }
         };
         // Against the last generation when recorded, else against this one.
@@ -269,7 +339,7 @@ pub fn generate_into(
             Some(e) => hash(&skeleton(&previous, &f.comment)?) != e.hash,
             None => skeleton(&previous, &f.comment)? != skeleton(&f.text, &f.comment)?,
         };
-        if hand_edited && !options.force {
+        if hand_edited && !self.options.force {
             let mut conflict = Conflict::new(
                 &f.path,
                 match &entry {
@@ -278,81 +348,79 @@ pub fn generate_into(
                 },
             );
             // Lines against this generation: also template changes when it differs from the last.
-            let changed = changes(&previous, &f.text, &f.comment)?;
+            conflict.changes = changes(&previous, &f.text, &f.comment)?;
             conflict.qualifier = match &entry {
                 Some(e) if e.hash != next.hash => " (compared with this generation)".into(),
                 Some(_) => String::new(),
                 None => " (no generation record)".into(),
             };
-            conflict.changes = changed;
             conflict.text = Some(previous);
-            report.conflicts.push(conflict);
-            if let Some(entry) = entry {
-                record.files.insert(f.path.clone(), entry);
-            }
-            continue;
+            self.report.conflicts.push(conflict);
+            self.keep_entry(&f.path);
+            return Ok(());
         }
-        save_orphans(&mut report, &f.path, edited(merged.orphans, entry.as_ref()), &f.comment)?;
+        self.save_orphans(&f.path, edited(merged.orphans, entry.as_ref()), &f.comment)?;
         if !merged.kept.is_empty() {
-            report.kept.push((f.path.clone(), merged.kept));
+            self.report.kept.push((f.path.clone(), merged.kept));
         }
         if previous == merged.text {
-            report.unchanged.push(f.path.clone());
+            self.report.unchanged.push(f.path.clone());
         } else {
-            write(&f.path, &merged.text)?;
-            report.written.push(f.path.clone());
+            self.write(&f.path, &merged.text)?;
+            self.report.written.push(f.path.clone());
         }
-        record.files.insert(f.path.clone(), next);
+        self.record.files.insert(f.path.clone(), next);
+        Ok(())
     }
 
-    // Files generated before and no longer.
-    let comments: HashMap<&str, &str> =
-        generation.files.iter().map(|f| (f.path.as_str(), f.comment.as_str())).collect();
-    if let Some(prev) = &previous_record {
-        for (path, entry) in &prev.files {
-            if comments.contains_key(path.as_str()) {
-                continue;
-            }
-            let Some(previous) = dir.read(path)? else { continue };
-            if !options.prune {
-                report.stale.push(path.clone());
-                record.files.insert(path.clone(), entry.clone());
-                continue;
-            }
-            let comment = comment_of(&previous, &set.manifest.comment);
-            if hash(&skeleton(&previous, &comment)?) != entry.hash && !options.force {
-                report
-                    .conflicts
-                    .push(Conflict::new(path, "no longer generated, and changed outside its user sections"));
-                record.files.insert(path.clone(), entry.clone());
-                continue;
-            }
-            save_orphans(
-                &mut report,
-                path,
-                edited(extract_sections(&previous, &comment)?, Some(entry)),
-                &comment,
-            )?;
-            if !options.dry_run {
-                dir.remove(path)?;
-            }
-            report.removed.push(path.clone());
+    /// A file generated before and no longer: listed, or deleted with `prune`.
+    fn stale(&mut self, path: &str, entry: &RecordEntry, comment: &str) -> Result<(), String> {
+        let Some(previous) = self.dir.read(path)? else { return Ok(()) };
+        if !self.options.prune {
+            self.report.stale.push(path.to_string());
+            self.keep_entry(path);
+            return Ok(());
         }
+        let comment = comment_of(&previous, comment);
+        let sections = extract_sections(&previous, &comment);
+        let changed = match &sections {
+            Ok(_) => hash(&skeleton(&previous, &comment)?) != entry.hash,
+            Err(_) => true,
+        };
+        if changed && !self.options.force {
+            let why = match &sections {
+                Err(e) => format!("no longer generated, and its user sections cannot be read: {e}"),
+                Ok(_) => "no longer generated, and changed outside its user sections".into(),
+            };
+            self.fail(path, why);
+            return Ok(());
+        }
+        match sections {
+            Ok(sections) => self.save_orphans(path, edited(sections, Some(entry)), &comment)?,
+            Err(e) => {
+                let text = format!("{comment} from {path}: the whole file ({e})\n{previous}");
+                self.append_orphans(path, vec!["(whole file)".into()], &text)?
+            }
+        }
+        if !self.options.dry_run {
+            self.dir.remove(path)?;
+        }
+        self.report.removed.push(path.to_string());
+        Ok(())
     }
-
-    if !options.dry_run {
-        let text = serde_json::to_string_pretty(&record).map_err(|e| e.to_string())?;
-        dir.write(RECORD, &format!("{text}\n"))?;
-    }
-    Ok(report)
 }
 
 /// The record of the last generation; paths that are not those of generated files (outside the
 /// directory, the record itself...) are left out with a warning: the record may come from
-/// anywhere, as the directory does.
+/// anywhere, as the directory does. An unreadable record is warned about and taken as none.
 fn read_record(dir: &dyn OutputDir, warnings: &mut Vec<String>) -> Result<Option<GenRecord>, String> {
-    let Some(mut record) = dir.read(RECORD)?.and_then(|t| serde_json::from_str::<GenRecord>(&t).ok()) else {
-        return Ok(None);
+    let Some(text) = dir.read(RECORD)? else { return Ok(None) };
+    let mut record = match serde_json::from_str::<GenRecord>(&text) {
+        Ok(r) => r,
+        Err(e) => {
+            warnings.push(format!("{RECORD}: unreadable ({e}), files compared with this generation"));
+            return Ok(None);
+        }
     };
     record.files.retain(|path, _| {
         let ok = output_path(path).is_ok_and(|p| p == *path) && !reserved_output(path);
@@ -506,12 +574,15 @@ mod tests {
     use super::*;
     use crate::codegen::template_set::parse_manifest;
 
-    /// An output directory in memory.
+    /// An output directory in memory; reading `unreadable` fails.
     #[derive(Default)]
-    struct MemDir(RefCell<BTreeMap<String, String>>);
+    struct MemDir(RefCell<BTreeMap<String, String>>, Option<&'static str>);
 
     impl OutputDir for MemDir {
         fn read(&self, path: &str) -> Result<Option<String>, String> {
+            if self.1 == Some(path) {
+                return Err(format!("{path}: unreadable"));
+            }
             Ok(self.0.borrow().get(path).cloned())
         }
         fn write(&self, path: &str, text: &str) -> Result<(), String> {
@@ -601,5 +672,65 @@ mod tests {
         }
         assert!(dir.write("../c.txt", "x").is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `a.txt` with its section's end marker removed and `mine` written in it.
+    fn broken(dir: &MemDir) {
+        let text = dir.get("a.txt").unwrap().replace("default", "mine").replace("// </user:body>\n", "");
+        dir.set("a.txt", &text);
+    }
+
+    #[test]
+    fn broken_markers() {
+        let dir = MemDir::default();
+        run(&dir, &["a", "b"], RunOptions::default());
+        broken(&dir);
+        let r = run(&dir, &["a", "b"], RunOptions::default());
+        assert_eq!(r.conflicts.len(), 1);
+        assert_eq!(r.conflicts[0].path, "a.txt");
+        assert!(dir.get("a.txt").unwrap().contains("mine"));
+        // Forced: generated anew, the whole file kept in a.txt.orphans.
+        let r = run(&dir, &["a", "b"], RunOptions { force: true, ..Default::default() });
+        assert!(r.conflicts.is_empty());
+        assert!(dir.get("a.txt").unwrap().contains("default"));
+        let orphans = dir.get("a.txt.orphans").unwrap();
+        assert!(orphans.contains("the whole file") && orphans.contains("mine"), "{orphans}");
+        // Pruned: a conflict, then deleted with its content in .orphans.
+        broken(&dir);
+        dir.set("a.txt.orphans", "");
+        let r = run(&dir, &["b"], RunOptions { prune: true, ..Default::default() });
+        assert_eq!(r.conflicts.len(), 1);
+        assert!(dir.get("a.txt").is_some());
+        let r = run(&dir, &["b"], RunOptions { prune: true, force: true, ..Default::default() });
+        assert_eq!(r.removed, ["a.txt"]);
+        assert!(dir.get("a.txt.orphans").unwrap().contains("mine"));
+    }
+
+    #[test]
+    fn failed_file_still_recorded() {
+        let mut dir = MemDir::default();
+        run(&dir, &["a", "b"], RunOptions::default());
+        let record = dir.get(RECORD).unwrap();
+        dir.1 = Some("a.txt");
+        let r = run(&dir, &["a", "b", "c"], RunOptions::default());
+        assert_eq!(r.conflicts.len(), 1);
+        assert!(r.conflicts[0].why.contains("unreadable"));
+        assert_eq!(r.written, ["c.txt"]);
+        let after = dir.get(RECORD).unwrap();
+        assert!(after.contains("c.txt") && after.contains("\"a.txt\""), "{after}");
+        assert_ne!(after, record);
+    }
+
+    #[test]
+    fn unreadable_record_and_dry_run() {
+        let dir = MemDir::default();
+        run(&dir, &["a"], RunOptions::default());
+        dir.set(RECORD, "{ not json");
+        let r = run(&dir, &["a"], RunOptions::default());
+        assert!(r.warnings.iter().any(|w| w.contains("unreadable")), "{:?}", r.warnings);
+        let before = dir.0.borrow().clone();
+        let r = run(&dir, &["a", "z"], RunOptions { dry_run: true, ..Default::default() });
+        assert_eq!(r.written, ["z.txt"]);
+        assert_eq!(*dir.0.borrow(), before);
     }
 }
