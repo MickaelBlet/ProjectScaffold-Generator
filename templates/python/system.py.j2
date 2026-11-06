@@ -9,7 +9,7 @@
 {% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm', 'mq'] %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
 {% set module = _py_id(name=system.name|snake) %}
-"""{% if system.binary %}Binary {{ system.binary.name }} of {{ project.name }}: its top-level modules, wired together and to the other
+"""{% if system.binary %}Binary {{ system.binary.name }} of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}: its top-level modules, wired together and to the other
 binaries{% else %}The top-level modules of {{ project.name }}, wired together{% endif %}.
 
     python -m {{ root }}.systems.{{ module }}    # Ctrl-C stops

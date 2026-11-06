@@ -3,7 +3,7 @@
 {% from '_py_value.j2' import py_value as _py_value %}
 {% from '_py_zero.j2' import py_zero as _py_zero %}
 {% include '_py_banner.j2' %}
-"""Types of the modules of {{ project.name }} (those of its dependencies included), by flat name
+"""Types of the modules of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }} (those of its dependencies included), by flat name
 (`Core_Sensor_Mode` for type Mode of module Core.Sensor); each module's class names its own ones."""
 from __future__ import annotations
 

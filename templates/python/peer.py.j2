@@ -4,7 +4,7 @@
 {% set binary = system.binary.name %}
 {% set faces = (system.proxies|map(attribute='interface')|list + system.stubs|map(attribute='interface')|list)|unique|list %}
 {% set generated = ['tcp', 'udp', 'http', 'websocket', 'shm', 'mq'] %}
-"""Stands in for binary {{ binary }} of {{ project.name }}, to test the other binaries: serves the calls
+"""Stands in for binary {{ binary }} of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}, to test the other binaries: serves the calls
 {{ binary }} receives, makes those it sends.
 
     python -m {{ ns_ }}.peers.{{ binary|snake }}    # from the python/ directory; Ctrl-C stops

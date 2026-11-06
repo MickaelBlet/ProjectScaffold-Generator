@@ -13,7 +13,7 @@
 {% set m = item %}
 {% set root = project.ident|snake %}
 {% set class = _py_class(e=m) %}
-"""Module {{ m.path }} of {{ project.name }}."""
+"""Module {{ m.path }} of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}."""
 from __future__ import annotations
 
 from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple  # noqa: F401

@@ -1,7 +1,7 @@
 {% from '_py_id.j2' import py_id as _py_id %}
 {% include '_py_banner.j2' %}
 {% set root = project.ident|snake %}
-"""Runs a system of {{ project.name }}: `python -m {{ root }}{% if systems|length > 1 %} <system>{% endif %}`."""
+"""Runs a system of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}: `python -m {{ root }}{% if systems|length > 1 %} <system>{% endif %}`."""
 from __future__ import annotations
 
 import importlib

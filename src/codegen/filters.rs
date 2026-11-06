@@ -92,8 +92,13 @@ pub fn doc_comment(text: &str, prefix: Option<&str>) -> String {
         return DROP.to_string();
     }
     let prefix = prefix.unwrap_or("/// ");
+    // A `//` line ending with `\` would go on to the next line (C, C++): closed with `//`.
+    let line_comment = prefix.trim_start().starts_with("//");
     text.split('\n')
-        .map(|l| format!("{prefix}{}", l.strip_suffix('\r').unwrap_or(l)).trim_end().to_string())
+        .map(|l| {
+            let l = format!("{prefix}{}", l.strip_suffix('\r').unwrap_or(l)).trim_end().to_string();
+            if line_comment && l.ends_with('\\') { format!("{l} //") } else { l }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -192,6 +197,8 @@ mod tests {
     fn doc() {
         assert_eq!(doc_comment("", None), DROP);
         assert_eq!(doc_comment("a\n\nb", Some("// ")), "// a\n//\n// b");
+        assert_eq!(doc_comment("C:\\\nx", None), "/// C:\\ //\n/// x");
+        assert_eq!(doc_comment("a\\", Some("# ")), "# a\\");
     }
 
     #[test]

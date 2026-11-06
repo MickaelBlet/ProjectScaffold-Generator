@@ -69,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Template filters `json` and `tojson` over a context entity holding itself (`project`, recursive types…) print `"<cycle>"` there: the generator crashed (stack overflow).
 - IDL: an annotation whose value is not computed (`@default(1/0)`, `@range(min=X)` of an unknown `X`…) is warned about, instead of silently left out; a constant left out tells why (`constant A left out: its value is not computed (division by zero)`); integer literals too large or octal ones with `8` / `9` (`089`) are errors there, instead of the largest integer and a decimal number.
 - `scaffold-gen --deps`: a dependency whose name has no letter nor digit (`_`) is an error: it was generated into the parent directory of the output.
+- Generated code: a description line ending with a backslash is closed with ` //` in `//` comments (the comment went on to the next line, commenting out the declaration below it, or failing `-Werror` builds); quotes and backslashes of the project's name and description are escaped in Python docstrings (they ended the docstring or made invalid escapes). Every built-in set.
 
 ### Security
 

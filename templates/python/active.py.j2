@@ -1,5 +1,5 @@
 {% include '_py_banner.j2' %}
-"""Thread of the active modules of {{ project.name }}: runs the calls of their in ports in their order."""
+"""Thread of the active modules of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}: runs the calls of their in ports in their order."""
 from __future__ import annotations
 
 import collections

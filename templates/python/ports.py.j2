@@ -1,5 +1,5 @@
 {% include '_py_banner.j2' %}
-"""Out ports of the modules of {{ project.name }}."""
+"""Out ports of the modules of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}."""
 from __future__ import annotations
 
 from typing import Any, Callable, Generic, List, TypeVar

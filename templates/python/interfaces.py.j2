@@ -3,7 +3,7 @@
 {% from '_py_params.j2' import py_params as _py_params %}
 {% from '_py_results.j2' import py_results as _py_results %}
 {% include '_py_banner.j2' %}
-"""Interfaces of {{ project.name }} (those of its dependencies included).
+"""Interfaces of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }} (those of its dependencies included).
 
 A call takes the inputs of its message (in and inout parameters) and gives back its return value then
 its out / inout parameters, as a tuple when there are several (as the proxies of `remote` do).

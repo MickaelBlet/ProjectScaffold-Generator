@@ -4,7 +4,8 @@
   line break of the template line, so no empty line is left for no description.
   Parameters:
     text: a description.
-    prefix: put before each line (trailing spaces of the line dropped).
+    prefix: put before each line (trailing spaces of the line dropped; a `//` line ending with a
+      backslash gets ` //`, else the comment would go on to the next line).
   Examples:
     text: "One sample\n\nin m/s", prefix: '/// ' -> /// One sample
                                                   ///
@@ -13,7 +14,9 @@
 {% macro doc_comment(text=none, prefix='/// ') %}
 {% if text %}
 {% for line in text.split('\n') %}
-{{ (prefix ~ line).rstrip() }}
+{% set text_line = (prefix ~ line).rstrip() %}
+{# A `//` line ending with a backslash would go on to the next line: closed with `//`. #}
+{{ text_line ~ (' //' if text_line.endswith('\\') and prefix.lstrip().startswith('//') else '') }}
 {% endfor %}
 {% endif %}
 {% endmacro %}

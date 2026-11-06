@@ -24,7 +24,7 @@
 {% from '_doc_comment.j2' import doc_comment as _doc_comment %}
 {% from '_transport_settings.j2' import transport_settings as _transport_settings %}
 {% include '_py_banner.j2' %}
-"""Links between the binaries of {{ project.name }}. The address of a link is the value of its environment
+"""Links between the binaries of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}. The address of a link is the value of its environment
 variable, else its default (as in C++): one for the client (the caller connects to it), one for the
 server (the callee listens on it)."""
 from __future__ import annotations

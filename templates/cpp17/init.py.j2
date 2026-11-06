@@ -9,7 +9,7 @@
 #}
 {% from '_project_identifier.j2' import project_identifier as _project_identifier %}
 {% include '_py_banner.j2' %}
-"""Python peers of the binaries of {{ project.name }}{% if project.description != '' %}: {{ project.description }}{% endif %}.
+"""Python peers of the binaries of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}{% if project.description != '' %}: {{ project.description|replace('\\', '\\\\')|replace('"', '\\"') }}{% endif %}.
 
 The peers (`peers`) stand in for a binary, to test the others: `python -m {{ _project_identifier() }}.peers.<binary>`
 from the python/ directory. `remote` holds a proxy, a handler and a stub per interface of the

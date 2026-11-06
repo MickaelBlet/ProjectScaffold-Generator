@@ -1,7 +1,7 @@
 {% from '_py_id.j2' import py_id as _py_id %}
 {% from '_py_value.j2' import py_value as _py_value %}
 {% include '_py_banner.j2' %}
-"""Constants of {{ project.name }}, those whose types the Python peers have (data.py)."""
+"""Constants of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}, those whose types the Python peers have (data.py)."""
 from __future__ import annotations
 
 from . import data  # noqa: F401 - types of the values

@@ -7,7 +7,7 @@
 {% from '_py_zero.j2' import py_zero as _py_zero %}
 {% set ns = namespace() %}
 {% include '_py_banner.j2' %}
-"""Types of {{ project.name }} (those of its dependencies included), with their encoding (wire.py)."""
+"""Types of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }} (those of its dependencies included), with their encoding (wire.py)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field as _field

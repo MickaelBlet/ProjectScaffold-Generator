@@ -1,2 +1,2 @@
 {% include '_py_banner.j2' %}
-"""The top level of {{ project.name }}{% if binaries|length > 0 %}, one system per binary{% endif %}: `python -m {{ project.ident|snake }}.systems.<system>`."""
+"""The top level of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}{% if binaries|length > 0 %}, one system per binary{% endif %}: `python -m {{ project.ident|snake }}.systems.<system>`."""

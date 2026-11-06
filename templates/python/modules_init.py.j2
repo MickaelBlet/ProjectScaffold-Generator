@@ -1,2 +1,2 @@
 {% include '_py_banner.j2' %}
-"""Modules of {{ project.name }}, one Python module each (a module with children is a package)."""
+"""Modules of {{ project.name|replace('\\', '\\\\')|replace('"', '\\"') }}, one Python module each (a module with children is a package)."""
