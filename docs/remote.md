@@ -64,6 +64,8 @@ When a project has [binaries](https://github.com/MickaelBlet/ProjectScaffold-Vie
 
 Bounds (`string<16>`, `vector<T, 8>`) are checked when encoding and decoding: a value over its bound throws `remote::Error` / raises `RemoteError`.
 
+A received frame is refused the same way when its payload is over 64 MiB, when it ends before its values do, when containers are nested more than 100 deep (recursive types), when a container counts more items than bytes are left (beyond 65536: only empty structs take no byte), or when a string is not UTF-8 (Python).
+
 ### Frames
 
 A frame is a 16-byte header, then a payload:

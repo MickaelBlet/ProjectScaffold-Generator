@@ -117,6 +117,10 @@ class Writer:
             item(self, v)
 
 
+# Items of a container beyond the bytes left (as wire.hpp's Reader::maxEmptyItems).
+MAX_EMPTY_ITEMS = 1 << 16
+
+
 class Reader:
     """Decodes values, as Writer encodes them."""
 
@@ -155,10 +159,16 @@ class Reader:
     def _count(self, bound: Optional[int]) -> int:
         n = self.uint32()
         _check(n, bound)
+        # Each item takes a byte but those of empty structs: more is a broken or hostile frame.
+        if n > len(self._data) - self._pos and n > MAX_EMPTY_ITEMS:
+            raise RemoteError('count over the frame')
         return n
 
     def string(self, bound: Optional[int] = None) -> str:
-        return self.bytes(bound).decode('utf-8')
+        try:
+            return self.bytes(bound).decode('utf-8')
+        except UnicodeDecodeError:
+            raise RemoteError('invalid UTF-8 string') from None
 
     def bytes(self, bound: Optional[int] = None) -> bytes:
         return self._take(self._count(bound))

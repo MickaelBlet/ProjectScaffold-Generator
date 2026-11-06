@@ -94,8 +94,8 @@ private:
 
 class Reader {
 public:
-    Reader(const uint8_t* data, std::size_t size) : data_(data), size_(size), pos_(0) {}
-    explicit Reader(const Bytes& bytes) : data_(dataOf(bytes)), size_(bytes.size()), pos_(0) {}
+    Reader(const uint8_t* data, std::size_t size) : data_(data), size_(size), pos_(0), depth_(0) {}
+    explicit Reader(const Bytes& bytes) : data_(dataOf(bytes)), size_(bytes.size()), pos_(0), depth_(0) {}
 
     void raw(void* out, std::size_t size)
     {
@@ -120,6 +120,38 @@ public:
 
     std::size_t remaining() const { return size_ - pos_; }
 
+    /// Containers nested deeper (recursive types) are refused before the stack overflows.
+    static const std::size_t maxDepth = 100;
+    /// More items than bytes left (each item takes a byte but those of empty structs) beyond
+    /// this many is a broken or hostile frame.
+    static const std::size_t maxEmptyItems = 1u << 16;
+
+    /// The count of a container's items.
+    std::size_t items()
+    {
+        const std::size_t n = count();
+        if (n > remaining() && n > maxEmptyItems) throw Error("count over the frame");
+        return n;
+    }
+
+    /// Held while a container is decoded: one level deeper.
+    class Nested {
+    public:
+        explicit Nested(Reader& r) : r_(r)
+        {
+            if (++r_.depth_ > maxDepth) {
+                --r_.depth_;
+                throw Error("frame nested too deep");
+            }
+        }
+        ~Nested() { --r_.depth_; }
+
+    private:
+        Nested(const Nested&);
+        Nested& operator=(const Nested&);
+        Reader& r_;
+    };
+
     /// Throws unless everything was read.
     void end() const
     {
@@ -130,6 +162,7 @@ private:
     const uint8_t* data_;
     std::size_t size_;
     std::size_t pos_;
+    std::size_t depth_;
 };
 
 // encode(Writer&, const T&) and decode(Reader&, T&) for each type; those of the types of the
@@ -205,9 +238,10 @@ void encode(Writer& w, const std::vector<T>& v)
 template <class T>
 void decode(Reader& r, std::vector<T>& v)
 {
-    const std::size_t n = r.count();
+    const Reader::Nested nested(r);
+    const std::size_t n = r.items();
     v.clear();
-    v.reserve(std::min(n, r.remaining()));
+    v.reserve(std::min(n, r.remaining() / sizeof(T)));
     for (std::size_t i = 0; i < n; ++i) {
         v.push_back(T());
         decode(r, v.back());
@@ -223,7 +257,8 @@ void encode(Writer& w, const std::list<T>& v)
 template <class T>
 void decode(Reader& r, std::list<T>& v)
 {
-    const std::size_t n = r.count();
+    const Reader::Nested nested(r);
+    const std::size_t n = r.items();
     v.clear();
     for (std::size_t i = 0; i < n; ++i) {
         v.push_back(T());
@@ -240,7 +275,8 @@ void encode(Writer& w, const std::set<T>& v)
 template <class T>
 void decode(Reader& r, std::set<T>& v)
 {
-    const std::size_t n = r.count();
+    const Reader::Nested nested(r);
+    const std::size_t n = r.items();
     v.clear();
     for (std::size_t i = 0; i < n; ++i) {
         T x = T();
@@ -269,6 +305,7 @@ void encode(Writer& w, const scaffold::Optional<T>& v)
 template <class T>
 void decode(Reader& r, scaffold::Optional<T>& v)
 {
+    const Reader::Nested nested(r);
     if (r.number<uint8_t>()) {
         T x = T();
         decode(r, x);
@@ -290,7 +327,8 @@ void encode(Writer& w, const std::map<K, V>& v)
 template <class K, class V>
 void decode(Reader& r, std::map<K, V>& v)
 {
-    const std::size_t n = r.count();
+    const Reader::Nested nested(r);
+    const std::size_t n = r.items();
     v.clear();
     for (std::size_t i = 0; i < n; ++i) {
         K key = K();
