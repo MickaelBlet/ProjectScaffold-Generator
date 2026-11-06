@@ -55,6 +55,7 @@ public:
     ~Mutex() { pthread_mutex_destroy(&mutex_); }
     void lock() { pthread_mutex_lock(&mutex_); }
     void unlock() { pthread_mutex_unlock(&mutex_); }
+    pthread_mutex_t* native() { return &mutex_; }
 
 private:
     Mutex(const Mutex&);
@@ -74,6 +75,31 @@ private:
     Lock& operator=(const Lock&);
 
     Mutex& mutex_;
+};
+
+/// A pthread condition variable; not copyable.
+class Condition {
+public:
+    Condition() { pthread_cond_init(&cond_, 0); }
+    ~Condition() { pthread_cond_destroy(&cond_); }
+    void wait(Mutex& mutex) { pthread_cond_wait(&cond_, mutex.native()); }
+    /// Waits `ms` milliseconds at most.
+    void waitFor(Mutex& mutex, long long ms)
+    {
+        timespec at;
+        clock_gettime(CLOCK_REALTIME, &at);
+        const long long ns = at.tv_nsec + ms % 1000 * 1000000LL;
+        at.tv_sec += static_cast<time_t>(ms / 1000 + ns / 1000000000LL);
+        at.tv_nsec = static_cast<long>(ns % 1000000000LL);
+        pthread_cond_timedwait(&cond_, mutex.native(), &at);
+    }
+    void notifyAll() { pthread_cond_broadcast(&cond_); }
+
+private:
+    Condition(const Condition&);
+    Condition& operator=(const Condition&);
+
+    pthread_cond_t cond_;
 };
 
 /// Client end of a link: sends call frames, receives their replies.
@@ -125,15 +151,17 @@ Server* serve(const std::string& transport, const std::string& address, Handler&
 /// Blocks until SIGINT or SIGTERM.
 void waitForStop();
 
-/// Numbered calls over a channel, one at a time: what proxies are made of.
+/// Numbered calls over a channel, from any thread (several at once: each waits for the reply of its
+/// own id): what proxies are made of.
 class Caller {
 public:
-    Caller() : ack_(false), timeoutMs_(5000), next_(0) {}
+    Caller() : ack_(false), timeoutMs_(5000), next_(0), calls_(0) {}
 
-    /// Takes `channel` (deleted with the caller).
+    /// Takes `channel` (deleted with the caller), once the calls under way are over.
     void open(Channel* channel, bool ack, long timeoutMs)
     {
         Lock lock(mutex_);
+        while (calls_) idle_.wait(mutex_);
         channel_.reset(channel);
         ack_ = ack;
         timeoutMs_ = timeoutMs;
@@ -149,15 +177,32 @@ public:
     /// result, or the link acknowledges calls. Returns the payload of the reply (empty without).
     Bytes call(uint16_t message, const Bytes& inputs, bool result)
     {
-        Lock lock(mutex_);
-        if (!channel_.get()) throw Error("remote call on a proxy not opened");
-        const bool wait = result || ack_;
+        Channel* channel;
         Header h;
+        long timeoutMs;
+        bool wait;
+        {
+            // Not held during the call: calls made meanwhile (from other threads, or from the
+            // handler of a call received during it) go on.
+            Lock lock(mutex_);
+            if (!channel_.get()) throw Error("remote call on a proxy not opened");
+            channel = channel_.get();
+            wait = result || ack_;
+            timeoutMs = timeoutMs_;
+            h.id = ++next_;
+            ++calls_;
+        }
         h.kind = Header::call;
         h.flags = wait ? Header::wantReply : 0;
         h.message = message;
-        h.id = ++next_;
-        const Bytes reply = channel_->exchange(frame(h, inputs), wait, timeoutMs_);
+        Bytes reply;
+        try {
+            reply = channel->exchange(frame(h, inputs), wait, timeoutMs);
+        } catch (...) {
+            done();
+            throw;
+        }
+        done();
         if (!wait) return Bytes();
         const Header r = header(reply);
         Bytes out = payload(reply);
@@ -180,11 +225,21 @@ private:
     Caller(const Caller&);
     Caller& operator=(const Caller&);
 
+    /// A call is over.
+    void done()
+    {
+        Lock lock(mutex_);
+        if (--calls_ == 0) idle_.notifyAll();
+    }
+
     mutable Mutex mutex_;
+    Condition idle_;
     Owned<Channel> channel_;
     bool ack_;
     long timeoutMs_;
     uint32_t next_;
+    /// Calls under way.
+    int calls_;
 };
 
 /// Declared exception `e` of a called method (`index` in the `raises` of its message), to send back.

@@ -61,7 +61,8 @@ std::unique_ptr<Server> serve(const std::string& transport, const std::string& a
 /// Blocks until SIGINT or SIGTERM.
 void waitForStop();
 
-/// Numbered calls over a channel, one at a time: what proxies are made of.
+/// Numbered calls over a channel, from any thread (several at once: each waits for the reply of its
+/// own id): what proxies are made of.
 class Caller {
 public:
     void open(std::unique_ptr<Channel> channel, bool ack, std::chrono::milliseconds timeout)
@@ -82,15 +83,24 @@ public:
     /// result, or the link acknowledges calls. Returns the payload of the reply (empty without).
     Bytes call(std::uint16_t message, const Bytes& inputs, bool result)
     {
-        const std::lock_guard<std::mutex> lock(mutex_);
-        if (!channel_) throw Error("remote call on a proxy not opened");
-        const bool wait = result || ack_;
+        std::shared_ptr<Channel> channel;
         Header h;
+        std::chrono::milliseconds timeout;
+        bool wait;
+        {
+            // Not held during the call: calls made meanwhile (from other threads, or from the
+            // handler of a call received during it) go on.
+            const std::lock_guard<std::mutex> lock(mutex_);
+            if (!channel_) throw Error("remote call on a proxy not opened");
+            channel = channel_;
+            wait = result || ack_;
+            timeout = timeout_;
+            h.id = ++next_;
+        }
         h.kind = Header::call;
         h.flags = wait ? Header::wantReply : 0;
         h.message = message;
-        h.id = ++next_;
-        const Bytes reply = channel_->exchange(frame(h, inputs), wait, timeout_);
+        const Bytes reply = channel->exchange(frame(h, inputs), wait, timeout);
         if (!wait) return {};
         const Header r = header(reply);
         Bytes out = payload(reply);
@@ -111,7 +121,7 @@ public:
 
 private:
     mutable std::mutex mutex_;
-    std::unique_ptr<Channel> channel_;
+    std::shared_ptr<Channel> channel_;
     bool ack_ = false;
     std::chrono::milliseconds timeout_{5000};
     std::uint32_t next_ = 0;

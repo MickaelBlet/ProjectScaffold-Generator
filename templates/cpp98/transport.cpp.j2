@@ -27,6 +27,7 @@
 #include <cstring>
 #include <iostream>
 #include <list>
+#include <map>
 #include <vector>
 
 {% set remoteNs = project.ident|snake ~ '::remote' %}
@@ -151,8 +152,25 @@ private:
     addrinfo* list_;
 };
 
+bool await(int fd, Millis deadline, const Flag* stop, short events = POLLIN);
+
+/// Connects `fd` to `a` before `deadline`.
+bool connectBy(int fd, const addrinfo* a, Millis deadline)
+{
+    const int flags = ::fcntl(fd, F_GETFL, 0);
+    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    bool connected = ::connect(fd, a->ai_addr, a->ai_addrlen) == 0;
+    if (!connected && errno == EINPROGRESS && await(fd, deadline, 0, POLLOUT)) {
+        int error = 0;
+        socklen_t size = sizeof error;
+        connected = ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &size) == 0 && error == 0;
+    }
+    ::fcntl(fd, F_SETFL, flags);
+    return connected;
+}
+
 /// Socket connected to `address`, or bound to it (and listening for a stream) when `bind`; to close.
-int openSocket(const std::string& address, int type, bool bind)
+int openSocket(const std::string& address, int type, bool bind, Millis deadline = forever)
 {
     const HostPort at = split(address);
     addrinfo hints;
@@ -174,7 +192,7 @@ int openSocket(const std::string& address, int type, bool bind)
             ::setsockopt(fd.get(), SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
             if (::bind(fd.get(), a->ai_addr, a->ai_addrlen) != 0) continue;
             if (type == SOCK_STREAM && ::listen(fd.get(), 16) != 0) continue;
-        } else if (::connect(fd.get(), a->ai_addr, a->ai_addrlen) != 0) {
+        } else if (!connectBy(fd.get(), a, deadline)) {
             continue;
         }
         return fd.release();
@@ -182,8 +200,9 @@ int openSocket(const std::string& address, int type, bool bind)
     throw failure((bind ? "cannot listen on " : "cannot connect to ") + address);
 }
 
-/// Waits until `fd` has input: false at `deadline`, or when `stop` is set.
-bool await(int fd, Millis deadline, const Flag* stop)
+/// Waits until `fd` has input (or room for output with POLLOUT): false at `deadline`, or when
+/// `stop` is set.
+bool await(int fd, Millis deadline, const Flag* stop, short events)
 {
     for (;;) {
         if (stop && stop->get()) return false;
@@ -191,7 +210,7 @@ bool await(int fd, Millis deadline, const Flag* stop)
         if (left <= 0) return false;
         pollfd p;
         p.fd = fd;
-        p.events = POLLIN;
+        p.events = events;
         p.revents = 0;
         const int rc = ::poll(&p, 1, static_cast<int>(std::min<Millis>(left + 1, 100)));
         if (rc > 0) return true;
@@ -199,13 +218,18 @@ bool await(int fd, Millis deadline, const Flag* stop)
     }
 }
 
-void sendAll(int fd, const void* data, std::size_t size)
+/// Sends everything before `deadline` or `stop` (a peer not reading blocks no one past them).
+void sendAll(int fd, const void* data, std::size_t size, Millis deadline = forever, const Flag* stop = 0)
 {
     const char* p = static_cast<const char*>(data);
     while (size) {
-        const ssize_t n = ::send(fd, p, size, sendFlags);
+        const ssize_t n = ::send(fd, p, size, sendFlags | MSG_DONTWAIT);
         if (n < 0) {
             if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if (!await(fd, deadline, stop, POLLOUT)) throw Error(stop && stop->get() ? "stopped" : "send timed out");
+                continue;
+            }
             throw failure("send");
         }
         p += n;
@@ -213,8 +237,14 @@ void sendAll(int fd, const void* data, std::size_t size)
     }
 }
 
-void sendAll(int fd, const std::string& text) { sendAll(fd, text.data(), text.size()); }
-void sendAll(int fd, const Bytes& bytes) { sendAll(fd, dataOf(bytes), bytes.size()); }
+void sendAll(int fd, const std::string& text, Millis deadline = forever, const Flag* stop = 0)
+{
+    sendAll(fd, text.data(), text.size(), deadline, stop);
+}
+void sendAll(int fd, const Bytes& bytes, Millis deadline = forever, const Flag* stop = 0)
+{
+    sendAll(fd, dataOf(bytes), bytes.size(), deadline, stop);
+}
 
 /// Buffered input of a stream socket.
 class Input {
@@ -442,7 +472,8 @@ std::string wsFrame(uint8_t opcode, const uint8_t* data, std::size_t size, Rando
 
 /// The next WebSocket message (fragments joined), answering pings: false at `deadline` or on
 /// `stop`; throws Closed on a close frame.
-bool wsRead(int fd, Input& in, Bytes& message, Random* mask, Millis deadline, const Flag* stop)
+bool wsRead(int fd, Input& in, Bytes& message, Random* mask, Millis deadline, const Flag* stop,
+            Mutex* sending = 0)
 {
     message.clear();
     for (;;) {
@@ -458,7 +489,10 @@ bool wsRead(int fd, Input& in, Bytes& message, Random* mask, Millis deadline, co
             size = 0;
             for (std::size_t i = 0; i < more.size(); ++i) size = size << 8 | static_cast<uint8_t>(more[i]);
         }
-        if (size > Header::size + Header::maxLength) throw Error("WebSocket message too large");
+        const bool control = (b0 & 0x08) != 0;
+        // Control frames: whole, 125 bytes at most (RFC 6455).
+        if (control && (size > 125 || !(b0 & 0x80))) throw Error("bad WebSocket control frame");
+        if (message.size() + size > Header::size + Header::maxLength) throw Error("WebSocket message too large");
         std::string key;
         if ((b1 & 0x80) && !in.take(4, key, deadline, stop)) return false;
         std::string data;
@@ -468,9 +502,18 @@ bool wsRead(int fd, Input& in, Bytes& message, Random* mask, Millis deadline, co
         switch (b0 & 0x0f) {
         case close:
             throw Closed();
-        case ping:
-            sendAll(fd, wsFrame(pong, reinterpret_cast<const uint8_t*>(data.data()), data.size(), mask));
+        case ping: {
+            if (sending) sending->lock();
+            try {
+                sendAll(fd, wsFrame(pong, reinterpret_cast<const uint8_t*>(data.data()), data.size(), mask), deadline,
+                        stop);
+            } catch (...) {
+                if (sending) sending->unlock();
+                throw;
+            }
+            if (sending) sending->unlock();
             break;
+        }
         case pong:
             break;
         case continuation:
@@ -590,11 +633,16 @@ std::string shmName(const std::string& address) { return address.compare(0, 1, "
 /// Shared memory mapped in this process.
 class Mapping {
 public:
-    Mapping(void* data, std::size_t size) : data_(static_cast<uint8_t*>(data)), size_(size) {}
+    /// `capacity`: of each ring; 0 to read it from the segment (fixed from then on: the other process
+    /// cannot move the rings).
+    Mapping(void* data, std::size_t size, uint32_t capacity)
+        : data_(static_cast<uint8_t*>(data)), size_(size), capacity_(capacity ? capacity : load(data_ + 4))
+    {
+    }
     ~Mapping() { ::munmap(data_, size_); }
 
     uint8_t* data() const { return data_; }
-    uint32_t capacity() const { return load(data_ + 4); }
+    uint32_t capacity() const { return capacity_; }
     Ring ring(int k) const { return Ring(data_ + ringHeader + k * (ringHeader + capacity()), capacity()); }
 
 private:
@@ -603,14 +651,15 @@ private:
 
     uint8_t* data_;
     std::size_t size_;
+    uint32_t capacity_;
 };
 
 /// The shared memory of `fd`, mapped; to delete.
-Mapping* map(int fd, std::size_t size)
+Mapping* map(int fd, std::size_t size, uint32_t capacity = 0)
 {
     void* p = ::mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (p == MAP_FAILED) throw failure("mmap");
-    return new Mapping(p, size);
+    return new Mapping(p, size, capacity);
 }
 
 #if defined(__linux__)
@@ -697,34 +746,101 @@ bool mqReceive(const Queue& q, Bytes& frame, Millis deadline, const Flag* stop)
 
 // Clients.
 
-/// Client exchanging whole frames; drops its connection on any failure.
+/// Client exchanging whole frames, for calls made from several threads at once: frames are sent one
+/// at a time; one waiting call at a time reads the replies, handing each to the call of its id (a
+/// table of the calls waiting). The connection is dropped on a failure, once no call reads it.
 class FrameChannel : public Channel {
 public:
+    FrameChannel() : reading_(false), broken_(false) {}
+
     Bytes exchange(const Bytes& frame, bool wait, long timeoutMs)
     {
         const Millis deadline = now() + timeoutMs;
+        const uint32_t id = header(frame).id;
+        Lock lock(mutex_);
+        // Waiting before the frame is sent: its reply may be read by another call.
+        if (wait) waiting_[id] = Reply();
         try {
+            if (broken_ && !reading_) {
+                drop();
+                broken_ = false;
+            }
             open(deadline);
             send(frame, deadline);
-            if (!wait) return Bytes();
-            const uint32_t id = header(frame).id;
-            Bytes reply;
-            for (;;) {
-                if (!receive(reply, deadline)) throw Error("no reply within " + toString(timeoutMs) + " ms");
-                // Replies of calls given up on are skipped.
-                if (header(reply).id == id) return reply;
-            }
         } catch (...) {
-            drop();
+            waiting_.erase(id);
+            broken_ = true;
             throw;
+        }
+        if (!wait) return Bytes();
+        for (;;) {
+            Reply& mine = waiting_[id];
+            if (mine.got) {
+                Bytes reply;
+                reply.swap(mine.frame);
+                waiting_.erase(id);
+                return reply;
+            }
+            const Millis left = deadline - now();
+            if (left <= 0) {
+                // Its reply, coming later, is skipped.
+                waiting_.erase(id);
+                throw Error("no reply within " + toString(timeoutMs) + " ms");
+            }
+            if (reading_) {
+                ready_.waitFor(mutex_, std::min<Millis>(left, 100));
+                continue;
+            }
+            reading_ = true;
+            mutex_.unlock();
+            Bytes reply;
+            bool got = false;
+            try {
+                got = receive(reply, deadline);
+            } catch (...) {
+                mutex_.lock();
+                reading_ = false;
+                broken_ = true;
+                waiting_.erase(id);
+                ready_.notifyAll();
+                throw;
+            }
+            mutex_.lock();
+            reading_ = false;
+            if (got) {
+                const std::map<uint32_t, Reply>::iterator to = waiting_.find(header(reply).id);
+                if (to != waiting_.end()) {
+                    to->second.frame.swap(reply);
+                    to->second.got = true;
+                }
+            }
+            ready_.notifyAll();
         }
     }
 
 protected:
+    /// Called with `mutex_` held, as `send` and `drop`; `receive` is called without it, by one call
+    /// at a time.
     virtual void open(Millis deadline) = 0;
     virtual void send(const Bytes& frame, Millis deadline) = 0;
     virtual bool receive(Bytes& frame, Millis deadline) = 0;
     virtual void drop() = 0;
+
+    /// Held to send.
+    Mutex mutex_;
+
+private:
+    struct Reply {
+        Reply() : got(false) {}
+        bool got;
+        Bytes frame;
+    };
+
+    Condition ready_;
+    /// Calls waiting for their reply, by id.
+    std::map<uint32_t, Reply> waiting_;
+    bool reading_;
+    bool broken_;
 };
 
 class TcpChannel : public FrameChannel {
@@ -732,13 +848,13 @@ public:
     explicit TcpChannel(const std::string& address) : address_(address) {}
 
 private:
-    void open(Millis)
+    void open(Millis deadline)
     {
         if (fd_.valid()) return;
-        fd_.reset(openSocket(address_, SOCK_STREAM, false));
+        fd_.reset(openSocket(address_, SOCK_STREAM, false, deadline));
         in_.reset(new Input(fd_.get()));
     }
-    void send(const Bytes& frame, Millis) { sendAll(fd_.get(), frame); }
+    void send(const Bytes& frame, Millis deadline) { sendAll(fd_.get(), frame, deadline); }
     bool receive(Bytes& frame, Millis deadline) { return readFrame(*in_, frame, deadline, 0); }
     void drop()
     {
@@ -780,49 +896,38 @@ private:
     Fd fd_;
 };
 
-/// One POST per call, on a connection of its own.
-class HttpChannel : public FrameChannel {
+/// One POST per call, on a connection of its own (calls from several threads at once share nothing).
+class HttpChannel : public Channel {
 public:
-    HttpChannel(const std::string& address, const std::string& path) : address_(address), path_(path), replied_(false)
-    {
-    }
+    HttpChannel(const std::string& address, const std::string& path) : address_(address), path_(path) {}
 
-private:
-    void open(Millis) {}
-    void send(const Bytes& frame, Millis deadline)
+    Bytes exchange(const Bytes& frame, bool wait, long timeoutMs)
     {
-        replied_ = false;
-        Fd fd(openSocket(address_, SOCK_STREAM, false));
-        sendAll(fd.get(), "POST " + path_ + " HTTP/1.1\r\nHost: " + split(address_).host +
-                              "\r\nContent-Type: application/octet-stream\r\nContent-Length: " +
-                              toString(frame.size()) + "\r\nConnection: close\r\n\r\n");
-        sendAll(fd.get(), frame);
+        const Millis deadline = now() + timeoutMs;
+        Fd fd(openSocket(address_, SOCK_STREAM, false, deadline));
+        sendAll(fd.get(),
+                "POST " + path_ + " HTTP/1.1\r\nHost: " + split(address_).host +
+                    "\r\nContent-Type: application/octet-stream\r\nContent-Length: " + toString(frame.size()) +
+                    "\r\nConnection: close\r\n\r\n",
+                deadline);
+        sendAll(fd.get(), frame, deadline);
         Input in(fd.get());
         std::string head;
         if (!in.until("\r\n\r\n", head, 16384, deadline, 0)) throw Error("no HTTP response in time");
         const std::string status = head.size() > 12 ? head.substr(9, 3) : "";
         std::string body;
         if (!in.take(contentLength(head), body, deadline, 0)) throw Error("no HTTP response in time");
-        if (status == "200") {
-            reply_ = toBytes(body);
-            replied_ = true;
-        } else if (status != "204") {
-            throw Error("HTTP " + status + " " + body);
-        }
+        if (status != "200" && status != "204") throw Error("HTTP " + status + " " + body);
+        if (!wait) return Bytes();
+        Bytes reply = toBytes(body);
+        if (status != "200" || header(reply).id != header(frame).id)
+            throw Error("no reply within " + toString(timeoutMs) + " ms");
+        return reply;
     }
-    bool receive(Bytes& frame, Millis)
-    {
-        if (!replied_) return false;
-        frame.swap(reply_);
-        replied_ = false;
-        return true;
-    }
-    void drop() { replied_ = false; }
 
+private:
     std::string address_;
     std::string path_;
-    Bytes reply_;
-    bool replied_;
 };
 
 class WebSocketChannel : public FrameChannel {
@@ -833,14 +938,15 @@ private:
     void open(Millis deadline)
     {
         if (fd_.valid()) return;
-        fd_.reset(openSocket(address_, SOCK_STREAM, false));
+        fd_.reset(openSocket(address_, SOCK_STREAM, false, deadline));
         in_.reset(new Input(fd_.get()));
         uint8_t nonce[16];
         for (std::size_t i = 0; i < sizeof nonce; ++i) nonce[i] = static_cast<uint8_t>(random_.next() & 0xff);
         const std::string key = base64(nonce, sizeof nonce);
         sendAll(fd_.get(), "GET " + path_ + " HTTP/1.1\r\nHost: " + split(address_).host +
                                "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " + key +
-                               "\r\nSec-WebSocket-Version: 13\r\n\r\n");
+                               "\r\nSec-WebSocket-Version: 13\r\n\r\n",
+                deadline);
         std::string head;
         if (!in_->until("\r\n\r\n", head, 16384, deadline, 0)) throw Error("no WebSocket handshake in time");
         std::string accept;
@@ -848,11 +954,15 @@ private:
             accept != acceptKey(key))
             throw Error("WebSocket handshake refused");
     }
-    void send(const Bytes& frame, Millis)
+    void send(const Bytes& frame, Millis deadline)
     {
-        sendAll(fd_.get(), wsFrame(binary, dataOf(frame), frame.size(), &random_));
+        sendAll(fd_.get(), wsFrame(binary, dataOf(frame), frame.size(), &random_), deadline);
     }
-    bool receive(Bytes& frame, Millis deadline) { return wsRead(fd_.get(), *in_, frame, &random_, deadline, 0); }
+    bool receive(Bytes& frame, Millis deadline)
+    {
+        // Pongs are sent as the calls are, under mutex_ (which also guards the mask's random numbers).
+        return wsRead(fd_.get(), *in_, frame, &random_, deadline, 0, &mutex_);
+    }
     void drop()
     {
         in_.reset();
@@ -1068,7 +1178,12 @@ public:
     {
         while (await(listener_.get(), forever, &stop_)) {
             const int fd = ::accept(listener_.get(), 0, 0);
-            if (fd < 0) continue;
+            if (fd < 0) {
+                // Out of descriptors or memory: the listener stays readable, pause rather than spin.
+                if (errno != EINTR && errno != EAGAIN && errno != ECONNABORTED) ::usleep(100000);
+                continue;
+            }
+            ::fcntl(fd, F_SETFD, FD_CLOEXEC);
             configure(fd, SOCK_STREAM);
             spawn(new Connection(*this, fd));
         }
@@ -1104,7 +1219,7 @@ void tcpSession(int fd, Handler& handler, const Flag& stop)
     Bytes frame;
     Bytes reply;
     while (readFrame(in, frame, forever, &stop))
-        if (handler.handle(frame, reply)) sendAll(fd, reply);
+        if (handler.handle(frame, reply)) sendAll(fd, reply, forever, &stop);
 }
 
 std::string httpResponse(const std::string& status, const std::string& body, const std::string& type)
@@ -1134,7 +1249,7 @@ void httpSession(int fd, Handler& handler, const Flag& stop)
                 response = httpResponse("400 Bad Request", e.what(), "text/plain");
             }
         }
-        sendAll(fd, response);
+        sendAll(fd, response, forever, &stop);
         std::string connection;
         if (headerValue(head, "connection", connection) && lower(connection) == "close") return;
     }
@@ -1147,15 +1262,17 @@ void webSocketSession(int fd, Handler& handler, const Flag& stop)
     if (!in.until("\r\n\r\n", head, 16384, forever, &stop)) return;
     std::string key;
     if (!headerValue(head, "sec-websocket-key", key) || head.compare(0, 4, "GET ") != 0) {
-        sendAll(fd, httpResponse("400 Bad Request", "WebSocket only", "text/plain"));
+        sendAll(fd, httpResponse("400 Bad Request", "WebSocket only", "text/plain"), forever, &stop);
         return;
     }
     sendAll(fd, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " +
-                    acceptKey(key) + "\r\n\r\n");
+                    acceptKey(key) + "\r\n\r\n",
+            forever, &stop);
     Bytes message;
     Bytes reply;
     while (wsRead(fd, in, message, 0, forever, &stop))
-        if (handler.handle(message, reply)) sendAll(fd, wsFrame(binary, dataOf(reply), reply.size(), 0));
+        if (handler.handle(message, reply))
+            sendAll(fd, wsFrame(binary, dataOf(reply), reply.size(), 0), forever, &stop);
 }
 
 class UdpServer : public Threads {
@@ -1206,7 +1323,7 @@ public:
         if (!fd.valid()) throw failure("cannot create shared memory " + name_);
         const std::size_t size = shmSize(capacity);
         if (::ftruncate(fd.get(), static_cast<off_t>(size)) != 0) throw failure("ftruncate");
-        mapping_.reset(map(fd.get(), size));
+        mapping_.reset(map(fd.get(), size, capacity));
         store(mapping_->data() + 4, capacity);
         store(mapping_->data(), shmMagic);
         spawn(new Loop<ShmServer>(*this));
@@ -1225,14 +1342,12 @@ public:
         Bytes frame;
         Bytes reply;
         while (waitFor(Pop(calls, frame), forever, &stop_)) {
-            bool answered = false;
             try {
-                answered = handler_.handle(frame, reply);
-            } catch (const Error&) {
-                continue;
+                // A reply finding no room within a second is lost: the client gave up on it.
+                if (handler_.handle(frame, reply)) waitFor(Push(replies, reply), now() + 1000, &stop_);
+            } catch (const std::exception&) {
+                // Not a frame, or a reply larger than the ring: the next call is served.
             }
-            // A reply finding no room within a second is lost: the client gave up on it.
-            if (answered) waitFor(Push(replies, reply), now() + 1000, &stop_);
         }
     }
 
@@ -1268,17 +1383,15 @@ public:
         Bytes frame;
         Bytes reply;
         while (mqReceive(calls_, frame, forever, &stop_)) {
-            bool answered = false;
             try {
-                answered = handler_.handle(frame, reply);
-            } catch (const Error&) {
-                continue;
+                if (!handler_.handle(frame, reply)) continue;
+                if (reply.size() > replies_.messageSize())
+                    reply = errorFrame(header(frame).id, "reply larger than the messages of the message queue");
+                // A reply finding no room within a second is lost: the client gave up on it.
+                mqSend(replies_, reply, now() + 1000, &stop_);
+            } catch (const std::exception&) {
+                // Not a frame, or the reply could not be sent: the next call is served.
             }
-            if (!answered) continue;
-            if (reply.size() > replies_.messageSize())
-                reply = errorFrame(header(frame).id, "reply larger than the messages of the message queue");
-            // A reply finding no room within a second is lost: the client gave up on it.
-            mqSend(replies_, reply, now() + 1000, &stop_);
         }
     }
 

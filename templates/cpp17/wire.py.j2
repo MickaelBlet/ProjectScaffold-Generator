@@ -68,7 +68,7 @@ class Writer:
     def _number(self, kind: str, value: Any) -> None:
         try:
             self.data += _STRUCTS[kind].pack(value)
-        except struct.error as e:
+        except (struct.error, OverflowError) as e:
             raise RemoteError(f'{kind} {value!r}: {e}') from None
 
     def bool(self, value: bool) -> None:

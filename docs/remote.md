@@ -42,6 +42,7 @@ When a project has [binaries](https://github.com/MickaelBlet/ProjectScaffold-Vie
 
 - A call waits for its reply when it has a result (return value, `out` / `inout` parameters) or its link has `ack.required`, within `ack.timeoutMs` (default 5000 ms). Otherwise it is sent and forgotten.
 - Failures (timeout, transport, an exception in the called binary) throw `remote::Error` / raise `RemoteError`.
+- A proxy may be called from several threads at once, and from the handler of a call it receives: each call waits for the reply of its own id. The timeout bounds the whole call: connecting, sending (a server that stops reading does not block the caller past it) and waiting.
 - The exceptions a message `raises` come back as such, thrown by the proxy: `catch (const Busy&)` / `except data.Busy`.
 
 ## Wire format

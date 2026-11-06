@@ -58,6 +58,7 @@ public:
         pthread_mutex_lock(&mutex_);
         stopping_ = true;
         pthread_cond_broadcast(&ready_);
+        pthread_cond_broadcast(&room_);
         pthread_mutex_unlock(&mutex_);
         pthread_join(thread_, 0);
         pthread_cond_destroy(&done_);
@@ -73,9 +74,11 @@ public:
         job->posted_ = true;
         pthread_mutex_lock(&mutex_);
         const bool queued = push(job, 0);
+        const bool stopped = stopping_;
         pthread_mutex_unlock(&mutex_);
         if (!queued) {
             delete job;
+            if (stopped) throw ActiveError("active module: stopped");
             if (overflow_ == error) throw ActiveError("active module: queue full");
         }
     }
@@ -99,8 +102,9 @@ public:
         }
         pthread_mutex_lock(&mutex_);
         if (!push(&job, &deadline)) {
+            const bool stopped = stopping_;
             pthread_mutex_unlock(&mutex_);
-            throw ActiveError("active module: queue full");
+            throw ActiveError(stopped ? "active module: stopped" : "active module: queue full");
         }
         int waited = 0;
         while (job.state_ != ActiveJob::done && waited != ETIMEDOUT)
@@ -124,7 +128,8 @@ private:
     ActiveQueue& operator=(const ActiveQueue&);
 
     /// Queues `job`, the mutex held, waiting for room until `deadline` (none: 0) with overflow `block`;
-    /// false when not queued. Jobs queued by the thread itself never wait.
+    /// false when not queued (as once the queue is stopping: the job would never run). Jobs queued by
+    /// the thread itself never wait.
     bool push(ActiveJob* job, const timespec* deadline)
     {
         if (!pthread_equal(pthread_self(), thread_)) {
@@ -137,6 +142,7 @@ private:
                     return false;
             }
         }
+        if (stopping_) return false;
         jobs_.push_back(job);
         pthread_cond_signal(&ready_);
         return true;
