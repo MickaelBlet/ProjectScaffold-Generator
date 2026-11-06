@@ -8,6 +8,7 @@ use regex::Regex;
 
 use super::filters;
 use super::inline::inline_blocks;
+use super::run::reserved_output;
 use super::sections::{DROP, place_markers, user_filter};
 use super::template_set::{TemplateSet, is_inside_path};
 
@@ -201,6 +202,8 @@ pub fn generate(ctx: &Value, set: &TemplateSet) -> Result<Generation, String> {
     let mut env = create_env(set, &globals)?;
     let mut files: Vec<GeneratedFile> = Vec::new();
     let mut paths: HashSet<String> = HashSet::new();
+    // Lower-cased: one file on case-insensitive file systems (Windows, macOS).
+    let mut folded: HashSet<String> = HashSet::new();
 
     for out in &manifest.outputs {
         let template = &out.template;
@@ -250,6 +253,12 @@ pub fn generate(ctx: &Value, set: &TemplateSet) -> Result<Generation, String> {
                 if paths.contains(&path) {
                     return Err(format!("'{path}' is generated twice"));
                 }
+                if folded.contains(&path.to_lowercase()) {
+                    return Err(format!("'{path}' is generated twice (letter case aside)"));
+                }
+                if reserved_output(&path) {
+                    return Err(format!("'{path}' is a file of the generator, not generated"));
+                }
                 let tpl = env.get_template(template).map_err(|e| describe(&e))?;
                 let mut text = drop_lines(&tpl.render(local.clone()).map_err(|e| describe(&e))?);
                 if manifest.squeeze_blank_lines {
@@ -262,6 +271,7 @@ pub fn generate(ctx: &Value, set: &TemplateSet) -> Result<Generation, String> {
             };
             match attempt() {
                 Ok(Some(f)) => {
+                    folded.insert(f.path.to_lowercase());
                     paths.insert(f.path.clone());
                     files.push(f);
                     let list: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();

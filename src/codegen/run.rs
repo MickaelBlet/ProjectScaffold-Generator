@@ -9,11 +9,11 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::generate::generate;
+use super::generate::{generate, output_path};
 use super::sections::{
     Change, Section, changes, extract_sections, format_orphans, hash, merge_sections, section_hash, skeleton,
 };
-use super::template_set::{MANIFEST, TemplateSet, load_template_set};
+use super::template_set::{MANIFEST, TemplateSet, is_inside_path, load_template_set};
 use crate::diagnostic::{Diagnostic, Level, content_span};
 use crate::style::Style;
 
@@ -46,19 +46,60 @@ pub fn read_or_none(path: &std::path::Path) -> Result<Option<String>, String> {
     }
 }
 
+impl FsDir {
+    /// `path` under the root, refused when it leaves it or goes through a symbolic link there
+    /// (written or removed through it, a file outside the directory would be).
+    fn checked(&self, path: &str) -> Result<PathBuf, String> {
+        if !is_inside_path(path) {
+            return Err(format!("{path}: path outside the output directory"));
+        }
+        let mut p = self.root.clone();
+        let mut exists = true;
+        for part in path.split('/').filter(|s| !s.is_empty() && *s != ".") {
+            p.push(part);
+            if !exists {
+                continue;
+            }
+            match std::fs::symlink_metadata(&p) {
+                Ok(m) if m.file_type().is_symlink() => {
+                    return Err(format!("{}: symbolic link, not written through", p.display()));
+                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => exists = false,
+                Err(e) => return Err(format!("{}: {e}", p.display())),
+            }
+        }
+        Ok(p)
+    }
+}
+
 impl OutputDir for FsDir {
     fn read(&self, path: &str) -> Result<Option<String>, String> {
         read_or_none(&self.root.join(path))
     }
+    /// Through a temporary file renamed over the file: never left half written; its
+    /// permissions kept.
     fn write(&self, path: &str, text: &str) -> Result<(), String> {
-        let p = self.root.join(path);
+        let p = self.checked(path)?;
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
-        std::fs::write(&p, text).map_err(|e| format!("{}: {e}", p.display()))
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let tmp = p.with_file_name(format!(".{name}.scaffold-gen-tmp"));
+        let r = (|| {
+            std::fs::write(&tmp, text)?;
+            if let Ok(m) = std::fs::metadata(&p) {
+                std::fs::set_permissions(&tmp, m.permissions())?;
+            }
+            std::fs::rename(&tmp, &p)
+        })();
+        r.map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("{}: {e}", p.display())
+        })
     }
     fn remove(&self, path: &str) -> Result<(), String> {
-        match std::fs::remove_file(self.root.join(path)) {
+        match std::fs::remove_file(self.checked(path)?) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{path}: {e}")),
             _ => Ok(()),
         }
@@ -173,7 +214,7 @@ pub fn generate_into(
 ) -> Result<GenerationReport, String> {
     let generation = generate(ctx, set)?;
     let mut report = GenerationReport { warnings: generation.warnings, ..Default::default() };
-    let previous_record = read_record(dir)?;
+    let previous_record = read_record(dir, &mut report.warnings)?;
     let mut record = GenRecord { generator: set.manifest.name.clone(), files: BTreeMap::new() };
     let write = |path: &str, text: &str| -> Result<(), String> {
         if options.dry_run { Ok(()) } else { dir.write(path, text) }
@@ -306,8 +347,26 @@ pub fn generate_into(
     Ok(report)
 }
 
-fn read_record(dir: &dyn OutputDir) -> Result<Option<GenRecord>, String> {
-    Ok(dir.read(RECORD)?.and_then(|t| serde_json::from_str::<GenRecord>(&t).ok()))
+/// The record of the last generation; paths that are not those of generated files (outside the
+/// directory, the record itself...) are left out with a warning: the record may come from
+/// anywhere, as the directory does.
+fn read_record(dir: &dyn OutputDir, warnings: &mut Vec<String>) -> Result<Option<GenRecord>, String> {
+    let Some(mut record) = dir.read(RECORD)?.and_then(|t| serde_json::from_str::<GenRecord>(&t).ok()) else {
+        return Ok(None);
+    };
+    record.files.retain(|path, _| {
+        let ok = output_path(path).is_ok_and(|p| p == *path) && !reserved_output(path);
+        if !ok {
+            warnings.push(format!("{RECORD}: '{path}' is not a generated file path, ignored"));
+        }
+        ok
+    });
+    Ok(Some(record))
+}
+
+/// Paths the generator writes for itself: its record, the directory's template set, `.orphans` files.
+pub fn reserved_output(path: &str) -> bool {
+    path == RECORD || path.starts_with(&format!("{LOCAL_TEMPLATES}/")) || path.ends_with(ORPHANS)
 }
 
 static FIRST_MARKER: LazyLock<Regex> =
@@ -437,4 +496,110 @@ pub fn format_report(r: &GenerationReport, dir: &str, out: &str, show: ReportOpt
         lines.last_mut().unwrap().push_str(" (--force to overwrite)");
     }
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::codegen::template_set::parse_manifest;
+
+    /// An output directory in memory.
+    #[derive(Default)]
+    struct MemDir(RefCell<BTreeMap<String, String>>);
+
+    impl OutputDir for MemDir {
+        fn read(&self, path: &str) -> Result<Option<String>, String> {
+            Ok(self.0.borrow().get(path).cloned())
+        }
+        fn write(&self, path: &str, text: &str) -> Result<(), String> {
+            self.0.borrow_mut().insert(path.into(), text.into());
+            Ok(())
+        }
+        fn remove(&self, path: &str) -> Result<(), String> {
+            self.0.borrow_mut().remove(path);
+            Ok(())
+        }
+    }
+
+    impl MemDir {
+        fn get(&self, path: &str) -> Option<String> {
+            self.0.borrow().get(path).cloned()
+        }
+        fn set(&self, path: &str, text: &str) {
+            self.0.borrow_mut().insert(path.into(), text.into());
+        }
+    }
+
+    /// A set of `manifest` over one template with a user section.
+    fn set_of(manifest: &str) -> TemplateSet {
+        let files = [(
+            "a.j2".to_string(),
+            "head {{ item }}\n{% filter user('body') %}default\n{% endfilter %}\ntail\n".to_string(),
+        )];
+        TemplateSet { manifest: parse_manifest(manifest).unwrap(), files: files.into_iter().collect() }
+    }
+
+    fn files_set() -> TemplateSet {
+        set_of("name: t\noutputs:\n  - template: a.j2\n    each: names\n    path: '{{ item }}.txt'\n")
+    }
+
+    fn ctx(names: &[&str]) -> minijinja::Value {
+        minijinja::Value::from(minijinja::value::Serde(serde_json::json!({ "names": names })))
+    }
+
+    fn run(dir: &MemDir, names: &[&str], options: RunOptions) -> GenerationReport {
+        generate_into(&ctx(names), &files_set(), dir, &options).unwrap()
+    }
+
+    #[test]
+    fn record_paths_outside_ignored() {
+        let dir = MemDir::default();
+        run(&dir, &["a"], RunOptions::default());
+        let mut record: serde_json::Value = serde_json::from_str(&dir.get(RECORD).unwrap()).unwrap();
+        for p in ["../victim.txt", "/abs.txt", RECORD, "x.txt.orphans"] {
+            record["files"][p] = serde_json::json!({ "hash": "x", "sections": {} });
+            dir.set(p, "keep");
+        }
+        dir.set(RECORD, &record.to_string());
+        let r = run(&dir, &["a"], RunOptions { prune: true, force: true, ..Default::default() });
+        assert!(r.removed.is_empty());
+        assert_eq!(r.warnings.len(), 4);
+        assert_eq!(dir.get("../victim.txt").as_deref(), Some("keep"));
+    }
+
+    #[test]
+    fn reserved_and_case_collisions_refused() {
+        let dir = MemDir::default();
+        let set =
+            |path: &str| set_of(&format!("name: t\noutputs:\n  - template: a.j2\n    path: '{path}'\n"));
+        for p in [RECORD, ".scaffold/templates/manifest.yaml", "a.txt.orphans"] {
+            let e = generate_into(&ctx(&[]), &set(p), &dir, &RunOptions::default()).err().unwrap();
+            assert!(e.contains("file of the generator"), "{e}");
+        }
+        let e = generate_into(&ctx(&["a", "A"]), &files_set(), &dir, &RunOptions::default()).err().unwrap();
+        assert!(e.contains("letter case"), "{e}");
+    }
+
+    #[test]
+    fn fs_dir_refuses_symlinks() {
+        let root = std::env::temp_dir().join(format!("scaffold-gen-run-{}", std::process::id()));
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let dir = FsDir { root: root.join("out"), label: "out".into() };
+        dir.write("sub/a.txt", "1").unwrap();
+        dir.write("sub/a.txt", "2").unwrap();
+        assert_eq!(dir.read("sub/a.txt").unwrap().as_deref(), Some("2"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, root.join("out/link")).unwrap();
+            assert!(dir.write("link/b.txt", "x").unwrap_err().contains("symbolic link"));
+            assert!(!outside.join("b.txt").exists());
+            assert!(dir.remove("link/b.txt").is_err());
+        }
+        assert!(dir.write("../c.txt", "x").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

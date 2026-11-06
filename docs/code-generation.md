@@ -82,7 +82,7 @@ Generating again rewrites only what changed:
   ```
 
 - files no longer generated are reported; `--prune` deletes them (their user sections go to `.orphans` files);
-- `.scaffold-gen.json` in the output directory records what was generated: keep it with the code.
+- `.scaffold-gen.json` in the output directory records what was generated: keep it with the code. Files are never written nor deleted through a symbolic link of the output directory.
 
 ## Choosing templates
 

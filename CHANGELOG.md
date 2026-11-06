@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - VS Code: a project's dependencies and IDL includes read only project and IDL files, and ask before reading one out of the workspace and of the document's folder (once per folder); any file of the machine was read before.
 - Template sets: template and partial paths of `manifest.yaml` must stay inside the template set (no `..`, no absolute path); a template set of an output directory could read any file into the generated code.
+- `scaffold-gen`: paths of `.scaffold-gen.json` that are not generated file paths (`..`, absolute, the record itself, `.orphans` files) are ignored with a warning: a crafted record made `--prune` delete files out of the output directory.
+- `scaffold-gen` no longer writes nor deletes through a symbolic link of the output directory, and writes each file through a temporary file renamed over it (never left half written, permissions kept).
+- Templates can no longer generate the generator's own files (`.scaffold-gen.json`, `.scaffold/templates/…`, `*.orphans`), nor two files whose paths differ only in letter case (one file on Windows and macOS).
 
 ## [1.0.0] - 2026-10-05
 
