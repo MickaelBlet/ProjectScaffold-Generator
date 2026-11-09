@@ -1,0 +1,3 @@
+tests/errors/dsl-unknown-interface.scaffold:6:3: error: Port 'M:p': unknown interface 'Nope'
+   6 |   in Nope p;
+     |   ^~~~~~~~~~

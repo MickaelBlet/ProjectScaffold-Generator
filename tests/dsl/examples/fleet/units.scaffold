@@ -1,0 +1,28 @@
+syntax = "scaffold1";
+
+/// Physical units and geodesic types shared by the whole fleet
+project "Units" [metadata = { version: "1.0.0", owner: "platform-team" }];
+
+/// Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+primitive Timestamp;
+
+/// Distance in meters
+alias Meters = float64;
+
+/// Angle in decimal degrees
+alias Degrees = float64;
+
+/// WGS84 position
+struct GeoPoint {
+  Degrees lat;
+  Degrees lon;
+  /// Altitude above mean sea level
+  Meters alt = 0;
+}
+
+/// Time source
+interface Clock {
+  Timestamp now();
+}
+
+editor = { layout: {} };

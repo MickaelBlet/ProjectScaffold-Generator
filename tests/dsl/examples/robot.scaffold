@@ -1,0 +1,115 @@
+syntax = "scaffold1";
+
+/// Mobile robot control stack
+project "Robot" [metadata = { version: "0.1.0" }];
+
+primitive Primitive;
+
+module Core {
+  metadata = { owner: "team-a" };
+  color = "#2e9e8f";
+
+  in Control control;
+
+  module Sensor {
+    color = "#8a4fd1";
+
+    /// Smoothing of the readings
+    enum Filter : uint8 {
+      None = 0;
+      LowPass = 1;
+    }
+
+    protected struct Sample {
+      float32 value;
+      uint64 stampUs;
+    }
+
+    float32 rateHz = 50;
+    protected static const float32 maxRateHz = 200;
+    Core.Sensor.Filter filter = LowPass;
+    protected Core.Sensor.Sample last;
+
+    out Telemetry out;
+  }
+
+  module Controller {
+    color = "#d14f9e";
+
+    Mode mode = Idle;
+
+    /// Switch mode, false when the transition is not allowed
+    bool setMode(const Mode mode);
+
+    /// Smoothing the sensors should use
+    void tune(Core.Sensor.Filter filter);
+
+    protected void reset();
+
+    private const bool isRunning();
+
+    /// Number of controllers alive
+    static uint32 instances();
+
+    in Telemetry telemetry;
+  }
+
+  module Logger {
+    color = "#3b8fd1";
+
+    in Telemetry in;
+  }
+}
+
+/// Remote operator console
+module Operator {
+  color = "#d6c21f";
+
+  out Control cmd;
+}
+
+link sensor_to_controller: Core.Sensor.out -> Core.Controller.telemetry realtime latency 1 rate 1000;
+link sensor_to_logger: Core.Sensor.out -> Core.Logger.in bulk;
+link operator_to_core: Operator.cmd <-> Core.control latency 50 remote tcp;
+
+dependency Common "common.scaffold.yaml" {
+  struct Vec3 {
+    float32 x;
+    float32 y;
+    float32 z;
+  }
+
+  enum Mode : uint8 {
+    Idle = 0;
+    Run = 1;
+    Fault = 255;
+  }
+
+  alias Samples = vector<uint16>;
+
+  /// Position and orientation
+  struct Pose {
+    Vec3 position;
+    array<float64, 4> orientation = [0, 0, 0, 1];
+  }
+
+  interface Telemetry {
+    void publish(Pose pose, map<string, list<uint8>> tags);
+  }
+
+  interface Control {
+    bool setMode(Mode mode);
+    void raw(inout Samples samples, optional<float32> gain);
+  }
+}
+
+editor = {
+  layout: {
+    Core: { x: 200, y: -60, width: 700, height: 420 },
+    Core.Sensor: { x: 100, y: 120, width: 260, height: 280 },
+    Core.Controller: { x: 460, y: 40, width: 220, height: 240 },
+    Core.Logger: { x: 460, y: 320, width: 200, height: 80 },
+    Operator: { x: -100, y: -60, width: 200, height: 220 }
+  },
+  views: [{ name: Operator, root: Operator }]
+};

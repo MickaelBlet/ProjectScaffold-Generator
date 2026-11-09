@@ -1,0 +1,388 @@
+syntax = "scaffold1";
+
+/// Robot cell filling drums from a tank, built on the interfaces and components of IDL files
+project "FillingCell";
+
+/// Lidar samples, with the DDS types of sensors_dds.idl
+interface ScanFeed {
+  void scan(sensors_dds/Sensors.Scan scan);
+  void status(sensors_dds/Sensors.Status status);
+}
+
+/// Fills drums held by the arm under the tank outlet
+module Cell {
+  color = "#2e9e8f";
+
+  /// Opens the tank inlet and moves the drums until the target level
+  module Filler {
+    color = "#3b8fd1";
+
+    float64 targetLevel = 0.9;
+
+    in LevelChangedConsumer levels;
+
+    out Valve inlet;
+
+    out Arm arm;
+
+    out Gripper gripper;
+
+    /// Level of the drum being filled
+    out LevelChangedConsumer progress;
+  }
+
+  /// Drives the arm and its gripper
+  module ArmDriver {
+    color = "#8a4fd1";
+
+    robot_control/Robot.JointAngles home;
+
+    in Arm arm;
+    in Gripper gripper;
+    in Stoppable stop;
+  }
+
+  /// Stops the arm when someone enters the cell or the lidar fails
+  module Safety {
+    color = "#d14f9e";
+
+    sensors_dds/Sensors.Health minHealth = DEGRADED;
+
+    in ScanFeed scans;
+    out Stoppable stop;
+  }
+}
+
+/// Feeds the tank, driven by the supervisor
+module Pump {
+  color = "#3bb273";
+
+  in Valve valve;
+  out Maintenance maintenance;
+}
+
+/// Watches the cell
+module Lidar {
+  color = "#d6c21f";
+
+  out ScanFeed scans;
+}
+
+link tank_to_filler: tank_ccm/Plant.Tank.level -> Cell.Filler.levels realtime latency 10;
+link filler_to_inlet: Cell.Filler.inlet <-> tank_ccm/Plant.Tank.inlet ack realtime latency 10;
+link filler_to_arm: Cell.Filler.arm <-> Cell.ArmDriver.arm ack;
+link filler_to_gripper: Cell.Filler.gripper <-> Cell.ArmDriver.gripper ack;
+link safety_stop: Cell.Safety.stop <-> Cell.ArmDriver.stop realtime latency 1;
+link lidar_to_safety: Lidar.scans -> Cell.Safety.scans realtime rate 20;
+link filler_to_supervisor: Cell.Filler.progress -> tank_ccm/Plant.Supervisor.levels;
+link supervisor_to_pump: tank_ccm/Plant.Supervisor.pump_valve <-> Pump.valve ack;
+link pump_maintenance: Pump.maintenance <-> tank_ccm/Plant.Supervisor.pump_maintenance ack bulk;
+
+dependency tank_ccm "tank_ccm.idl" {
+  /// Valve opening, from 0 (closed) to 1 (open).
+  interface Valve {
+    void open(float64 ratio) raises (tank_ccm/Plant.Stuck);
+    float64 get_position();
+  }
+
+  interface Maintenance {
+    void calibrate();
+  }
+
+  /// Receives LevelChanged events.
+  interface LevelChangedConsumer {
+    void push(tank_ccm/Plant.LevelChanged event);
+  }
+
+  uses = [sensors_dds];
+
+  moduleTypes = [
+    {
+      module: Plant,
+      types: [
+        {
+          kind: struct,
+          name: LevelChanged,
+          description: "Level of a tank, as a share of its capacity.",
+          fields: [
+            { name: level, type: { kind: primitive, name: float64 } },
+            { name: health, type: { kind: ref, name: "sensors_dds/Sensors.Health" } }
+          ]
+        },
+        {
+          kind: exception,
+          name: Stuck,
+          fields: [{ name: position, type: { kind: primitive, name: float64 } }]
+        }
+      ]
+    }
+  ];
+
+  modules = [
+    { module: Plant, ports: [] },
+    {
+      module: Plant.Equipment,
+      attributes: [{ name: serial, const: true, type: { kind: primitive, name: string } }],
+      methods: [{ name: calibrate, params: [], returns: null }],
+      ports: []
+    },
+    {
+      module: Plant.Tank,
+      attributes: [{ name: capacity, type: { kind: primitive, name: float64 }, description: m3 }],
+      ports: [
+        { name: inlet, role: in, interface: Valve },
+        { name: outlets, role: out, interface: Valve, description: "Multiple connections." },
+        {
+          name: level,
+          role: out,
+          interface: LevelChangedConsumer,
+          description: "Publishes to any number of consumers."
+        },
+        { name: pump_valve, role: in, interface: Valve },
+        { name: pump_maintenance, role: out, interface: Maintenance }
+      ]
+    },
+    {
+      module: Plant.Supervisor,
+      attributes: [{ name: tanks, type: { kind: vector, of: { kind: primitive, name: string }, max: 4 } }],
+      ports: [
+        { name: levels, role: in, interface: LevelChangedConsumer },
+        { name: pump_valve, role: out, interface: Valve },
+        { name: pump_maintenance, role: in, interface: Maintenance }
+      ]
+    }
+  ];
+}
+
+dependency robot_control "robot_control.idl" {
+  /// Anything that can be stopped at once.
+  interface Stoppable {
+    void emergencyStop();
+    bool reset();
+  }
+
+  /// Motion commands of the arm.
+  interface Arm {
+    void emergencyStop();
+    bool reset();
+    robot_control/Robot.ArmState get_state();
+    float64 get_maxSpeed();
+    void set_maxSpeed(float64 maxSpeed);
+    /// Follows the waypoints; `done` is false when interrupted.
+    void follow(robot_control/Robot.Trajectory path, out bool done) raises (robot_control/Robot.Busy, robot_control/Robot.OutOfReach);
+    robot_control/Robot.JointAngles joints();
+    robot_control/Robot.Transform toolPose();
+    void jog(uint16 joint, float64 delta) raises (robot_control/Robot.OutOfReach);
+  }
+
+  /// Gripper mounted on the arm's tool flange.
+  interface Gripper {
+    void emergencyStop();
+    bool reset();
+    bool get_holding();
+    bool grip(float32 forceN, inout float32 widthMm);
+    void release();
+  }
+
+  moduleTypes = [
+    {
+      module: Robot,
+      types: [
+        {
+          kind: alias,
+          name: JointAngles,
+          description: "Angle of each joint, in radians.",
+          type: { kind: array, of: { kind: primitive, name: float64 }, size: 6 }
+        },
+        {
+          kind: alias,
+          name: Transform,
+          description: "Homogeneous transform, row major.",
+          type: {
+            kind: array,
+            of: { kind: array, of: { kind: primitive, name: float64 }, size: 4 },
+            size: 4
+          }
+        },
+        {
+          kind: enum,
+          name: ArmState,
+          underlying: int32,
+          values: [
+            { name: PARKED, value: 0 },
+            { name: MOVING, value: 1 },
+            { name: HOLDING, value: 2 },
+            { name: FAULT, value: 3 }
+          ]
+        },
+        {
+          kind: struct,
+          name: Waypoint,
+          description: "Target of a move.",
+          fields: [
+            { name: joints, type: { kind: ref, name: "robot_control/Robot.JointAngles" } },
+            { name: speed, type: { kind: primitive, name: float64 }, description: "rad/s" },
+            { name: dwellMs, type: { kind: primitive, name: uint32 } }
+          ]
+        },
+        {
+          kind: alias,
+          name: Trajectory,
+          type: { kind: vector, of: { kind: ref, name: "robot_control/Robot.Waypoint" } }
+        },
+        {
+          kind: exception,
+          name: Busy,
+          fields: [{ name: reason, type: { kind: primitive, name: string } }]
+        },
+        {
+          kind: exception,
+          name: OutOfReach,
+          fields: [{ name: joint, type: { kind: primitive, name: uint16 } }]
+        }
+      ]
+    }
+  ];
+
+  moduleConstants = [
+    {
+      module: Robot,
+      constants: [{ name: JOINTS, type: { kind: primitive, name: uint16 }, value: 6 }]
+    }
+  ];
+}
+
+dependency sensors_dds "sensors_dds.idl" {
+  indirect = true;
+
+  moduleTypes = [
+    {
+      module: Sensors,
+      types: [
+        {
+          kind: enum,
+          name: Health,
+          underlying: int32,
+          values: [{ name: OK, value: 0 }, { name: DEGRADED, value: 10 }, { name: FAILED, value: 20 }]
+        },
+        {
+          kind: bitmask,
+          name: Capabilities,
+          underlying: uint8,
+          flags: [{ name: RANGE, bit: 0 }, { name: INTENSITY, bit: 1 }, { name: VELOCITY, bit: 4 }]
+        },
+        {
+          kind: struct,
+          name: Point,
+          description: "Point of a scan, in the sensor frame (meters).",
+          fields: [
+            { name: x, type: { kind: primitive, name: float32 } },
+            { name: y, type: { kind: primitive, name: float32 } },
+            { name: z, type: { kind: primitive, name: float32 } },
+            { name: intensity, type: { kind: optional, of: { kind: primitive, name: float32 } } }
+          ]
+        },
+        {
+          kind: struct,
+          name: Header,
+          description: "Header of every sample.",
+          fields: [
+            { name: sensorId, type: { kind: primitive, name: string, max: 16 } },
+            {
+              name: stampNs,
+              type: { kind: primitive, name: uint64 },
+              description: "since the epoch"
+            },
+            { name: counter, type: { kind: primitive, name: uint32 } }
+          ]
+        },
+        {
+          kind: struct,
+          name: Scan,
+          fields: [
+            { name: sensorId, type: { kind: primitive, name: string, max: 16 } },
+            {
+              name: stampNs,
+              type: { kind: primitive, name: uint64 },
+              description: "since the epoch"
+            },
+            { name: counter, type: { kind: primitive, name: uint32 } },
+            {
+              name: points,
+              type: { kind: vector, of: { kind: ref, name: "sensors_dds/Sensors.Point" }, max: 1024 }
+            },
+            { name: capabilities, type: { kind: ref, name: "sensors_dds/Sensors.Capabilities" } }
+          ]
+        },
+        {
+          kind: struct,
+          name: Status,
+          fields: [
+            { name: sensorId, type: { kind: primitive, name: string, max: 16 } },
+            {
+              name: stampNs,
+              type: { kind: primitive, name: uint64 },
+              description: "since the epoch"
+            },
+            { name: counter, type: { kind: primitive, name: uint32 } },
+            { name: health, type: { kind: ref, name: "sensors_dds/Sensors.Health" } },
+            {
+              name: temperatures,
+              type: {
+                kind: map,
+                key: { kind: primitive, name: string },
+                value: { kind: primitive, name: float64 }
+              },
+              description: "by probe name"
+            },
+            {
+              name: diagnostics,
+              type: { kind: primitive, name: bytes },
+              description: "vendor blob"
+            }
+          ]
+        },
+        {
+          kind: union,
+          name: Reading,
+          description: "Raw reading: a struct of its discriminator and one optional field per case.",
+          discriminator: { kind: primitive, name: int32 },
+          cases: [
+            { name: range, type: { kind: primitive, name: float32 }, labels: [0] },
+            { name: point, type: { kind: ref, name: "sensors_dds/Sensors.Point" }, labels: [1] },
+            { name: text, type: { kind: primitive, name: string }, default: true }
+          ]
+        }
+      ]
+    }
+  ];
+
+  moduleConstants = [
+    {
+      module: Sensors,
+      constants: [
+        { name: MAX_POINTS, type: { kind: primitive, name: int32 }, value: 1024 },
+        { name: MAX_ID, type: { kind: primitive, name: int32 }, value: 16 }
+      ]
+    }
+  ];
+}
+
+editor = {
+  layout: {
+    Cell: { x: 319, y: 0, width: 558, height: 404 },
+    Cell.Filler: { x: 22, y: 46, width: 200, height: 170 },
+    Cell.ArmDriver: { x: 338, y: 142, width: 200, height: 146 },
+    Cell.Safety: { x: 22, y: 286, width: 200, height: 98 },
+    Pump: { x: 498, y: 474, width: 200, height: 72 },
+    Lidar: { x: 0, y: 237, width: 200, height: 72 }
+  },
+  dependencies: {
+    tank_ccm: {
+      Plant: { x: 996, y: 29, width: 750, height: 202 },
+      Plant.Equipment: { x: 10, y: 36, width: 200, height: 124 },
+      Plant.Tank: { x: 270, y: 36, width: 200, height: 146 },
+      Plant.Supervisor: { x: 530, y: 36, width: 200, height: 122 }
+    }
+  }
+};

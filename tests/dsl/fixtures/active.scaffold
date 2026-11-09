@@ -1,0 +1,56 @@
+syntax = "scaffold1";
+
+/// Active modules (own thread, queued calls), with every kind of call
+project "Active Demo";
+
+exception Busy {
+  string reason;
+}
+
+interface Jobs {
+  /// Waits for its result; raises Busy
+  int32 compute(int32 x) raises (Busy);
+  /// Waits for its out parameter
+  void split(string text, out string head);
+  /// Returns once queued
+  void notify(uint8 level, vector<string> tags);
+  void stop();
+}
+
+interface Log {
+  void write(string line);
+}
+
+module Client {
+  out Jobs jobs;
+  out Log log;
+}
+
+/// Runs the jobs on its own thread
+module Worker {
+  active = true;
+
+  in Jobs jobs;
+}
+
+/// Waits for each line (the link requires an acknowledgement)
+module Logger {
+  active = { queue: 4, timeoutMs: 250, overflow: error };
+
+  in Log log;
+}
+
+/// An active module inside another one
+module Pool {
+  in Jobs jobs;
+
+  module Lane {
+    active = { overflow: drop };
+
+    in Jobs jobs;
+  }
+}
+
+link client_jobs: Client.jobs <-> Worker.jobs;
+link client_log: Client.log <-> Logger.log ack 100 low;
+link pool_lane: Pool.jobs <-> Pool.Lane.jobs;

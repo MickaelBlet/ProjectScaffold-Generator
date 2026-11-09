@@ -26,13 +26,16 @@ fn files(dir: &str, suffix: &str) -> Vec<String> {
 
 #[test]
 fn error_messages() {
-    let cases = files("tests/errors", ".scaffold.yaml");
+    let mut cases = files("tests/errors", ".scaffold.yaml");
+    cases.extend(files("tests/errors", ".scaffold"));
     assert!(!cases.is_empty());
     let mut failed = vec![];
     for f in &cases {
         let out = generator().args(["--dump-context", f]).output().unwrap();
-        let expected =
-            std::fs::read_to_string(root().join(f.replace(".scaffold.yaml", ".expected"))).unwrap();
+        let expected = std::fs::read_to_string(
+            root().join(f.replace(".scaffold.yaml", ".expected").replace(".scaffold", ".expected")),
+        )
+        .unwrap();
         let got = String::from_utf8_lossy(&out.stderr);
         if out.status.success() || got.trim_end() != expected.trim_end() {
             failed.push(format!("{f}:\n  expected: {}\n  got:      {}", expected.trim_end(), got.trim_end()));
@@ -65,6 +68,38 @@ fn examples_generate_with_every_set() {
             if !again.status.success() || !report.contains(" 0 written, ") {
                 failed.push(format!("{set} {p}: generated again: {report}"));
             }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&work);
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
+}
+
+/// The Scaffold text of the fixtures (tests/dsl, written by the editor) generates the same code.
+#[test]
+fn scaffold_text_generates_as_yaml() {
+    let work = std::env::temp_dir().join(format!("scaffold-gen-dsl-{}", std::process::id()));
+    let mut failed = vec![];
+    for f in files("tests/dsl/fixtures", ".scaffold") {
+        let yaml = f.replace("tests/dsl/fixtures/", "tests/fixtures/") + ".yaml";
+        let name = f.replace('/', "_");
+        for (src, dir) in [(&yaml, "yaml"), (&f, "dsl")] {
+            let out = generator()
+                .args([src, "-t", "templates/cpp17", "-o"])
+                .arg(work.join(dir).join(&name))
+                .output();
+            let out = out.unwrap();
+            if !out.status.success() {
+                failed.push(format!("{src}: {}", String::from_utf8_lossy(&out.stderr)));
+            }
+        }
+        let same = Command::new("diff")
+            .args(["-r", "-x", ".scaffold-gen.json"])
+            .arg(work.join("yaml").join(&name))
+            .arg(work.join("dsl").join(&name))
+            .output()
+            .unwrap();
+        if !same.status.success() {
+            failed.push(format!("{f}: {}", String::from_utf8_lossy(&same.stdout)));
         }
     }
     let _ = std::fs::remove_dir_all(&work);

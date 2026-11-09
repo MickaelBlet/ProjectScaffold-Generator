@@ -1,4 +1,5 @@
-// Project file text: YAML (1.2 core schema, as the `yaml` package reads it) or JSON, read into a
+// Project file text: YAML (1.2 core schema, as the `yaml` package reads it), JSON or Scaffold text
+// (`*.scaffold`, dsl.rs), read into a
 // JSON value with the line of each node, to locate problems by their data path as the editor does
 // (src/model/serialize.ts parseText / lineOfPath).
 use std::collections::HashMap;
@@ -109,10 +110,19 @@ pub struct Doc {
 pub enum Format {
     Yaml,
     Json,
+    /// Scaffold text (`*.scaffold`).
+    Dsl,
 }
 
 pub fn format_from_path(path: &str) -> Format {
-    if path.to_lowercase().ends_with(".json") { Format::Json } else { Format::Yaml }
+    let p = path.to_lowercase();
+    if p.ends_with(".json") {
+        Format::Json
+    } else if p.ends_with(".scaffold") {
+        Format::Dsl
+    } else {
+        Format::Yaml
+    }
 }
 
 /// A syntax error: message and line.
@@ -131,6 +141,9 @@ pub fn parse_text(text: &str, format: Format) -> Result<Doc, SyntaxError> {
             let lines = parse_yaml(text).map(|d| d.lines).unwrap_or_default();
             Ok(Doc { value: js_numbers(value), lines })
         }
+        Format::Dsl => super::dsl::parse_dsl(text).map(|(value, lines)| Doc { value, lines }).map_err(|e| {
+            SyntaxError { message: format!("Invalid Scaffold text: {}", e.message), line: Some(e.line) }
+        }),
         Format::Yaml => parse_yaml(text)
             .map_err(|(message, line)| SyntaxError { message: format!("Invalid YAML: {message}"), line }),
     }
@@ -210,7 +223,7 @@ fn array_index(k: &str) -> Option<u32> {
 
 /// An object with its keys in JavaScript's order: array indexes first, ascending, then the others
 /// in insertion order.
-fn js_object(entries: Vec<(String, Json)>) -> Json {
+pub(crate) fn js_object(entries: Vec<(String, Json)>) -> Json {
     if !entries.iter().any(|(k, _)| array_index(k).is_some()) {
         return Json::Object(entries.into_iter().collect());
     }

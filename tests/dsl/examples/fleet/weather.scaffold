@@ -1,0 +1,35 @@
+syntax = "scaffold1";
+
+/// Weather service feeding the ground station
+project "Weather" [metadata = { version: "2.3.0", owner: "ops-team" }];
+
+/// Angle in decimal degrees
+alias Degrees = float64;
+
+struct Wind {
+  Degrees direction;
+  float32 speedMps;
+  optional<float32> gustMps = null;
+}
+
+struct Forecast {
+  string zone;
+  Wind wind;
+  float32 visibilityKm = 10;
+  bool flyable = true;
+}
+
+interface WeatherFeed {
+  void forecast(Forecast forecast);
+}
+
+/// Publishes forecasts for the flight zones
+module WeatherService {
+  color = "#3b8fd1";
+
+  uint32 refreshS = 600;
+
+  out WeatherFeed feed;
+}
+
+editor = { layout: { WeatherService: { x: 20, y: 20, width: 200, height: 100 } } };

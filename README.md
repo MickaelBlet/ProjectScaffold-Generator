@@ -1,6 +1,6 @@
 # ProjectScaffold-Generator
 
-Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `.json`, OMG IDL), written with the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): modules, ports, typed interfaces and links become code from editable Jinja templates.
+Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `.json`, Scaffold text `*.scaffold`, OMG IDL), written with the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): modules, ports, typed interfaces and links become code from editable Jinja templates.
 
 ## Features
 

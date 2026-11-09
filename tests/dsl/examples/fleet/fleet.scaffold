@@ -1,0 +1,138 @@
+syntax = "scaffold1";
+
+/// Types and interfaces shared by the drones and the ground station
+project "Fleet" [metadata = { version: "0.4.0", owner: "platform-team" }];
+
+enum FlightMode : uint8 {
+  Disarmed = 0;
+  Armed = 1;
+  Takeoff = 2;
+  Mission = 3;
+  ReturnHome = 4;
+  Land = 5;
+  Emergency = 255;
+}
+
+enum Severity : int8 {
+  Debug = -1;
+  Info = 0;
+  Warning = 1;
+  Error = 2;
+  Critical = 3;
+}
+
+struct Vec3 {
+  float32 x = 0;
+  float32 y = 0;
+  float32 z = 0;
+}
+
+/// Position, velocity and attitude at a time point
+struct Pose {
+  GeoPoint position;
+  Vec3 velocity;
+  /// Quaternion (w, x, y, z)
+  array<float64, 4> attitude = [1, 0, 0, 0];
+  Timestamp stamp;
+}
+
+struct Waypoint {
+  GeoPoint point;
+  float32 speedMps = 5;
+  optional<float32> holdS;
+}
+
+alias Route = vector<Waypoint>;
+
+struct Mission {
+  uint32 id;
+  string name;
+  Route route;
+  set<string> tags = [];
+  map<string, float64> params = {};
+}
+
+struct BatteryState {
+  float32 voltage;
+  array<float32, 4> cells;
+  uint8 percent;
+  bool charging = false;
+}
+
+struct Event {
+  Severity severity = Info;
+  uint16 code;
+  string text;
+  Timestamp stamp;
+  optional<bytes> payload = null;
+}
+
+/// Encoded video frame
+alias Frame = bytes;
+
+struct VideoFrame {
+  uint16 width;
+  uint16 height;
+  string codec = h264;
+  Frame data;
+  Timestamp stamp;
+}
+
+/// State published by a drone
+interface Telemetry {
+  void pose(Pose pose);
+  void battery(BatteryState state);
+  void mode(FlightMode mode);
+}
+
+/// Orders sent to a drone
+interface Command {
+  bool arm(bool force);
+  bool setMode(FlightMode mode);
+  /// Load a mission, returns its id
+  uint32 upload(Mission mission);
+  void selfTest(inout list<string> report, out uint16 failures);
+}
+
+interface Events {
+  void report(Event event);
+}
+
+interface Video {
+  void frame(VideoFrame frame);
+}
+
+interface Actuation {
+  void throttle(array<float32, 4> motors);
+}
+
+interface Storage {
+  bool write(string key, bytes data);
+  bool read(string key, out bytes data);
+}
+
+dependency Units "units.scaffold.yaml" {
+  /// Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+  primitive Timestamp;
+
+  /// Distance in meters
+  alias Meters = float64;
+
+  /// Angle in decimal degrees
+  alias Degrees = float64;
+
+  /// WGS84 position
+  struct GeoPoint {
+    Degrees lat;
+    Degrees lon;
+    /// Altitude above mean sea level
+    Meters alt = 0;
+  }
+
+  /// Time source
+  interface Clock {
+    Timestamp now();
+  }
+}
+
+editor = { layout: {} };

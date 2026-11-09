@@ -1,0 +1,443 @@
+syntax = "scaffold1";
+
+/// Onboard software of a delivery quadcopter
+project "Drone" [metadata = { version: "1.2.0", owner: "flight-team", platform: "quad-x" }];
+
+transports = [mavlink, spi, i2c];
+
+struct ImuSample {
+  Vec3 accel;
+  Vec3 gyro;
+  Timestamp stamp;
+}
+
+struct PidGains {
+  float32 kp = 1;
+  float32 ki = 0;
+  float32 kd = 0;
+}
+
+struct MixerConfig {
+  PidGains gains;
+  uint8 motorCount = 4;
+  string frame = "quad-x";
+}
+
+enum SensorStatus : uint8 {
+  Off = 0;
+  Ok = 1;
+  Degraded = 2;
+  Failed = 3;
+}
+
+/// Raw measurements towards the estimator
+interface SensorData {
+  void imu(ImuSample sample);
+  void gps(GeoPoint fix, uint8 satellites);
+}
+
+/// Hardware abstraction layer (class hierarchy only, no ports)
+module HAL {
+  color = "#7a7a7a";
+
+  /// Contract of every sensor driver
+  interface module ISensor {
+    virtual pure bool start();
+    virtual pure void stop();
+    const virtual pure SensorStatus status();
+  }
+
+  /// Common state of the sensor drivers
+  abstract module SensorBase : HAL.ISensor {
+    float32 rateHz = 100;
+    SensorStatus state = Off;
+    static uint32 instances = 0;
+
+    virtual override void stop();
+
+    const virtual override SensorStatus status();
+
+    virtual bool configure(const float32 rateHz);
+
+    /// Number of drivers alive
+    static uint32 count();
+  }
+}
+
+/// Flight-critical computer
+module Avionics {
+  metadata = { safety: "DAL-B", cpu: stm32h7 };
+  color = "#d14f4f";
+
+  in Command command;
+  out Telemetry telemetry;
+  out Events events;
+  out Actuation motors;
+
+  module Imu : HAL.SensorBase {
+    color = "#8a4fd1";
+
+    Vec3 bias = { x: 0.01, y: -0.02 };
+    array<int16, 2> range = [-16, 16];
+
+    virtual override bool start();
+    bool calibrate(const uint32 samples, out Vec3 bias);
+
+    out SensorData samples;
+  }
+
+  module Gps : HAL.SensorBase {
+    color = "#8a4fd1";
+
+    const string device = "/dev/ttyS1";
+    uint8 minSatellites = 6;
+    char fixQuality = A;
+
+    virtual override bool start();
+
+    out SensorData fix;
+  }
+
+  /// Extended Kalman filter fusing IMU and GPS
+  module Estimator {
+    array<float64, 3> covariance = [0.1, 0.1, 0.5];
+    optional<Pose> lastPose = null;
+
+    void reset(const GeoPoint origin);
+    const bool converged();
+
+    in SensorData imu;
+    in SensorData gps;
+    out Telemetry state;
+  }
+
+  /// Mode logic and attitude control
+  module FlightController {
+    color = "#d14f9e";
+
+    FlightMode mode = Disarmed;
+    PidGains gains = { kp: 1.2, kd: 0.05 };
+    map<string, float32> limits = { maxTiltDeg: 35, maxClimbMps: 5 };
+    map<Severity, uint32> eventCounts = { Warning: 0, Error: 0 };
+    GeoPoint home = { lat: 48.8584, lon: 2.2945 };
+    optional<Mission> mission = null;
+    list<Event> recent = [];
+    static const uint16 loopHz = 400;
+
+    bool arm(const bool force);
+    void step(const float32 dtS);
+    const FlightMode currentMode();
+    static string version();
+
+    in Command command;
+    in Telemetry state;
+    out Actuation actuation;
+    out Events events;
+  }
+
+  module Mixer {
+    MixerConfig config = { gains: { kp: 0.8, ki: 0.1, kd: 0.02 }, motorCount: 4 };
+
+    in Actuation actuation;
+    out Actuation motors;
+  }
+}
+
+/// ESCs on the CAN bus
+module Motors {
+  color = "#e08a2e";
+
+  const uint8 count = 4;
+  array<float32, 4> idle = [0.05, 0.05, 0.05, 0.05];
+
+  in Actuation throttle;
+}
+
+/// Companion computer for the camera
+module Payload {
+  color = "#2e9e8f";
+
+  out Video video;
+
+  module Camera {
+    array<uint16, 2> resolution = [1920, 1080];
+    uint8 fps = 30;
+    set<string> modes = [photo, video];
+
+    out Video video;
+  }
+
+  module Recorder {
+    uint32 chunkMs = 2000;
+
+    in Video video;
+    out Storage storage;
+  }
+}
+
+/// Onboard storage
+module FlashStore {
+  uint64 capacity = 68719476736;
+  const bytes signature = FLSH;
+
+  in Storage storage;
+}
+
+/// Datalink to the ground station
+module Radio {
+  metadata = { band: "2.4GHz" };
+  color = "#d6c21f";
+
+  string callsign = "DRN-01";
+
+  float32 frequencyMHz = 2437.5;
+
+  static const uint8 maxPeers = 8;
+
+  /// Custom primitive
+  Timestamp bootTime = "{}";
+
+  /// Fallback landing spots
+  Route rallyPoints = [
+  { point: { lat: 48.86, lon: 2.29 } },
+  { point: { lat: 48.85, lon: 2.3, alt: 35 }, speedMps: 3, holdS: 10 }
+];
+
+  in Command uplink;
+  out Command command;
+  in Telemetry telemetry;
+  out Telemetry downlink;
+  in Events events;
+  out Events eventsDown;
+  in Video video;
+  out Video videoDown;
+}
+
+link imu_to_estimator: Avionics.Imu.samples -> Avionics.Estimator.imu realtime latency 1 rate 1000 remote spi;
+link gps_to_estimator: Avionics.Gps.fix -> Avionics.Estimator.gps low rate 10 remote serial;
+link estimator_to_controller: Avionics.Estimator.state -> Avionics.FlightController.state realtime latency 2 rate 400;
+/// Inner out port to the container's out port
+link estimator_to_avionics: Avionics.Estimator.state -> Avionics.telemetry rate 50;
+/// Container's in port to an inner in port
+link avionics_to_controller: Avionics.command <-> Avionics.FlightController.command ack 50 latency 10;
+link controller_to_mixer: Avionics.FlightController.actuation -> Avionics.Mixer.actuation realtime latency 1 rate 400;
+link mixer_to_avionics: Avionics.Mixer.motors -> Avionics.motors realtime rate 400;
+link controller_events: Avionics.FlightController.events -> Avionics.events bulk;
+link avionics_to_motors: Avionics.motors -> Motors.throttle realtime latency 2 rate 400 remote can;
+link radio_to_avionics: Radio.command <-> Avionics.command ack 200 latency 100 remote mavlink;
+link avionics_to_radio: Avionics.telemetry -> Radio.telemetry rate 50 remote mavlink;
+link events_to_radio: Avionics.events -> Radio.events bulk remote mavlink;
+link camera_to_payload: Payload.Camera.video -> Payload.video bulk rate 30;
+link camera_to_recorder: Payload.Camera.video -> Payload.Recorder.video bulk rate 30 remote shm;
+/// Direct link out of its container, to a module at another level
+link recorder_to_flash: Payload.Recorder.storage <-> FlashStore.storage ack 500 bulk;
+link payload_to_radio: Payload.video -> Radio.video bulk rate 30 remote ipc;
+
+dependency Fleet "fleet.scaffold.yaml" {
+  enum FlightMode : uint8 {
+    Disarmed = 0;
+    Armed = 1;
+    Takeoff = 2;
+    Mission = 3;
+    ReturnHome = 4;
+    Land = 5;
+    Emergency = 255;
+  }
+
+  enum Severity : int8 {
+    Debug = -1;
+    Info = 0;
+    Warning = 1;
+    Error = 2;
+    Critical = 3;
+  }
+
+  struct Vec3 {
+    float32 x = 0;
+    float32 y = 0;
+    float32 z = 0;
+  }
+
+  /// Position, velocity and attitude at a time point
+  struct Pose {
+    GeoPoint position;
+    Vec3 velocity;
+    /// Quaternion (w, x, y, z)
+    array<float64, 4> attitude = [1, 0, 0, 0];
+    Timestamp stamp;
+  }
+
+  struct Waypoint {
+    GeoPoint point;
+    float32 speedMps = 5;
+    optional<float32> holdS;
+  }
+
+  alias Route = vector<Waypoint>;
+
+  struct Mission {
+    uint32 id;
+    string name;
+    Route route;
+    set<string> tags = [];
+    map<string, float64> params = {};
+  }
+
+  struct BatteryState {
+    float32 voltage;
+    array<float32, 4> cells;
+    uint8 percent;
+    bool charging = false;
+  }
+
+  struct Event {
+    Severity severity = Info;
+    uint16 code;
+    string text;
+    Timestamp stamp;
+    optional<bytes> payload = null;
+  }
+
+  /// Encoded video frame
+  alias Frame = bytes;
+
+  struct VideoFrame {
+    uint16 width;
+    uint16 height;
+    string codec = h264;
+    Frame data;
+    Timestamp stamp;
+  }
+
+  /// State published by a drone
+  interface Telemetry {
+    void pose(Pose pose);
+    void battery(BatteryState state);
+    void mode(FlightMode mode);
+  }
+
+  /// Orders sent to a drone
+  interface Command {
+    bool arm(bool force);
+    bool setMode(FlightMode mode);
+    /// Load a mission, returns its id
+    uint32 upload(Mission mission);
+    void selfTest(inout list<string> report, out uint16 failures);
+  }
+
+  interface Events {
+    void report(Event event);
+  }
+
+  interface Video {
+    void frame(VideoFrame frame);
+  }
+
+  interface Actuation {
+    void throttle(array<float32, 4> motors);
+  }
+
+  interface Storage {
+    bool write(string key, bytes data);
+    bool read(string key, out bytes data);
+  }
+
+  uses = [Units];
+}
+
+dependency Units "units.scaffold.yaml" {
+  /// Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+  primitive Timestamp;
+
+  /// Distance in meters
+  alias Meters = float64;
+
+  /// WGS84 position
+  struct GeoPoint {
+    Degrees lat;
+    Degrees lon;
+    /// Altitude above mean sea level
+    Meters alt = 0;
+  }
+
+  /// Angle in decimal degrees
+  alias Degrees = float64;
+
+  /// Time source
+  interface Clock {
+    Timestamp now();
+  }
+
+  indirect = true;
+}
+
+editor = {
+  layout: {
+    HAL: { x: 613, y: 20, width: 240, height: 484 },
+    HAL.ISensor: { x: 20, y: 46, width: 200, height: 134 },
+    HAL.SensorBase: { x: 20, y: 250, width: 200, height: 214 },
+    Avionics: { x: 20, y: 551, width: 1426, height: 650 },
+    Avionics.Imu: { x: 125, y: 143, width: 200, height: 160 },
+    Avionics.Gps: { x: 125, y: 373, width: 200, height: 160 },
+    Avionics.Estimator: { x: 441, y: 246, width: 200, height: 184 },
+    Avionics.FlightController: { x: 757, y: 174, width: 200, height: 328 },
+    Avionics.Mixer: { x: 1080, y: 189, width: 260, height: 100 },
+    Motors: { x: 1562, y: 355, width: 200, height: 116 },
+    Payload: { x: 415, y: 1271, width: 637, height: 207 },
+    Payload.Camera: { x: 20, y: 53, width: 200, height: 134 },
+    Payload.Recorder: { x: 336, y: 71, width: 200, height: 98 },
+    FlashStore: { x: 1562, y: 1028, width: 200, height: 116 },
+    Radio: { x: 1560, y: 540, width: 200, height: 280 }
+  },
+  views: [
+    { name: Avionics, root: Avionics },
+    { name: Payload, root: Payload },
+    { name: Estimator, root: Avionics.Estimator }
+  ],
+  style: { Avionics: { locked: true }, Motors: { locked: true } },
+  links: {
+    imu_to_estimator: { points: [{ x: 383, y: 223 }, { x: 383, y: 300 }] },
+    avionics_to_motors: { from: { side: right, at: 0.25 }, to: { side: left, at: 0.5 } },
+    camera_to_payload: { points: [{ x: 285, y: 69 }, { x: 565, y: 49 }] },
+    recorder_to_flash: { points: [{ x: 1300, y: 1391 }, { x: 1300, y: 1086 }] },
+    payload_to_radio: { points: [{ x: 1220, y: 1020 }, { x: 1480, y: 920 }] }
+  },
+  notes: [
+    {
+      kind: frame,
+      text: "Flight-critical (DAL-B)",
+      x: 0,
+      y: 320,
+      width: 1790,
+      height: 900,
+      color: "#d14f4f",
+      locked: true
+    },
+    {
+      kind: note,
+      text: "HAL: C++-like hierarchy. ISensor («interface», pure methods) ← SensorBase (abstract) ← Avionics.Imu, Avionics.Gps (concrete, override start()).",
+      x: 880,
+      y: 40,
+      width: 300,
+      height: 120,
+      color: "#fff3b0"
+    },
+    {
+      kind: note,
+      text: "Transports: spi, serial, can, shm, ipc (built-in) and mavlink (custom, see `transports`).",
+      x: 20,
+      y: 40,
+      width: 280,
+      height: 110,
+      locked: true
+    },
+    {
+      kind: note,
+      text: "Recorder → FlashStore leaves its container directly, without a port on Payload.",
+      x: 1100,
+      y: 1290,
+      width: 280,
+      height: 90
+    }
+  ]
+};

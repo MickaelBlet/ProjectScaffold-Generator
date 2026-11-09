@@ -60,7 +60,7 @@ scaffold-gen <project file> [-o <dir>] [-t <template set or dir>] [--deps] [--fo
 
 The exit code is not 0 on errors or conflicts. Errors are printed as clang prints them (`file:line:col: error: message`, then the line, marked), so editors can jump to them. The output is colored on a terminal: `NO_COLOR=1` turns colors off, `FORCE_COLOR=1` (or `CLICOLOR_FORCE=1`) forces them.
 
-The project file is a ProjectScaffold file (YAML or JSON), or an OMG IDL file: its definitions, the files it includes as dependencies.
+The project file is a ProjectScaffold file: YAML, JSON or Scaffold text (`*.scaffold`, the compact `.proto`-like syntax of the editor, [grammar](https://github.com/MickaelBlet/ProjectScaffold-Viewer/blob/master/docs/scaffold-text.md)), or an OMG IDL file: its definitions, the files it includes as dependencies. Dependencies may be any of them.
 
 ### Building the generator
 

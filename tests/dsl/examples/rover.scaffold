@@ -1,0 +1,187 @@
+syntax = "scaffold1";
+
+/// Autonomous rover whose modules only talk through their ports, typed by interfaces; split into the rover binary and the ground station supervising it over TCP
+project "Rover";
+
+/// Runs on the rover
+binary Onboard [color = "#d1733b"];
+/// Runs on the ground station
+binary Ground [color = "#4f9ed1"];
+
+/// Color channels of an image
+bitmask Channels : uint8 {
+  Red = 1 << 0;
+  Green = 1 << 1;
+  Blue = 1 << 2;
+  Depth = 1 << 3;
+}
+
+/// Camera image
+struct Frame {
+  uint64 id;
+  uint16 width = 640;
+  uint16 height = 480;
+  Channels channels = [Red, Green, Blue];
+  bytes pixels;
+}
+
+struct Detection {
+  string(32) label;
+  float32 score;
+  /// x, y, width, height in pixels
+  array<float32, 4> box;
+}
+
+alias Detections = vector<Detection, 64>;
+
+struct Command {
+  /// m/s
+  float32 speed;
+  /// rad/s
+  float32 turn;
+}
+
+enum Health : uint8 {
+  Ok = 0;
+  Degraded = 1;
+  Failed = 2;
+}
+
+/// The rover could not start
+exception StartFailed {
+  Diagnosis diagnosis;
+}
+
+/// Why the health is not Ok
+union Diagnosis switch (Health) {
+  case Degraded: string reason;
+  /// Error code of the failed part
+  case Failed: uint32 code;
+}
+
+/// Receives camera frames
+interface FrameSink {
+  void push(Frame frame);
+}
+
+/// Receives the objects seen in a frame
+interface DetectionSink {
+  void publish(Detections detections);
+}
+
+interface Drive {
+  void command(Command command);
+}
+
+interface Lifecycle {
+  bool start() raises (StartFailed);
+  void stop();
+}
+
+interface HealthQuery {
+  Health health();
+}
+
+/// m/s
+const float32 MaxSpeed = 2.5;
+const Channels FullColor = [Red, Green, Blue];
+/// Command stopping the rover
+const Command Stop = { speed: 0, turn: 0 };
+
+/// Captures frames
+module Camera {
+  color = "#d6c21f";
+  binary = Onboard;
+
+  out FrameSink frames;
+  in Lifecycle lifecycle;
+}
+
+/// Finds objects in the frames
+module Perception {
+  color = "#2e9e8f";
+  binary = Onboard;
+
+  in FrameSink frames;
+  in HealthQuery health;
+  out DetectionSink detections;
+
+  /// Undistorts and scales the frames
+  module Preprocess {
+    color = "#3b8fd1";
+
+    in FrameSink in;
+    out FrameSink out;
+  }
+
+  module Detector {
+    color = "#8a4fd1";
+
+    in FrameSink in;
+    in HealthQuery health;
+    out DetectionSink out;
+  }
+}
+
+/// Turns detections into drive commands
+module Planner {
+  color = "#d14f9e";
+  binary = Onboard;
+
+  in DetectionSink detections;
+  out Drive drive;
+}
+
+module Motors {
+  color = "#d1733b";
+  binary = Onboard;
+
+  in Drive drive;
+  in Lifecycle lifecycle;
+}
+
+/// Logs frames and detections
+module Recorder {
+  color = "#6b7f8e";
+  binary = Onboard;
+
+  in FrameSink frames;
+  in DetectionSink detections;
+}
+
+/// Starts, stops and watches the others
+module Supervisor {
+  color = "#4f9ed1";
+  binary = Ground;
+
+  out Lifecycle camera;
+  out Lifecycle motors;
+  out HealthQuery perception;
+}
+
+link camera_to_perception: Camera.frames -> Perception.frames realtime latency 5 rate 30;
+link camera_to_recorder: Camera.frames -> Recorder.frames bulk;
+link frames_in: Perception.frames -> Perception.Preprocess.in realtime latency 5 rate 30;
+link preprocess_to_detector: Perception.Preprocess.out -> Perception.Detector.in realtime latency 5 rate 30;
+link detections_out: Perception.Detector.out -> Perception.detections realtime latency 5 rate 30;
+link health_in: Perception.health <-> Perception.Detector.health;
+link perception_to_planner: Perception.detections -> Planner.detections realtime latency 5 rate 30;
+link perception_to_recorder: Perception.detections -> Recorder.detections bulk;
+link planner_to_motors: Planner.drive -> Motors.drive realtime latency 2 rate 50;
+link supervise_camera: Supervisor.camera <-> Camera.lifecycle ack 500 low remote tcp { client: { host: "192.168.1.20", port: 5600 }, server: { host: "0.0.0.0", port: 5600 } };
+link supervise_motors: Supervisor.motors <-> Motors.lifecycle ack 500 low remote tcp;
+link supervise_perception: Supervisor.perception <-> Perception.health latency 100 remote tcp;
+
+editor = {
+  layout: {
+    Camera: { x: 160, y: 220, width: 200, height: 100 },
+    Perception: { x: 120, y: 440, width: 280, height: 440 },
+    Perception.Preprocess: { x: 40, y: 80, width: 200, height: 100 },
+    Perception.Detector: { x: 40, y: 280, width: 200, height: 100 },
+    Planner: { x: 300, y: 980, width: 200, height: 100 },
+    Motors: { x: 160, y: 1180, width: 200, height: 100 },
+    Recorder: { x: 20, y: 980, width: 200, height: 100 },
+    Supervisor: { x: 87, y: 9, width: 364, height: 101 }
+  },
+  orientation: vertical
+};

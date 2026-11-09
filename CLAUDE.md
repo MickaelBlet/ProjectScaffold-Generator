@@ -28,6 +28,7 @@ scripts/check_templates.sh [set]...   # generate examples/fixtures with each bui
 - `text.rs`: YAML 1.2 core schema / JSON read into `serde_json::Value` with the line of each node (`Lines::of(data path)`, as the editor's `lineOfPath`); numbers and object key order as JavaScript has them.
 - `schema.rs`: structure check against `viewer/schema/scaffold.schema.json` (embedded) with zod's messages. `viewer/` is the ProjectScaffold-Viewer submodule, which generates the schema (zod, `npm run schema` there): bump the submodule when the format changes (`git submodule update --remote viewer`).
 - `load.rs`: names, duplicates, unknown references (errors with lines) and the `Index` of types, interfaces, constants, modules, placed modules, links. `values.rs`: default values / constants against their type, YAML flow formatting. `validate.rs`: semantic errors, in the editor's order. `idl.rs`: OMG IDL files read as projects (self-contained).
+- `dsl.rs`: Scaffold text (`*.scaffold`, `Format::Dsl`), port of the reader of the editor's `model/dsl.ts` (grammar: `viewer/docs/scaffold-text.md`); the editor writes it. `tests/dsl/`: the examples and fixtures in Scaffold text, regenerated with the Viewer's `npx tsx scripts/to-scaffold.ts -o <dir> <file>` when they change.
 - Error messages are those of the editor (`Line N: …`), printed clang-style by `src/diagnostic.rs` (`file:N:col: error: …` + excerpt): `tests/errors/<case>.expected` (cases written by `scripts/dev/make_error_cases.py`).
 
 ### Code generation (`src/codegen/`, `templates/`)

@@ -1,0 +1,386 @@
+syntax = "scaffold1";
+
+/// Ground control station supervising the drone
+project "Ground" [metadata = { version: "0.9.0", owner: "ops-team" }];
+
+generation = { templates: cpp20 };
+
+transports = [mavlink, rtp];
+
+struct Alert {
+  Event event;
+  bool acknowledged = false;
+  optional<Forecast> forecast = null;
+}
+
+/// Actions of the human operator
+interface Operator {
+  bool approve(uint32 missionId);
+  void abort();
+}
+
+/// Ground side of the radio link
+module Datalink {
+  color = "#d6c21f";
+
+  const uint16 port = 14550;
+  map<string, GeoPoint> peers = { "DRN-01": { lat: 48.85, lon: 2.35 } };
+
+  in Telemetry downlink;
+  in Events events;
+  in Video video;
+  in Command orders;
+  out Command uplink;
+  out Telemetry telemetry;
+  out Events alerts;
+  out Video videoFeed;
+}
+
+/// Planning and supervision
+module MissionControl {
+  color = "#2e9e8f";
+
+  in Telemetry telemetry;
+  in Telemetry display;
+  in WeatherFeed weather;
+  in Events alerts;
+  in Operator console;
+  out Command orders;
+
+  module Planner {
+    float32 maxWindMps = 12;
+    vector<Mission> pending = [];
+
+    Route plan(const Mission mission, const Forecast forecast);
+    const bool feasible(const Route route);
+
+    in Telemetry telemetry;
+    in WeatherFeed weather;
+    in Operator console;
+    out Command orders;
+  }
+
+  module Dashboard {
+    string theme = dark;
+    list<Alert> alerts = [];
+
+    in Telemetry telemetry;
+    in Events alerts;
+    out Operator console;
+  }
+}
+
+module VideoWall {
+  in Video video;
+}
+
+link drone_downlink: Drone/Radio.downlink -> Datalink.downlink latency 200 rate 50 remote mavlink;
+link drone_events: Drone/Radio.eventsDown -> Datalink.events bulk remote mavlink;
+link drone_video: Drone/Radio.videoDown -> Datalink.video bulk rate 30 remote rtp;
+link ground_uplink: Datalink.uplink <-> Drone/Radio.uplink low latency 500 remote mavlink;
+link weather_feed: Weather/WeatherService.feed -> MissionControl.weather low remote http;
+link datalink_telemetry: Datalink.telemetry -> MissionControl.telemetry rate 50 remote websocket;
+link datalink_display: Datalink.telemetry -> MissionControl.display rate 10 remote websocket;
+link datalink_alerts: Datalink.alerts -> MissionControl.alerts remote websocket;
+link datalink_video: Datalink.videoFeed -> VideoWall.video bulk rate 30 remote rtp;
+link control_orders: MissionControl.orders <-> Datalink.orders ack 2000 remote grpc;
+link mc_telemetry_planner: MissionControl.telemetry -> MissionControl.Planner.telemetry;
+link mc_telemetry_dashboard: MissionControl.display -> MissionControl.Dashboard.telemetry rate 10;
+link mc_weather: MissionControl.weather -> MissionControl.Planner.weather low;
+link mc_alerts: MissionControl.alerts -> MissionControl.Dashboard.alerts;
+link dashboard_console: MissionControl.Dashboard.console <-> MissionControl.Planner.console ack 30000;
+link planner_orders: MissionControl.Planner.orders <-> MissionControl.orders ack 2000;
+
+dependency Drone "drone.scaffold.yaml" {
+  struct ImuSample {
+    Vec3 accel;
+    Vec3 gyro;
+    Timestamp stamp;
+  }
+
+  struct PidGains {
+    float32 kp = 1;
+    float32 ki = 0;
+    float32 kd = 0;
+  }
+
+  struct MixerConfig {
+    PidGains gains;
+    uint8 motorCount = 4;
+    string frame = "quad-x";
+  }
+
+  enum SensorStatus : uint8 {
+    Off = 0;
+    Ok = 1;
+    Degraded = 2;
+    Failed = 3;
+  }
+
+  /// Raw measurements towards the estimator
+  interface SensorData {
+    void imu(ImuSample sample);
+    void gps(GeoPoint fix, uint8 satellites);
+  }
+
+  uses = [Fleet];
+
+  modules = [
+    {
+      module: Radio,
+      attributes: [
+        { name: callsign, type: { kind: primitive, name: string }, default: "DRN-01" },
+        { name: frequencyMHz, type: { kind: primitive, name: float32 }, default: 2437.5 },
+        {
+          name: maxPeers,
+          static: true,
+          const: true,
+          type: { kind: primitive, name: uint8 },
+          default: 8
+        },
+        {
+          name: bootTime,
+          type: { kind: ref, name: Timestamp },
+          description: "Custom primitive",
+          default: "{}"
+        },
+        {
+          name: rallyPoints,
+          type: { kind: ref, name: Route },
+          description: "Fallback landing spots",
+          default: [
+            { point: { lat: 48.86, lon: 2.29 } },
+            { point: { lat: 48.85, lon: 2.3, alt: 35 }, speedMps: 3, holdS: 10 }
+          ]
+        }
+      ],
+      ports: [
+        { name: uplink, role: in, interface: Command },
+        { name: command, role: out, interface: Command },
+        { name: telemetry, role: in, interface: Telemetry },
+        { name: downlink, role: out, interface: Telemetry },
+        { name: events, role: in, interface: Events },
+        { name: eventsDown, role: out, interface: Events },
+        { name: video, role: in, interface: Video },
+        { name: videoDown, role: out, interface: Video }
+      ]
+    }
+  ];
+}
+
+dependency Weather "weather.scaffold.yaml" {
+  /// Angle in decimal degrees
+  alias Degrees = float64;
+
+  struct Wind {
+    Degrees direction;
+    float32 speedMps;
+    optional<float32> gustMps = null;
+  }
+
+  struct Forecast {
+    string zone;
+    Wind wind;
+    float32 visibilityKm = 10;
+    bool flyable = true;
+  }
+
+  interface WeatherFeed {
+    void forecast(Forecast forecast);
+  }
+
+  modules = [
+    {
+      module: WeatherService,
+      attributes: [{ name: refreshS, type: { kind: primitive, name: uint32 }, default: 600 }],
+      ports: [{ name: feed, role: out, interface: WeatherFeed }]
+    }
+  ];
+}
+
+dependency Fleet "fleet.scaffold.yaml" {
+  enum FlightMode : uint8 {
+    Disarmed = 0;
+    Armed = 1;
+    Takeoff = 2;
+    Mission = 3;
+    ReturnHome = 4;
+    Land = 5;
+    Emergency = 255;
+  }
+
+  enum Severity : int8 {
+    Debug = -1;
+    Info = 0;
+    Warning = 1;
+    Error = 2;
+    Critical = 3;
+  }
+
+  struct Vec3 {
+    float32 x = 0;
+    float32 y = 0;
+    float32 z = 0;
+  }
+
+  /// Position, velocity and attitude at a time point
+  struct Pose {
+    GeoPoint position;
+    Vec3 velocity;
+    /// Quaternion (w, x, y, z)
+    array<float64, 4> attitude = [1, 0, 0, 0];
+    Timestamp stamp;
+  }
+
+  struct Waypoint {
+    GeoPoint point;
+    float32 speedMps = 5;
+    optional<float32> holdS;
+  }
+
+  alias Route = vector<Waypoint>;
+
+  struct Mission {
+    uint32 id;
+    string name;
+    Route route;
+    set<string> tags = [];
+    map<string, float64> params = {};
+  }
+
+  struct BatteryState {
+    float32 voltage;
+    array<float32, 4> cells;
+    uint8 percent;
+    bool charging = false;
+  }
+
+  struct Event {
+    Severity severity = Info;
+    uint16 code;
+    string text;
+    Timestamp stamp;
+    optional<bytes> payload = null;
+  }
+
+  /// Encoded video frame
+  alias Frame = bytes;
+
+  struct VideoFrame {
+    uint16 width;
+    uint16 height;
+    string codec = h264;
+    Frame data;
+    Timestamp stamp;
+  }
+
+  /// State published by a drone
+  interface Telemetry {
+    void pose(Pose pose);
+    void battery(BatteryState state);
+    void mode(FlightMode mode);
+  }
+
+  /// Orders sent to a drone
+  interface Command {
+    bool arm(bool force);
+    bool setMode(FlightMode mode);
+    /// Load a mission, returns its id
+    uint32 upload(Mission mission);
+    void selfTest(inout list<string> report, out uint16 failures);
+  }
+
+  interface Events {
+    void report(Event event);
+  }
+
+  interface Video {
+    void frame(VideoFrame frame);
+  }
+
+  interface Actuation {
+    void throttle(array<float32, 4> motors);
+  }
+
+  interface Storage {
+    bool write(string key, bytes data);
+    bool read(string key, out bytes data);
+  }
+
+  uses = [Units];
+
+  indirect = true;
+}
+
+dependency Units "units.scaffold.yaml" {
+  /// Monotonic time point, mapped by generators to a native type (e.g. std::chrono::steady_clock::time_point)
+  primitive Timestamp;
+
+  /// Distance in meters
+  alias Meters = float64;
+
+  /// WGS84 position
+  struct GeoPoint {
+    Degrees lat;
+    Degrees lon;
+    /// Altitude above mean sea level
+    Meters alt = 0;
+  }
+
+  /// Time source
+  interface Clock {
+    Timestamp now();
+  }
+
+  indirect = true;
+
+  shared = [Degrees];
+}
+
+editor = {
+  layout: {
+    Datalink: { x: 362, y: 228, width: 380, height: 188 },
+    MissionControl: { x: 42, y: 532, width: 330, height: 629 },
+    MissionControl.Planner: { x: 20, y: 375, width: 290, height: 208 },
+    MissionControl.Dashboard: { x: 65, y: 119, width: 200, height: 140 },
+    VideoWall: { x: 520, y: 840, width: 200, height: 100 }
+  },
+  views: [
+    {
+      name: Datalink,
+      root: Datalink,
+      layout: { Datalink: { x: 280, y: 260, width: 380, height: 160 } },
+      links: { datalink_video: { from: { side: top, at: 0.416 }, to: { side: bottom, at: 0.3 } } },
+      labels: { VideoWall: { video: top } },
+      outside: {
+        MissionControl: { x: 300, y: 680, width: 300, height: 100 },
+        VideoWall: { x: 380, y: 20, width: 200, height: 100 },
+        "Drone/Radio": { x: 880, y: 260, width: 300, height: 100 }
+      }
+    }
+  ],
+  style: { Datalink: { labels: { uplink: left } }, VideoWall: { labels: { video: bottom } } },
+  dependencies: { Drone: { Radio: { x: 320, y: 20 } }, Weather: { WeatherService: { x: 60, y: 260 } } },
+  orientation: vertical,
+  links: { weather_feed: { to: { side: top, at: 0.4 } } },
+  notes: [
+    {
+      kind: note,
+      text: "Radio (project Drone) and WeatherService (project Weather) are modules of dependencies placed here (dashed): double-click to open their project.",
+      x: 800,
+      y: 20,
+      width: 300,
+      height: 130,
+      color: "#fff3b0"
+    },
+    {
+      kind: frame,
+      text: "Ground station",
+      x: 30,
+      y: 200,
+      width: 740,
+      height: 990,
+      color: "#2e9e8f"
+    }
+  ]
+};

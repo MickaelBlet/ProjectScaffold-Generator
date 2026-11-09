@@ -1,0 +1,3 @@
+tests/errors/dsl-syntax.scaffold:10:3: error: Invalid Scaffold text: expected a name, found '1'
+  10 |   in Sink 1;
+     |   ^~~~~~~~~~

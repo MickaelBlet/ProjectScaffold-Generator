@@ -1,0 +1,33 @@
+syntax = "scaffold1";
+
+/// Types and interfaces shared by the robot system
+project "Common";
+
+struct Vec3 {
+  float32 x;
+  float32 y;
+  float32 z;
+}
+
+enum Mode : uint8 {
+  Idle = 0;
+  Run = 1;
+  Fault = 255;
+}
+
+alias Samples = vector<uint16>;
+
+/// Position and orientation
+struct Pose {
+  Vec3 position;
+  array<float64, 4> orientation = [0, 0, 0, 1];
+}
+
+interface Telemetry {
+  void publish(Pose pose, map<string, list<uint8>> tags);
+}
+
+interface Control {
+  bool setMode(Mode mode);
+  void raw(inout Samples samples, optional<float32> gain);
+}

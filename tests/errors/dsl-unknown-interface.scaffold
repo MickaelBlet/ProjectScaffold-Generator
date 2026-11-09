@@ -1,0 +1,7 @@
+syntax = "scaffold1";
+
+project "P";
+
+module M {
+  in Nope p;
+}

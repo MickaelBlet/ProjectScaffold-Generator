@@ -1,0 +1,11 @@
+syntax = "scaffold1";
+
+project "P";
+
+interface Sink {
+  void push(int32 v);
+}
+
+module M {
+  in Sink 1;
+}

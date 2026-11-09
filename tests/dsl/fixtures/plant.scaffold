@@ -1,0 +1,102 @@
+syntax = "scaffold1";
+
+project "Plant Demo";
+
+enum State : int8 {
+  Off = -1;
+  On = 1;
+}
+
+/// One sample
+struct Reading {
+  float64 value = 1.5;
+  State state = On;
+  map<string, int32> tags = { a: 1 };
+  optional<string> note = null;
+  string label = "say \"hi\"";
+  uint64 count = 7;
+}
+
+alias Readings = vector<Reading>;
+
+primitive Handle;
+
+interface Sink {
+  void push(Reading reading);
+}
+
+interface Query {
+  bool get(string key, out float64 value);
+}
+
+interface module Base {
+  virtual pure void run();
+}
+
+abstract module Device : Base {
+  static uint32 instances = 0;
+  const float32 limit = 2;
+
+  const virtual string describe(string prefix);
+}
+
+module Plant {
+  in Sink feed;
+  out Sink out;
+  in Query query;
+
+  module Sensor : Device {
+    Reading last;
+    Readings history = [{ value: 2 }];
+
+    virtual override void run();
+    static bool calibrate(const float32 gain);
+
+    out Sink out;
+  }
+
+  module Store {
+    in Sink in;
+    in Query query;
+  }
+
+  module Group {
+    in Sink feed;
+    out Sink out;
+
+    module Filter {
+      in Sink in;
+      out Sink out;
+    }
+  }
+}
+
+module Client {
+  out Query ask;
+  in Sink sink;
+}
+
+link sensor_to_store: Plant.Sensor.out -> Plant.Store.in;
+link feed_in: Plant.feed -> Plant.Group.Filter.in;
+link filter_out: Plant.Group.Filter.out -> Plant.Group.out;
+link group_out: Plant.Group.out -> Plant.out;
+link plant_query: Plant.query <-> Plant.Store.query;
+link ask_store: Client.ask <-> Plant.Store.query ack 20 low latency 5 remote tcp;
+link plant_to_client: Plant.out -> Client.sink;
+
+editor = {
+  layout: {
+    Base: { x: 20, y: 374, width: 200, height: 98 },
+    Device: { x: 20, y: 20, width: 200, height: 142 },
+    Plant: { x: 260, y: 0, width: 920, height: 420 },
+    Plant.Sensor: { x: 241, y: 40, width: 300, height: 160 },
+    Plant.Store: { x: 640, y: 100, width: 200, height: 100 },
+    Plant.Group: { x: 151, y: 254, width: 369, height: 138 },
+    Plant.Group.Filter: { x: 88, y: 46, width: 200, height: 72 },
+    Client: { x: 1400, y: 200, width: 200, height: 80 }
+  },
+  links: {
+    ask_store: { points: [{ x: 1360, y: 160 }] },
+    plant_to_client: { points: [{ x: 1240, y: 300 }] }
+  }
+};
