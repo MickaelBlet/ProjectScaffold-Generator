@@ -36,6 +36,7 @@
 #include <map>
 #include <mutex>
 #include <random>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -203,18 +204,47 @@ void sendAll(int fd, const std::string& text, Clock::time_point deadline = forev
     sendAll(fd, text.data(), text.size(), deadline, stop);
 }
 
-/// Buffered input of a stream socket.
+/// Buffered input of a stream socket. Nothing is consumed by a read that fails (deadline, stop): the
+/// stream stays in step.
 class Input {
 public:
     explicit Input(int fd) : fd_(fd) {}
 
-    /// The next `size` bytes: false at `deadline` or on `stop`; throws Closed at the end of the stream.
+    /// Waits for `size` bytes buffered: false at `deadline` or on `stop`; throws Closed at the end of the
+    /// stream.
+    bool need(std::size_t size, Clock::time_point deadline, const std::atomic<bool>* stop)
+    {
+        while (available() < size)
+            if (!fill(size, deadline, stop)) return false;
+        return true;
+    }
+
+    const std::uint8_t* data() const { return buffer_.data() + begin_; }
+    std::size_t available() const { return end_ - begin_; }
+
+    void consume(std::size_t size)
+    {
+        begin_ += size;
+        if (begin_ == end_) {
+            begin_ = end_ = 0;
+            // A large frame does not keep its memory.
+            if (buffer_.size() > largeBuffer) Bytes().swap(buffer_);
+        }
+    }
+
+    /// The next `size` bytes.
     bool take(std::size_t size, std::string& out, Clock::time_point deadline, const std::atomic<bool>* stop)
     {
-        while (data_.size() < size)
-            if (!fill(deadline, stop)) return false;
-        out.assign(data_, 0, size);
-        data_.erase(0, size);
+        if (!need(size, deadline, stop)) return false;
+        out.assign(reinterpret_cast<const char*>(data()), size);
+        consume(size);
+        return true;
+    }
+    bool take(std::size_t size, Bytes& out, Clock::time_point deadline, const std::atomic<bool>* stop)
+    {
+        if (!need(size, deadline, stop)) return false;
+        out.assign(data(), data() + size);
+        consume(size);
         return true;
     }
 
@@ -222,44 +252,57 @@ public:
     bool until(const std::string& delimiter, std::string& out, std::size_t limit, Clock::time_point deadline,
                const std::atomic<bool>* stop)
     {
-        std::size_t at;
-        while ((at = data_.find(delimiter)) == std::string::npos) {
-            if (data_.size() > limit) throw Error("header too long");
-            if (!fill(deadline, stop)) return false;
+        std::size_t from = 0;
+        for (;;) {
+            const auto* first = reinterpret_cast<const char*>(data());
+            const std::string_view seen(first, available());
+            const std::size_t at = seen.find(delimiter, from);
+            if (at != std::string_view::npos) return take(at + delimiter.size(), out, deadline, stop);
+            if (available() > limit) throw Error("header too long");
+            from = available() >= delimiter.size() ? available() - delimiter.size() + 1 : 0;
+            if (!fill(available() + 1, deadline, stop)) return false;
         }
-        return take(at + delimiter.size(), out, deadline, stop);
     }
 
 private:
-    bool fill(Clock::time_point deadline, const std::atomic<bool>* stop)
+    static constexpr std::size_t chunk = 65536;
+    static constexpr std::size_t largeBuffer = 1u << 20;
+
+    /// Reads what came, room made for `want` bytes buffered (a whole frame is read into place).
+    bool fill(std::size_t want, Clock::time_point deadline, const std::atomic<bool>* stop)
     {
         if (!await(fd_, deadline, stop)) return false;
-        char chunk[8192];
+        if (begin_ > 0) {
+            std::memmove(buffer_.data(), buffer_.data() + begin_, available());
+            end_ -= begin_;
+            begin_ = 0;
+        }
+        const std::size_t room = std::max(want, end_ + chunk);
+        if (buffer_.size() < room) buffer_.resize(room);
         ssize_t n;
         do {
-            n = ::recv(fd_, chunk, sizeof chunk, 0);
+            n = ::recv(fd_, buffer_.data() + end_, buffer_.size() - end_, 0);
         } while (n < 0 && errno == EINTR);
         if (n < 0) fail("recv");
         if (n == 0) throw Closed();
-        data_.append(chunk, static_cast<std::size_t>(n));
+        end_ += static_cast<std::size_t>(n);
         return true;
     }
 
     int fd_;
-    std::string data_;
+    Bytes buffer_;
+    std::size_t begin_ = 0;
+    std::size_t end_ = 0;
 };
-
-Bytes toBytes(const std::string& s) { return Bytes(s.begin(), s.end()); }
 
 /// A frame read from a stream: false at `deadline` or on `stop`.
 bool readFrame(Input& in, Bytes& frame, Clock::time_point deadline, const std::atomic<bool>* stop)
 {
-    std::string head;
-    if (!in.take(Header::size, head, deadline, stop)) return false;
-    const Header h = header(reinterpret_cast<const std::uint8_t*>(head.data()), head.size());
-    std::string body;
-    if (!in.take(h.length, body, deadline, stop)) return false;
-    frame = toBytes(head + body);
+    if (!in.need(Header::size, deadline, stop)) return false;
+    const std::size_t size = Header::size + header(in.data(), Header::size).length;
+    if (!in.need(size, deadline, stop)) return false;
+    frame.assign(in.data(), in.data() + size);
+    in.consume(size);
     return true;
 }
 
@@ -379,6 +422,7 @@ enum Opcode : std::uint8_t { continuation = 0x0, text = 0x1, binary = 0x2, close
 std::string wsFrame(std::uint8_t opcode, const std::uint8_t* data, std::size_t size, std::mt19937* mask)
 {
     std::string out;
+    out.reserve(14 + size);
     out += static_cast<char>(0x80 | opcode);
     const std::uint8_t masked = mask ? 0x80 : 0;
     if (size < 126) {
@@ -398,7 +442,10 @@ std::string wsFrame(std::uint8_t opcode, const std::uint8_t* data, std::size_t s
     std::uint8_t key[4];
     for (std::uint8_t& k : key) k = static_cast<std::uint8_t>((*mask)() & 0xff);
     out.append(reinterpret_cast<const char*>(key), 4);
-    for (std::size_t i = 0; i < size; ++i) out += static_cast<char>(data[i] ^ key[i % 4]);
+    const std::size_t at = out.size();
+    out.resize(at + size);
+    char* p = &out[at];
+    for (std::size_t i = 0; i < size; ++i) p[i] = static_cast<char>(data[i] ^ key[i & 3]);
     return out;
 }
 
@@ -427,16 +474,34 @@ bool wsRead(int fd, Input& in, Bytes& message, std::mt19937* mask, Clock::time_p
         if (message.size() + size > Header::size + Header::maxLength) throw Error("WebSocket message too large");
         std::string key;
         if ((b1 & 0x80) && !in.take(4, key, deadline, stop)) return false;
-        std::string data;
-        if (!in.take(static_cast<std::size_t>(size), data, deadline, stop)) return false;
-        if (!key.empty())
-            for (std::size_t i = 0; i < data.size(); ++i) data[i] = static_cast<char>(data[i] ^ key[i % 4]);
-        switch (b0 & 0x0f) {
+        const auto n = static_cast<std::size_t>(size);
+        if (!in.need(n, deadline, stop)) return false;
+        const std::uint8_t* data = in.data();
+        // Unmasked where it is kept: the message, or a control frame's own buffer.
+        std::uint8_t control_data[125];
+        std::uint8_t* out = control_data;
+        const std::uint8_t opcode = b0 & 0x0f;
+        const bool kept = opcode == continuation || opcode == text || opcode == binary;
+        if (kept) {
+            const std::size_t at = message.size();
+            message.resize(at + n);
+            out = message.data() + at;
+        } else if (opcode != close && opcode != ping && opcode != pong) {
+            throw Error("bad WebSocket opcode");
+        } else if (n > sizeof control_data) {
+            throw Error("bad WebSocket control frame");
+        }
+        if (key.empty()) {
+            if (n) std::memcpy(out, data, n);
+        } else {
+            for (std::size_t i = 0; i < n; ++i) out[i] = static_cast<std::uint8_t>(data[i] ^ static_cast<std::uint8_t>(key[i & 3]));
+        }
+        in.consume(n);
+        switch (opcode) {
         case close:
             throw Closed();
         case ping: {
-            const std::string reply =
-                wsFrame(pong, reinterpret_cast<const std::uint8_t*>(data.data()), data.size(), mask);
+            const std::string reply = wsFrame(pong, control_data, n, mask);
             std::unique_lock<std::mutex> lock;
             if (sending) lock = std::unique_lock<std::mutex>(*sending);
             sendAll(fd, reply, deadline, stop);
@@ -447,7 +512,6 @@ bool wsRead(int fd, Input& in, Bytes& message, std::mt19937* mask, Clock::time_p
         case continuation:
         case text:
         case binary:
-            message.insert(message.end(), data.begin(), data.end());
             if (b0 & 0x80) return true;
             break;
         default:
@@ -479,9 +543,9 @@ public:
         const std::uint32_t tail = load(base_ + 4);
         const auto size = static_cast<std::uint32_t>(message.size());
         if (capacity_ - (head - tail) < size + 4) return false;
-        Writer w;
-        w.number(size);
-        copyIn(head, w.bytes().data(), 4);
+        std::uint8_t length[4];
+        for (int i = 0; i < 4; ++i) length[i] = static_cast<std::uint8_t>(size >> (8 * i));
+        copyIn(head, length, 4);
         copyIn(head + 4, message.data(), size);
         store(base_, head + 4 + size);
         return true;
@@ -818,11 +882,10 @@ public:
         std::string head;
         if (!in.until("\r\n\r\n", head, 16384, deadline, nullptr)) throw Error("no HTTP response in time");
         const std::string status = head.size() > 12 ? head.substr(9, 3) : "";
-        std::string body;
-        if (!in.take(contentLength(head), body, deadline, nullptr)) throw Error("no HTTP response in time");
-        if (status != "200" && status != "204") throw Error("HTTP " + status + " " + body);
+        Bytes reply;
+        if (!in.take(contentLength(head), reply, deadline, nullptr)) throw Error("no HTTP response in time");
+        if (status != "200" && status != "204") throw Error("HTTP " + status + " " + std::string(reply.begin(), reply.end()));
         if (!wait) return {};
-        Bytes reply = toBytes(body);
         if (status != "200" || header(reply).id != header(frame).id)
             throw Error("no reply within " + std::to_string(timeout.count()) + " ms");
         return reply;
@@ -1057,10 +1120,17 @@ void tcpSession(int fd, const Handler& handler, const std::atomic<bool>& stop)
         if (const std::optional<Bytes> reply = handler(frame)) sendAll(fd, reply->data(), reply->size(), forever, &stop);
 }
 
+std::string httpResponse(const std::string& status, const void* body, std::size_t size, const std::string& type)
+{
+    std::string out = "HTTP/1.1 " + status + "\r\nContent-Type: " + type +
+                      "\r\nContent-Length: " + std::to_string(size) + "\r\n\r\n";
+    out.append(static_cast<const char*>(body), size);
+    return out;
+}
+
 std::string httpResponse(const std::string& status, const std::string& body, const std::string& type)
 {
-    return "HTTP/1.1 " + status + "\r\nContent-Type: " + type + "\r\nContent-Length: " + std::to_string(body.size()) +
-           "\r\n\r\n" + body;
+    return httpResponse(status, body.data(), body.size(), type);
 }
 
 void httpSession(int fd, const Handler& handler, const std::atomic<bool>& stop)
@@ -1069,15 +1139,15 @@ void httpSession(int fd, const Handler& handler, const std::atomic<bool>& stop)
     for (;;) {
         std::string head;
         if (!in.until("\r\n\r\n", head, 16384, forever, &stop)) return;
-        std::string body;
+        Bytes body;
         if (!in.take(contentLength(head), body, forever, &stop)) return;
         std::string response;
         if (head.compare(0, 5, "POST ") != 0) {
             response = httpResponse("405 Method Not Allowed", "", "text/plain");
         } else {
             try {
-                const std::optional<Bytes> reply = handler(toBytes(body));
-                response = reply ? httpResponse("200 OK", std::string(reply->begin(), reply->end()), "application/octet-stream")
+                const std::optional<Bytes> reply = handler(body);
+                response = reply ? httpResponse("200 OK", reply->data(), reply->size(), "application/octet-stream")
                                  : httpResponse("204 No Content", "", "text/plain");
             } catch (const std::exception& e) {
                 response = httpResponse("400 Bad Request", e.what(), "text/plain");

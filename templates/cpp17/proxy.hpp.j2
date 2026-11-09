@@ -58,7 +58,7 @@ public:
 
     {{ _type(type_reference=message.returns) }} {{ _identifier(name=message.name) }}({{ _parameters(parameters=message.params) }}) override
     {
-        Writer request_;
+        Writer request_ = Writer::framed();
 {% for parameter in message.inputs %}
 {% set state.expression = _identifier(name=parameter.name) %}
 {% set state.bounds_check = _bounds(type_reference=parameter.type, expression=state.expression, depth=0) %}
@@ -68,7 +68,7 @@ public:
         encode(request_, {{ state.expression }});
 {% endfor %}
 {% if message.returns or message.outputs|length > 0 %}
-        const Bytes reply_ = {{ call_prefix }}{{ loop.index0 }}, request_.bytes(), true);
+        const Bytes reply_ = {{ call_prefix }}{{ loop.index0 }}, std::move(request_), true);
         Reader reader_(reply_);
 {% if message.returns %}
         {{ _type(type_reference=message.returns) }} result_{};
@@ -92,7 +92,7 @@ public:
         return result_;
 {% endif %}
 {% else %}
-        {{ call_prefix }}{{ loop.index0 }}, request_.bytes(), false);
+        {{ call_prefix }}{{ loop.index0 }}, std::move(request_), false);
 {% endif %}
     }
 {% endfor %}

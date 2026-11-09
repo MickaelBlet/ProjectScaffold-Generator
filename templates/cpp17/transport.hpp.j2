@@ -89,7 +89,7 @@ public:
 
     /// Sends message `message` with its encoded inputs; waits for the reply when the message has a
     /// result, or the link acknowledges calls. Returns the payload of the reply (empty without).
-    Bytes call(std::uint16_t message, const Bytes& inputs, bool result)
+    Bytes call(std::uint16_t message, Writer&& inputs, bool result)
     {
         std::shared_ptr<Channel> channel;
         Header h;
@@ -108,10 +108,11 @@ public:
         h.kind = Header::call;
         h.flags = wait ? Header::wantReply : 0;
         h.message = message;
-        const Bytes reply = channel->exchange(frame(h, inputs), wait, timeout);
+        Bytes out = channel->exchange(frame(h, std::move(inputs)), wait, timeout);
         if (!wait) return {};
-        const Header r = header(reply);
-        Bytes out = payload(reply);
+        const Header r = header(out);
+        payloadReader(out); // checks the size
+        out.erase(out.begin(), out.begin() + Header::size);
         if (r.kind == Header::error) {
             Reader reader(out);
             std::string text;
@@ -160,10 +161,10 @@ template <class E, class... Rest>
 
 /// `caller.call(...)`, throwing the declared exceptions `E...` (the `raises` of the message, in order).
 template <class... E>
-Bytes callRaising(Caller& caller, std::uint16_t message, const Bytes& inputs, bool result)
+Bytes callRaising(Caller& caller, std::uint16_t message, Writer&& inputs, bool result)
 {
     try {
-        return caller.call(message, inputs, result);
+        return caller.call(message, std::move(inputs), result);
     } catch (const Raised& e) {
         raise<E...>(e);
     }

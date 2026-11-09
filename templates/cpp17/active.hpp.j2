@@ -15,12 +15,14 @@
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
+#include <exception>
 #include <functional>
-#include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 namespace {{ _project_identifier() }} {
@@ -31,6 +33,86 @@ class ActiveError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
 };
+
+namespace detail {
+/// A call waiting for its result: shared by the caller and the queued job (one allocation per call), freed
+/// by the last of them.
+template <class F, class Result>
+class ActiveCall {
+public:
+    explicit ActiveCall(F f) : f_(std::move(f)) {}
+
+    /// On the thread: runs `f` unless the caller gave up, then lets go of the job's share.
+    void run()
+    {
+        int expected = 0;
+        if (state_.compare_exchange_strong(expected, 1)) {
+            try {
+                if constexpr (std::is_void_v<Result>)
+                    f_();
+                else
+                    result_.emplace(f_());
+            } catch (...) {
+                error_ = std::current_exception();
+            }
+            {
+                const std::lock_guard<std::mutex> lock(mutex_);
+                done_ = true;
+            }
+            finished_.notify_all();
+        }
+        release();
+    }
+
+    /// False at `deadline` with no result.
+    bool waitUntil(std::chrono::steady_clock::time_point deadline)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return finished_.wait_until(lock, deadline, [this] { return done_; });
+    }
+
+    void wait()
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        finished_.wait(lock, [this] { return done_; });
+    }
+
+    /// Before it has started: true when `f` will never run.
+    bool giveUp()
+    {
+        int expected = 0;
+        return state_.compare_exchange_strong(expected, 2);
+    }
+
+    Result get()
+    {
+        if (error_) std::rethrow_exception(error_);
+        if constexpr (std::is_void_v<Result>)
+            return;
+        else
+            return std::move(*result_);
+    }
+
+    void release()
+    {
+        if (shares_.fetch_sub(1, std::memory_order_acq_rel) == 1) delete this;
+    }
+
+private:
+    using Stored = std::conditional_t<std::is_void_v<Result>, bool, Result>;
+
+    F f_;
+    // 0: queued, 1: running or done, 2: given up by the caller (then never run: `f` refers to its
+    // arguments).
+    std::atomic<int> state_{0};
+    std::atomic<int> shares_{2}; // the caller's and the job's
+    std::mutex mutex_;
+    std::condition_variable finished_;
+    bool done_ = false;
+    std::optional<Stored> result_;
+    std::exception_ptr error_;
+};
+} // namespace detail
 
 /// Thread of an active module: runs the jobs queued by the adapters of its `in` ports, one at a time, in
 /// their order. The destructor runs the jobs still queued, then joins the thread.
@@ -71,27 +153,29 @@ public:
     template <class F>
     auto call(F f) -> decltype(f())
     {
-        if (std::this_thread::get_id() == thread_.get_id()) return f();
-        using Result = decltype(f());
-        // 0: queued, 1: running or done, 2: given up by the caller (then never run: `f` refers to its
-        // arguments).
-        auto state = std::make_shared<std::atomic<int>>(0);
-        auto task = std::make_shared<std::packaged_task<Result()>>(std::move(f));
-        std::future<Result> result = task->get_future();
+        if (onThread()) return f();
+        using Call = detail::ActiveCall<F, decltype(f())>;
+        Call* const slot = new Call(std::move(f));
+        // The caller's share, let go of on return.
+        const std::unique_ptr<Call, void (*)(Call*)> mine(slot, [](Call* c) { c->release(); });
         const auto deadline = std::chrono::steady_clock::now() + timeout_;
-        const bool queued = push(
-            [state, task] {
-                int expected = 0;
-                if (state->compare_exchange_strong(expected, 1)) (*task)();
-            },
-            deadline);
-        if (!queued) throw ActiveError("active module: queue full");
-        if (result.wait_until(deadline) != std::future_status::ready) {
-            int expected = 0;
-            if (state->compare_exchange_strong(expected, 2)) throw ActiveError("active module: no result in time");
-            result.wait();
+        bool queued = false;
+        try {
+            // A job of one pointer: no allocation of its own.
+            queued = push([slot] { slot->run(); }, deadline);
+        } catch (...) {
+            slot->release(); // the job's share: never queued
+            throw;
         }
-        return result.get();
+        if (!queued) {
+            slot->release();
+            throw ActiveError("active module: queue full");
+        }
+        if (!slot->waitUntil(deadline)) {
+            if (slot->giveUp()) throw ActiveError("active module: no result in time");
+            slot->wait();
+        }
+        return slot->get();
     }
 
 private:
@@ -101,14 +185,17 @@ private:
     bool push(std::function<void()> job, std::chrono::steady_clock::time_point deadline)
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        const bool own = std::this_thread::get_id() == thread_.get_id();
         const auto room = [this] { return jobs_.size() < capacity_ || stopping_; };
-        if (!own && !room()) {
+        if (!onThread() && !room()) {
             if (overflow_ != Overflow::block) return false;
+            ++blocked_;
+            bool got = true;
             if (deadline == std::chrono::steady_clock::time_point::max())
                 room_.wait(lock, room);
-            else if (!room_.wait_until(lock, deadline, room))
-                return false;
+            else
+                got = room_.wait_until(lock, deadline, room);
+            --blocked_;
+            if (!got) return false;
         }
         if (stopping_) throw ActiveError("active module: stopped");
         jobs_.push_back(std::move(job));
@@ -117,18 +204,23 @@ private:
         return true;
     }
 
+    bool onThread() const { return std::this_thread::get_id() == id_.load(std::memory_order_relaxed); }
+
     void run()
     {
+        id_.store(std::this_thread::get_id(), std::memory_order_relaxed);
         for (;;) {
             std::function<void()> job;
+            bool blocked;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 ready_.wait(lock, [this] { return stopping_ || !jobs_.empty(); });
                 if (jobs_.empty()) return;
                 job = std::move(jobs_.front());
                 jobs_.pop_front();
+                blocked = blocked_ > 0;
             }
-            room_.notify_one();
+            if (blocked) room_.notify_one();
             try {
                 job();
             } catch (...) {
@@ -144,7 +236,9 @@ private:
     std::condition_variable ready_;
     std::condition_variable room_;
     std::deque<std::function<void()>> jobs_;
+    std::size_t blocked_ = 0; // callers waiting for room
     bool stopping_ = false;
+    std::atomic<std::thread::id> id_{}; // of the thread, once it runs
     std::thread thread_; // last: started once the members above are made
 };
 

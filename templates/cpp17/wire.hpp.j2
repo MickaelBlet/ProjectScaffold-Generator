@@ -47,6 +47,9 @@ public:
 
 using Bytes = std::vector<std::uint8_t>;
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
+constexpr bool littleEndian() { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
+#else
 inline bool littleEndian()
 {
     const std::uint16_t one = 1;
@@ -54,14 +57,36 @@ inline bool littleEndian()
     std::memcpy(&first, &one, 1);
     return first == 1;
 }
+#endif
+
+struct Header;
+class Writer;
+inline Bytes frame(Header h, Writer&& payload);
 
 class Writer {
 public:
+    Writer() = default;
+
+    /// A writer whose bytes become a frame without being copied (frame(Header, Writer&&)): room is kept
+    /// for the header in front of the payload.
+    static Writer framed()
+    {
+        Writer w;
+        w.bytes_.reserve(256);
+        w.bytes_.resize(headroom);
+        w.base_ = headroom;
+        return w;
+    }
+
     void raw(const void* data, std::size_t size)
     {
-        const auto* p = static_cast<const std::uint8_t*>(data);
-        bytes_.insert(bytes_.end(), p, p + size);
+        if (!size) return;
+        const std::size_t at = bytes_.size();
+        bytes_.resize(at + size);
+        std::memcpy(bytes_.data() + at, data, size);
     }
+
+    void reserve(std::size_t size) { bytes_.reserve(bytes_.size() + size); }
 
     template <class T>
     void number(T value)
@@ -79,10 +104,18 @@ public:
         number(static_cast<std::uint32_t>(n));
     }
 
+    /// The encoded bytes (of a writer not framed()).
     const Bytes& bytes() const { return bytes_; }
 
+    /// Bytes written (the payload of a framed() writer).
+    std::size_t size() const { return bytes_.size() - base_; }
+
 private:
+    friend Bytes frame(Header h, Writer&& payload);
+    static constexpr std::size_t headroom = 16;
+
     Bytes bytes_;
+    std::size_t base_ = 0;
 };
 
 class Reader {
@@ -226,10 +259,24 @@ inline void decode(Reader& r, Bytes& v)
     r.raw(v.data(), n);
 }
 
+/// Numbers whose items are laid out in memory as on the wire (little-endian host): sequences of them are
+/// copied at once.
+template <class T>
+constexpr bool isRawNumber()
+{
+    return std::is_arithmetic_v<T> && !std::is_same_v<T, bool>;
+}
+
 template <class T>
 void encode(Writer& w, const std::vector<T>& v)
 {
     w.count(v.size());
+    if constexpr (isRawNumber<T>()) {
+        if (littleEndian()) {
+            w.raw(v.data(), v.size() * sizeof(T));
+            return;
+        }
+    }
     for (const T& x : v) encode(w, x);
 }
 template <class T>
@@ -237,12 +284,19 @@ void decode(Reader& r, std::vector<T>& v)
 {
     const Reader::Nested nested(r);
     const std::size_t n = r.items();
+    if constexpr (isRawNumber<T>()) {
+        if (littleEndian()) {
+            if (n > r.remaining() / sizeof(T)) throw Error("truncated frame");
+            v.resize(n);
+            r.raw(v.data(), n * sizeof(T));
+            return;
+        }
+    }
     v.clear();
     v.reserve(std::min(n, r.remaining() / sizeof(T)));
     for (std::size_t i = 0; i < n; ++i) {
-        T x{};
-        decode(r, x);
-        v.push_back(std::move(x));
+        v.emplace_back();
+        decode(r, v.back());
     }
 }
 
@@ -287,11 +341,23 @@ void decode(Reader& r, std::set<T>& v)
 template <class T, std::size_t N>
 void encode(Writer& w, const std::array<T, N>& v)
 {
+    if constexpr (isRawNumber<T>()) {
+        if (littleEndian()) {
+            w.raw(v.data(), N * sizeof(T));
+            return;
+        }
+    }
     for (const T& x : v) encode(w, x);
 }
 template <class T, std::size_t N>
 void decode(Reader& r, std::array<T, N>& v)
 {
+    if constexpr (isRawNumber<T>()) {
+        if (littleEndian()) {
+            r.raw(v.data(), N * sizeof(T));
+            return;
+        }
+    }
     for (T& x : v) decode(r, x);
 }
 
@@ -356,19 +422,43 @@ struct Header {
     std::uint32_t length = 0;
 };
 
+namespace detail {
+/// Writes the 16 bytes of `h` (its length set to `length`) at `out`.
+inline void putHeader(std::uint8_t* out, Header h, std::size_t length)
+{
+    if (length > Header::maxLength) throw Error("frame too large");
+    h.length = static_cast<std::uint32_t>(length);
+    const auto put = [&out](auto value) {
+        std::uint8_t b[sizeof(value)];
+        std::memcpy(b, &value, sizeof(value));
+        if (!littleEndian()) std::reverse(b, b + sizeof(value));
+        std::memcpy(out, b, sizeof(value));
+        out += sizeof(value);
+    };
+    std::memcpy(out, "SCF1", 4);
+    out += 4;
+    put(h.kind);
+    put(h.flags);
+    put(h.message);
+    put(h.id);
+    put(h.length);
+}
+} // namespace detail
+
 inline Bytes frame(Header h, const Bytes& payload)
 {
-    if (payload.size() > Header::maxLength) throw Error("frame too large");
-    h.length = static_cast<std::uint32_t>(payload.size());
-    Writer w;
-    w.raw("SCF1", 4);
-    w.number(h.kind);
-    w.number(h.flags);
-    w.number(h.message);
-    w.number(h.id);
-    w.number(h.length);
-    w.raw(payload.data(), payload.size());
-    return w.bytes();
+    Bytes out(Header::size + payload.size());
+    detail::putHeader(out.data(), h, payload.size());
+    if (!payload.empty()) std::memcpy(out.data() + Header::size, payload.data(), payload.size());
+    return out;
+}
+
+/// The frame of the payload written by `payload`, built in its own buffer when it is framed().
+inline Bytes frame(Header h, Writer&& payload)
+{
+    if (payload.base_ != Header::size) return frame(h, payload.bytes_);
+    detail::putHeader(payload.bytes_.data(), h, payload.size());
+    return std::move(payload.bytes_);
 }
 
 /// Header of a frame; `size` may hold the header only.
@@ -388,11 +478,18 @@ inline Header header(const std::uint8_t* data, std::size_t size)
 
 inline Header header(const Bytes& frame) { return header(frame.data(), frame.size()); }
 
-/// The payload of a whole frame.
-inline Bytes payload(const Bytes& frame)
+/// Reads the payload of a whole frame, without copying it (`frame` must outlive the reader).
+inline Reader payloadReader(const Bytes& frame)
 {
     const Header h = header(frame);
     if (frame.size() != Header::size + h.length) throw Error("frame of the wrong size");
+    return Reader(frame.data() + Header::size, h.length);
+}
+
+/// The payload of a whole frame.
+inline Bytes payload(const Bytes& frame)
+{
+    payloadReader(frame);
     return Bytes(frame.begin() + Header::size, frame.end());
 }
 
@@ -410,7 +507,7 @@ public:
 
 inline Bytes errorFrame(std::uint32_t id, const std::string& message, const Raised* raised = nullptr)
 {
-    Writer w;
+    Writer w = Writer::framed();
     encode(w, message);
     Header h;
     h.kind = Header::error;
@@ -420,7 +517,7 @@ inline Bytes errorFrame(std::uint32_t id, const std::string& message, const Rais
         w.number(raised->index);
         w.raw(raised->value.data(), raised->value.size());
     }
-    return frame(h, w.bytes());
+    return frame(h, std::move(w));
 }
 
 /// Answers a call frame through `handle(message, reader, writer) -> bool` (false: unknown message):
@@ -435,16 +532,15 @@ std::optional<Bytes> respond(const Bytes& call, Handle&& handle)
     std::optional<Raised> raised;
     try {
         if (h.kind != Header::call) throw Error("not a call");
-        const Bytes in = payload(call);
-        Reader reader(in);
-        Writer writer;
+        Reader reader = payloadReader(call);
+        Writer writer = Writer::framed();
         if (!handle(h.message, reader, writer)) throw Error("unknown message " + std::to_string(h.message));
         if (!wanted) return std::nullopt;
         Header r;
         r.kind = Header::reply;
         r.message = h.message;
         r.id = h.id;
-        return frame(r, writer.bytes());
+        return frame(r, std::move(writer));
     } catch (const Raised& e) {
         failure = e.what();
         raised = e;
