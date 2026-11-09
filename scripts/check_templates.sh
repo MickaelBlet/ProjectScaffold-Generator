@@ -54,7 +54,7 @@ check() {
   local set=$1 project=$2 name out
   name=$(basename "$project" .scaffold.yaml)
   out="$work/$set/$name"
-  if ! "$SCAFFOLD_GEN" "$project" -t "$set" -o "$out" -d --force >"$work/log" 2>&1; then
+  if ! "$SCAFFOLD_GEN" "$project" -t "templates/$set" -o "$out" -d --force >"$work/log" 2>&1; then
     echo "FAILED  $set: $name (generation)"; sed 's/^/        /' "$work/log"; failed=1; return
   fi
   local cmake_args=()

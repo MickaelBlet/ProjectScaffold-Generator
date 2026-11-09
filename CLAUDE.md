@@ -2,12 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ProjectScaffold-Generator: generates code skeletons from ProjectScaffold project files (YAML/JSON, or OMG IDL) through Jinja template sets (MiniJinja). Command line only, in Rust: `scaffold-gen`, one static executable with the templates embedded. The editor lives in ProjectScaffold-Viewer (separate repository, TypeScript, its own copy of the model).
+ProjectScaffold-Generator: generates code skeletons from ProjectScaffold project files (YAML/JSON, or OMG IDL) through Jinja template sets (MiniJinja). Command line only, in Rust: `scaffold-gen`, one static executable; template sets given with `-t <folder>` (embedded only with the `builtin-templates` feature). The editor lives in ProjectScaffold-Viewer (separate repository, TypeScript, its own copy of the model).
 
 ## Commands
 
 ```sh
-cargo test                            # unit tests (src/) and tests/cli.rs (tests/errors, every example with every set)
+cargo test                            # (--features builtin-templates too) unit tests (src/) and tests/cli.rs (tests/errors, every example with every set)
 cargo test -- error_messages          # one test
 cargo clippy --all-targets
 cargo fmt                             # rustfmt.toml: width 110
@@ -33,7 +33,7 @@ scripts/check_templates.sh [set]...   # generate examples/fixtures with each bui
 ### Code generation (`src/codegen/`, `templates/`)
 
 - `context.rs` builds the template context (every value present; links sorted into wiring per container / `system`) over the arena of `node.rs`: entities are shared and filled after creation, recursive types make cycles; minijinja reads nodes lazily (`Object`), compared by identity.
-- `generate.rs` renders a template set (`template_set.rs`: `manifest.yaml` + Jinja files) with the context as globals and only language-neutral helpers (`filters.rs`: case filters, `doc_comment`, `uuid`, `json`, Liquid-like `escape` and `replace`; `sections.rs`: the `user` filter and merging of user sections; `inline.rs`: `{% filter inline %}` blocks joined on one line in the template source): target-language logic belongs in the templates (`templates/cpp17/_*.j2` macros), so users can edit it. `run.rs` writes into an `OutputDir` (merge, conflicts, `.orphans`, `.scaffold-gen.json` record). `builtin.rs`: the sets embedded with `include_dir`.
+- `generate.rs` renders a template set (`template_set.rs`: `manifest.yaml` + Jinja files) with the context as globals and only language-neutral helpers (`filters.rs`: case filters, `doc_comment`, `uuid`, `json`, Liquid-like `escape` and `replace`; `sections.rs`: the `user` filter and merging of user sections; `inline.rs`: `{% filter inline %}` blocks joined on one line in the template source): target-language logic belongs in the templates (`templates/cpp17/_*.j2` macros), so users can edit it. `run.rs` writes into an `OutputDir` (merge, conflicts, `.orphans`, `.scaffold-gen.json` record). `builtin.rs`: the sets embedded with `include_dir` (feature `builtin-templates`, off by default).
 - Jinja environment: `trim_blocks` + `lstrip_blocks` (manifest `trimTagLines`), undefined values are errors except in `if` (SemiStrict), `none` prints nothing; partials are macros (`{% from '_x.j2' import x as _x %}`), inline fragments in `{% filter inline %}` (plain text, no `{{- '…' -}}`), sections `{% filter user('id') %}…{% endfilter %}`, Python string methods (pycompat, `rsplit`).
 - `src/main.rs`: the command line (`-o -t -d -f -p -n -k -v`; hidden `--dump-context`, `--context <json>`).
 - Check template changes by building the output: `cargo run --release -- tests/fixtures/plant.scaffold.yaml -o /tmp/gen/plant` then CMake with `-Wall -Wextra -Werror`, or `scripts/check_templates.sh <set>`.

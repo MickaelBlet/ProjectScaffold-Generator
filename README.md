@@ -4,7 +4,7 @@ Code skeleton generator for ProjectScaffold project files (`*.scaffold.yaml` / `
 
 ## Features
 
-- **Built-in template sets**: C++ (C++98 to C++20, CMake), Python 3.8+, SCA 2.2.2 over CORBA (omniORB).
+- **Template sets** (`templates/`, given with `-t <folder>`): C++ (C++98 to C++20, CMake), Python 3.8+, SCA 2.2.2 over CORBA (omniORB).
 - **User sections**: hand-written code kept across generations; conflicts reported, nothing lost (`.orphans`).
 - **Links between binaries**: executables calling each other over tcp, udp, http, websocket or shared memory, C++ and Python alike.
 - **Dependencies**: projects using other project files generate together (`--deps`).

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use clap::Parser;
 use serde_json::Value as Json;
 
-use codegen::builtin::{DEFAULT_TEMPLATE_SET, TEMPLATE_SETS, builtin, is_template_set};
+use codegen::builtin::{DEFAULT_TEMPLATE_SET, EMBEDDED, TEMPLATE_SETS, builtin, is_template_set};
 use codegen::context::{build_context, dependency_name};
 use codegen::filters::snake;
 use codegen::node;
@@ -37,9 +37,9 @@ struct Args {
     /// Output directory (default: generated/<project> next to the project file).
     #[arg(short, long, value_name = "DIR")]
     out: Option<String>,
-    /// Template set: a folder (holding a manifest.yaml), or a built-in one: cpp17, cpp20, cpp14,
-    /// cpp11, cpp98, python, sca-cpp98 (default: <out>/.scaffold/templates if present, else the
-    /// project's generation.templates, else cpp17).
+    /// Template set: a folder (holding a manifest.yaml), or, in builds embedding them, a built-in
+    /// one: cpp17, cpp20, cpp14, cpp11, cpp98, python, sca-cpp98 (default: <out>/.scaffold/templates
+    /// if present, else the project's generation.templates, else cpp17).
     #[arg(short, long, value_name = "SET")]
     templates: Option<String>,
     /// Also generate the dependencies, each in a sibling directory of <out>.
@@ -143,10 +143,14 @@ fn templates_arg(arg: &str) -> Result<TemplateSet, String> {
     }
     let dir = absolute(Path::new(arg));
     if read_or_none(&dir.join(MANIFEST))?.is_none() {
-        return Err(format!(
-            "templates '{arg}': neither a built-in set ({}) nor a folder holding a {MANIFEST}",
-            TEMPLATE_SETS.join(", ")
-        ));
+        return Err(if EMBEDDED {
+            format!(
+                "templates '{arg}': neither a built-in set ({}) nor a folder holding a {MANIFEST}",
+                TEMPLATE_SETS.join(", ")
+            )
+        } else {
+            format!("templates '{arg}': not a folder holding a {MANIFEST}")
+        });
     }
     load_template_set(|p| read_or_none(&dir.join(p)).ok().flatten())
 }
@@ -208,7 +212,7 @@ impl Run<'_> {
             let dir =
                 FsDir { root: out_dir.clone(), label: if label.is_empty() { ".".into() } else { label } };
             let chosen = ds(&project["generation"], "templates");
-            if !chosen.is_empty() && !is_template_set(&chosen) {
+            if EMBEDDED && self.args.templates.is_none() && !chosen.is_empty() && !is_template_set(&chosen) {
                 let msg = format!("unknown template set '{chosen}', {DEFAULT_TEMPLATE_SET} used");
                 eprintln!(
                     "{}",

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the code generator into dist-cli/scaffold-gen: a standalone static executable (Rust, musl),
-# the built-in template sets embedded.
+# without templates (-t <folder>); CARGO_FEATURES=builtin-templates embeds templates/<set>.
 # Usage: scripts/build_cli.sh [rust target triple] (default: x86_64-unknown-linux-musl; e.g.
 # aarch64-unknown-linux-musl, x86_64-pc-windows-msvc, x86_64-pc-windows-gnu with a mingw linker)
 # Windows MSVC targets build from Linux with cargo-xwin (cargo install cargo-xwin; it downloads the
@@ -16,9 +16,9 @@ case $target in
             [[ -x "$dir/llvm-rc" ]] && { PATH="$dir:$PATH"; break; }
         done
     fi
-    cargo xwin build --release --target "$target"
+    cargo xwin build --release --target "$target" ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
     ;;
-*) cargo build --release --target "$target" ;;
+*) cargo build --release --target "$target" ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} ;;
 esac
 mkdir -p dist-cli
 exe=scaffold-gen

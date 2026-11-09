@@ -30,7 +30,7 @@ These Rust crates are compiled into the `scaffold-gen` executable.
 | [foldhash](https://github.com/orlp/foldhash) | 0.2.0 | Zlib | Copyright Orson Peters |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.17.1 | MIT OR Apache-2.0 | Copyright the hashbrown authors |
 | [hashlink](https://github.com/djc/hashlink) | 0.12.2 | MIT OR Apache-2.0 | Copyright the hashlink authors |
-| [include_dir](https://github.com/Michael-F-Bryan/include_dir) | 0.7.4 | MIT | Copyright Michael Bryan |
+| [include_dir](https://github.com/Michael-F-Bryan/include_dir) | 0.7.4 | MIT | Copyright Michael Bryan (`builtin-templates` builds only) |
 | [indexmap](https://github.com/indexmap-rs/indexmap) | 2.14.2 | Apache-2.0 OR MIT | Copyright the indexmap authors |
 | [is_terminal_polyfill](https://github.com/polyfill-rs/is_terminal_polyfill) | 1.70.2 | MIT OR Apache-2.0 | Copyright the polyfill-rs authors |
 | [itoa](https://github.com/dtolnay/itoa) | 1.0.18 | MIT OR Apache-2.0 | Copyright David Tolnay |

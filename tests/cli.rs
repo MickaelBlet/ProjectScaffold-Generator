@@ -1,5 +1,5 @@
 // The command line over the repository's files: error messages of broken projects
-// (tests/errors/*.expected), and every example generated with every built-in template set.
+// (tests/errors/*.expected), and every example generated with every template set of templates/.
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -51,15 +51,16 @@ fn examples_generate_with_every_set() {
     let work = std::env::temp_dir().join(format!("scaffold-gen-test-{}", std::process::id()));
     let mut failed = vec![];
     for set in ["cpp17", "cpp20", "cpp14", "cpp11", "cpp98", "python", "sca-cpp98"] {
+        let templates = format!("templates/{set}");
         for p in &projects {
             let out_dir = work.join(set).join(p.replace('/', "_"));
-            let first = generator().args([p, "-t", set, "-o"]).arg(&out_dir).output().unwrap();
+            let first = generator().args([p, "-t", &templates, "-o"]).arg(&out_dir).output().unwrap();
             if !first.status.success() {
                 failed.push(format!("{set} {p}: {}", String::from_utf8_lossy(&first.stderr)));
                 continue;
             }
             // Generating again changes nothing.
-            let again = generator().args([p, "-t", set, "-o"]).arg(&out_dir).output().unwrap();
+            let again = generator().args([p, "-t", &templates, "-o"]).arg(&out_dir).output().unwrap();
             let report = String::from_utf8_lossy(&again.stdout);
             if !again.status.success() || !report.contains(" 0 written, ") {
                 failed.push(format!("{set} {p}: generated again: {report}"));
@@ -74,7 +75,7 @@ fn examples_generate_with_every_set() {
 fn dependencies_generated_next_to_the_project() {
     let work = std::env::temp_dir().join(format!("scaffold-gen-deps-{}", std::process::id()));
     let out = generator()
-        .args(["examples/station.scaffold.yaml", "-d", "-o"])
+        .args(["examples/station.scaffold.yaml", "-t", "templates/python", "-d", "-o"])
         .arg(work.join("station"))
         .output()
         .unwrap();

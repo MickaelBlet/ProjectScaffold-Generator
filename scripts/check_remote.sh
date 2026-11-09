@@ -23,9 +23,9 @@ pydir="$work/relay/python"
 if [ "$set" = python ]; then
   cppset=cpp17
   pydir="$work/relay-py"
-  "$SCAFFOLD_GEN" tests/fixtures/relay.scaffold.yaml -t python -o "$pydir" --force >/dev/null
+  "$SCAFFOLD_GEN" tests/fixtures/relay.scaffold.yaml -t templates/python -o "$pydir" --force >/dev/null
 fi
-"$SCAFFOLD_GEN" tests/fixtures/relay.scaffold.yaml -t "$cppset" -o "$work/relay" --force >/dev/null
+"$SCAFFOLD_GEN" tests/fixtures/relay.scaffold.yaml -t "templates/$cppset" -o "$work/relay" --force >/dev/null
 # Unused parameters: the generated handlers are empty.
 # interop.cpp in the standard of the set (cpp11 -> C++11).
 cmake -S tests/remote -B "$work/build" -DRELAY_DIR="$work/relay" -DCMAKE_CXX_STANDARD="${cppset#cpp}" \

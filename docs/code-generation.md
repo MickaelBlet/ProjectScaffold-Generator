@@ -14,7 +14,7 @@ Details: [C++ and Python mapping](mapping.md), [Links between binaries](remote.m
 
 ## Built-in template sets
 
-One folder each in [`templates/`](../templates). A project picks its set with `generation.templates` (in the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): _Inspector › Project › Code generation_); `-t` overrides it.
+One folder each in [`templates/`](../templates). Not embedded in the executable by default: give one with `-t templates/<set>`. A build with the `builtin-templates` feature embeds them; a project then picks its set by name with `generation.templates` (in the [ProjectScaffold editor](https://github.com/MickaelBlet/ProjectScaffold-Viewer): _Inspector › Project › Code generation_), and `-t <name>` overrides it.
 
 | Set                                     | Writes                                                              |
 | --------------------------------------- | ------------------------------------------------------------------- |
@@ -50,8 +50,8 @@ scaffold-gen <project file> [-o <dir>] [-t <template set or dir>] [--deps] [--fo
 | Option         | Effect                                                                                                            |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `-o <dir>`     | output directory (default: `generated/<project>` next to the project file)                                        |
-| `-t <name>`    | a built-in set                                                                                                    |
-| `-t <dir>`     | a template folder (`./<name>` for a folder named like a built-in set)                                             |
+| `-t <dir>`     | a template folder (holding a `manifest.yaml`)                                                                     |
+| `-t <name>`    | a built-in set (builds with `builtin-templates` only; `./<name>` for a folder named like one)                     |
 | `--deps`, `-d` | also generate the dependencies, each in a sibling directory (where the generated `CMakeLists.txt` looks for them) |
 | `--force`      | overwrite files changed outside their user sections                                                               |
 | `--prune`      | delete files no longer generated (their user sections go to `.orphans` files)                                     |
@@ -64,7 +64,7 @@ The project file is a ProjectScaffold file (YAML or JSON), or an OMG IDL file: i
 
 ### Building the generator
 
-`scripts/build_cli.sh` builds `dist-cli/scaffold-gen`: one static executable (Rust, nothing to install), built-in templates included. An argument names another Rust target, such as `aarch64-unknown-linux-musl`, `x86_64-pc-windows-msvc` (→ `scaffold-gen.exe`, recommended for Windows: built from Linux with `cargo install cargo-xwin`, which downloads the MSVC runtime and Windows SDK, and `llvm-rc`) or `x86_64-pc-windows-gnu` (with a MinGW linker and `windres`). Windows executables carry version information and a manifest. Unsigned, they may still be flagged by antivirus software: sign them for distribution. From the sources: `cargo run --release -- <project file> [options]`.
+`scripts/build_cli.sh` builds `dist-cli/scaffold-gen`: one static executable (Rust, nothing to install), without templates (`CARGO_FEATURES=builtin-templates scripts/build_cli.sh` embeds `templates/<set>`). An argument names another Rust target, such as `aarch64-unknown-linux-musl`, `x86_64-pc-windows-msvc` (→ `scaffold-gen.exe`, recommended for Windows: built from Linux with `cargo install cargo-xwin`, which downloads the MSVC runtime and Windows SDK, and `llvm-rc`) or `x86_64-pc-windows-gnu` (with a MinGW linker and `windres`). Windows executables carry version information and a manifest. Unsigned, they may still be flagged by antivirus software: sign them for distribution. From the sources: `cargo run --release -- <project file> [options]`.
 
 ## Generating again
 
@@ -91,7 +91,7 @@ Templates are looked up in this order:
 
 1. the template folder given with `-t <dir>`;
 2. a template set in `<output directory>/.scaffold/templates/`;
-3. the project's built-in set (`generation.templates`, or `-t <name>`).
+3. the project's built-in set (`generation.templates`, or `-t <name>`), in builds with `builtin-templates` only; otherwise an error.
 
 Writing a set: [Writing templates](templates.md).
 
