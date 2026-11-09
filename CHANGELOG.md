@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Constants of modules (`constants` of a module in the file, with an `access` level), named by their module's path (`Core.Sensor.MaxRate`); those of a dependency's modules in `dependencies[].moduleConstants`.
 - Placed modules of dependencies keep their attributes and methods as last read (`dependencies[].modules[].attributes` / `methods`).
 - IDL import: types, interfaces and constants of IDL modules go to the module standing for their IDL module, components nested in the modules of their enclosing IDL modules.
-- `cpp17`: more user sections: `includes`, `members` and `end` (after the class) in interface headers, `end` after the class or type in module, system and type headers, `constants` in `constants.hpp`, `library` (after the library's settings) and `executable.<name>` (after each executable) in `CMakeLists.txt`.
+- `cpp17`: more user sections: `includes`, `members` and `end` (after the class) in interface headers, `end` after the class or type in module, system and type headers, `constants` in `constants.hpp`, `library` (after the library's settings) and `executable.<name>` (after each executable) in `CMakeLists.txt`; `begin` (after the includes) in type, interface, module, system, proxy, stub, codec and constants files, and before `main()` in `main.cpp`.
 
 ### Changed
 

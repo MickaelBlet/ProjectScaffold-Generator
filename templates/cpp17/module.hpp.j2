@@ -57,6 +57,9 @@
 {%- filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 namespace {{ _cpp_namespace(entity=module) }} {
 
 {{ _doc_comment(text=module.description) }}{##}

@@ -26,6 +26,9 @@
 {%- filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 namespace {{ _project_identifier() }} {
 {% for constant in constants %}
 {% set scalar = _scalar(type_reference=constant.type) %}

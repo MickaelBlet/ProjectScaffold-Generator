@@ -26,6 +26,9 @@
 {% filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 namespace {{ _project_identifier() }}::remote {
 
 /// Receives the calls of {{ _name(entity=remote_interface) }} from another binary and makes them on the

@@ -36,6 +36,9 @@
 {% filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 namespace {{ _project_identifier() }}::remote {
 
 /// {{ _name(entity=remote_interface) }} of another binary: each call is encoded and sent over the channel

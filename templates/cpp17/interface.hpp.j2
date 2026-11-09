@@ -27,6 +27,9 @@
 {%- filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 namespace {{ _cpp_namespace(entity=interface) }} {
 
 {{ _doc_comment(text=interface.description) }}{##}

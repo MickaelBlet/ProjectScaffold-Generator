@@ -40,6 +40,9 @@
 {% filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 // Encoding of the types of the calls between binaries (enums, bitmasks and aliases need none: see wire.hpp).
 namespace {{ _project_identifier() }}::remote {
 

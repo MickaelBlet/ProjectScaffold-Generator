@@ -17,6 +17,9 @@
 {% filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 int main(int argc, char** argv)
 {
     {{ _qualified_name(entity=system) }} system;

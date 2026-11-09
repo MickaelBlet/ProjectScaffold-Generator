@@ -37,6 +37,9 @@
 {% filter user('includes') +%}
 {% endfilter +%}
 
+{% filter user('begin') +%}
+{% endfilter +%}
+
 namespace {{ _cpp_namespace(entity=system) }} {
 
 {{ system.name }}::{{ system.name }}()
